@@ -59,8 +59,18 @@ export interface EmailDispatchResult {
 }
 
 const STORAGE_KEY_NOTIFIED_BOOKINGS = 'angelica_notified_bookings';
+
+// URL is public configuration. Admin credentials and sessions must never be stored in localStorage.
 const NOTIFICATION_WEBHOOK_STORAGE_KEY = 'angelica_notification_webhook';
 const NOTIFICATION_WEBHOOK_TOKEN_KEY = 'angelica_notification_webhook_token';
+
+function getAdminSessionToken(explicitToken?: string): string {
+  if (explicitToken && explicitToken.trim()) return explicitToken.trim();
+  if (typeof window !== 'undefined') {
+    try { return window.sessionStorage.getItem('angelica_admin_session') || ''; } catch {}
+  }
+  return '';
+}
 
 /**
  * Verifica se uma reserva já teve notificação registrada para evitar duplicações.
@@ -187,25 +197,18 @@ export function setNotificationWebhookUrl(url: string): void {
  * Obtém o token de autorização opcional do Webhook (armazenado apenas localmente no navegador do admin).
  */
 export function getNotificationWebhookToken(): string {
-  if (typeof window === 'undefined') return '';
-  return (
-    (import.meta as any).env?.VITE_NOTIFICATION_WEBHOOK_TOKEN ||
-    localStorage.getItem(NOTIFICATION_WEBHOOK_TOKEN_KEY) ||
-    ''
-  );
+  // Long-lived credentials are never stored in localStorage or compiled into the public bundle.
+  return getAdminSessionToken();
 }
 
-/**
- * Salva o token de autorização do Webhook.
- */
+/** Legacy API kept for callers; only a short-lived session token is held in sessionStorage. */
 export function setNotificationWebhookToken(token: string): void {
   if (typeof window === 'undefined') return;
-  const clean = token.trim();
-  if (!clean) {
-    localStorage.removeItem(NOTIFICATION_WEBHOOK_TOKEN_KEY);
-  } else {
-    localStorage.setItem(NOTIFICATION_WEBHOOK_TOKEN_KEY, clean);
-  }
+  try {
+    const clean = token.trim();
+    if (clean) window.sessionStorage.setItem('angelica_admin_session', clean);
+    else window.sessionStorage.removeItem('angelica_admin_session');
+  } catch {}
 }
 
 /**
@@ -358,6 +361,14 @@ export async function triggerNewPreBookingEmailNotification(
 ): Promise<EmailDispatchResult> {
   const payload = buildPreBookingEmailPayload(apt);
   const url = getNotificationWebhookUrl();
+
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+    return {
+      success: false, persisted: false, appointmentId: apt.id, mode: 'webhook_rejected',
+      message: 'Criação de agendamentos está desativada na pré-visualização GitHub Pages.',
+      payload
+    };
+  }
 
   if (!url) {
     return {
@@ -546,22 +557,16 @@ export async function fetchRemoteAppointmentsDetailed(authToken?: string): Promi
   try {
     const endpoint = getNotificationWebhookUrl();
     if (!endpoint) return { success: false, appointments: [], error: 'URL do Google Apps Script não configurada.' };
-    const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '')).trim();
+    const token = getAdminSessionToken(authToken);
     if (!token) return { success: false, appointments: [], error: 'Sessão administrativa ausente. Entre novamente no painel.', statusCode: 401 };
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8', Accept: 'application/json' },
-      body: JSON.stringify({ action: 'getAppointments', token }),
-      cache: 'no-store'
-    });
-    const data = await response.json().catch(() => ({}));
-    if (response.ok && data?.status === 'success' && Array.isArray(data.appointments)) {
-      return { success: true, appointments: data.appointments as Appointment[], source: 'google_sheets', total: data.total ?? data.appointments.length, statusCode: response.status };
+    const data = await postAppsScriptAction(endpoint, 'getAppointments', { token });
+    if (Array.isArray(data.appointments)) {
+      return { success: true, appointments: data.appointments as Appointment[], source: 'google_sheets', total: data.total ?? data.appointments.length };
     }
-    const unauthorized = response.status === 401 || /não autorizado|sessão inválida|token de autorização/i.test(String(data?.message || ''));
-    return { success: false, appointments: [], error: data?.message || `Falha ao consultar agendamentos oficiais (HTTP ${response.status}).`, statusCode: unauthorized ? 401 : response.status };
+    return { success: false, appointments: [], error: 'Resposta do Apps Script sem lista de agendamentos.', statusCode: 502 };
   } catch (err: any) {
-    return { success: false, appointments: [], error: `Falha ao conectar ao Google Apps Script: ${err.message || 'serviço indisponível'}` };
+    const unauthorized = /não autorizado|sessão inválida|token de autorização|sessão administrativa/i.test(String(err?.message || ''));
+    return { success: false, appointments: [], error: `Falha ao consultar agendamentos oficiais: ${err.message || 'serviço indisponível'}`, statusCode: unauthorized ? 401 : 502 };
   }
 }
 
@@ -695,16 +700,21 @@ export interface RemoteScheduleConfig {
 
 async function callScheduleAction(action: string, extra: Record<string, unknown> = {}, authToken?: string): Promise<any> {
   const url = getNotificationWebhookUrl();
-  const token = (authToken || getNotificationWebhookToken()).trim();
+  const token = getAdminSessionToken(authToken);
   if (!url) throw new Error('URL do Google Apps Script não configurada.');
-  if (!token) throw new Error('Sessão/token administrativo do Apps Script não configurado.');
+  if (!token) throw new Error('Sessão administrativa ausente. Entre novamente no painel.');
+  return postAppsScriptAction(url, action, { ...extra, token });
+}
+
+async function postAppsScriptAction(url: string, action: string, payload: Record<string, unknown> = {}): Promise<any> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8', Accept: 'application/json' },
-    body: JSON.stringify({ action, ...extra, token })
+    body: JSON.stringify({ action, ...payload }),
+    cache: 'no-store'
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok || !data || data.status !== 'success') {
+  if (!response.ok || !data || data.status === 'error' || data.status !== 'success') {
     throw new Error(data?.message || `Apps Script recusou a ação ${action} (HTTP ${response.status}).`);
   }
   return data;
@@ -870,15 +880,8 @@ export async function saveRemoteClient(
 export async function fetchRemoteServices(): Promise<Service[]> {
   const endpoint = getNotificationWebhookUrl();
   if (!endpoint) throw new Error('URL do Google Apps Script não configurada.');
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8', Accept: 'application/json' },
-    body: JSON.stringify({ action: 'getServices' })
-  });
-  const data = await response.json().catch(() => null);
-  if (!response.ok || !data || data.status !== 'success' || !Array.isArray(data.services)) {
-    throw new Error(data?.message || 'Não foi possível ler o catálogo oficial da aba Serviços.');
-  }
+  const data = await postAppsScriptAction(endpoint, 'getServices');
+  if (!Array.isArray(data.services)) throw new Error('Resposta do Apps Script sem catálogo oficial de serviços.');
   return data.services as Service[];
 }
 

@@ -5,10 +5,9 @@ This document tracks the frontend integration against the owner-provided deploye
 ## Current safe-preview behavior
 
 - `READ_ONLY_PREVIEW` remains enabled. Booking, admin access, and all frontend write handlers remain disabled.
-- GitHub Pages is treated as an isolated staging host: the client does not fall back to the official Apps Script URL and ignores browser-local webhook overrides. Staging API access requires both a build-time `VITE_NOTIFICATION_WEBHOOK_URL` and explicit `VITE_ALLOW_STAGING_APPS_SCRIPT_URL=true`; the official default endpoint is rejected in staging. Leave the opt-in unset for ordinary preview builds.
-- The preview does **not** call `getPublicAvailability`: the supplied deployed implementation reaches `getOfficialSheet()`, which writes optional header cells as part of the read path.
-- The preview does **not** call `getScheduleConfig`: the supplied implementation may create the `Configuração da Agenda` sheet while reading.
-- The blocked-date poll is also disabled because it delegates to `getPublicAvailability`.
+- GitHub Pages is treated as an isolated staging host: the client does not fall back to the official Apps Script URL and ignores browser-local webhook overrides. Staging API access requires both a build-time `VITE_NOTIFICATION_WEBHOOK_URL` and explicit `VITE_ALLOW_STAGING_APPS_SCRIPT_URL=true`; the official default endpoint is rejected in staging.
+- While `READ_ONLY_PREVIEW` is enabled, **all** Apps Script reads are skipped, including services, studio address, payment configuration, public availability, blocked dates, and schedule configuration. This prevents accidental requests even if a staging endpoint is present in the build environment.
+- Availability and schedule-config reads remain specifically blocked because the supplied deployed implementation can write optional header cells or create the `Configuração da Agenda` sheet during a read.
 - No fake appointments, service rows, customer records, prices, Pix data, or schedule availability should be used to fill gaps.
 
 ## Frontend actions and remaining verification

@@ -999,7 +999,7 @@ export default function App() {
             <GallerySection />
 
             {/* Localização Nobre no Pontal da Cruz, São Sebastião SP */}
-            <LocationSection />
+            <LocationSection studioAddress={studioAddress} />
           </main>
 
           {/* Public Footer */}

@@ -842,6 +842,8 @@ export default function App() {
         <div className="w-full min-h-screen bg-[#FBF7F2] flex flex-col pb-20 sm:pb-12">
           {/* Public Header */}
           <HeaderPublic
+            studioWhatsApp={String(whatsappConfig?.phone || '')}
+            studioCityLabel={studioAddress.city ? [studioAddress.city, studioAddress.state].filter(Boolean).join(' • ') : ''}
             onOpenBooking={() => {
               const el = document.getElementById('wizard-agendamento');
               el?.scrollIntoView({ behavior: 'smooth' });
@@ -916,6 +918,8 @@ export default function App() {
 
           {/* Public Footer */}
           <FooterPublic
+            studioWhatsApp={String(whatsappConfig?.phone || '')}
+            instagramUrl={String((whatsappConfig as WhatsAppConfig & { instagramUrl?: string }).instagramUrl || '')}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
             onOpenAdmin={() => setAdminLoginModalOpen(true)}

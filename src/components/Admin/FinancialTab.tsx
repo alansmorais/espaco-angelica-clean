@@ -177,6 +177,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
   };
 
   const handleToggleActive = async (service: Service) => {
+    if (readOnlyPreview) { window.alert('Ação desativada na pré-visualização somente leitura.'); return; }
     const newActive = service.active === false ? true : false;
     const updated: Service = {
       ...service,
@@ -202,6 +203,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnlyPreview) { window.alert('Ação desativada na pré-visualização somente leitura.'); return; }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -237,6 +239,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
   };
 
   const handleOpenDrivePicker = async () => {
+    if (readOnlyPreview) { window.alert('Ação desativada na pré-visualização somente leitura.'); return; }
     setIsDrivePickerOpen(true);
     setIsLoadingDrivePhotos(true);
     setDrivePhotoError(null);
@@ -247,6 +250,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
   };
 
   const handleSaveService = async (e: React.FormEvent) => {
+    if (readOnlyPreview) { window.alert('Ação desativada na pré-visualização somente leitura.'); return; }
     e.preventDefault();
     setFormError(null);
 

@@ -31,6 +31,8 @@ Spreadsheet ID found in the old repository:
 
 The owner-provided deployed `Code.gs` text is the compatibility reference for this rebuild. Do not replace it with the repository's reviewed copy or deploy the repository copy to the live project. The deployed text contains read paths with side effects: `getOfficialSheet()` writes optional headers, and schedule-config reads may create the `Configuração da Agenda` tab. Therefore, do not call `getPublicAvailability` or `getScheduleConfig` from the preview until those paths are confirmed safe. Avoid printing or exposing personal customer data during diagnostics.
 
+See [`docs/deployed-apps-script-compatibility.md`](docs/deployed-apps-script-compatibility.md) for the current action-by-action compatibility notes and the read paths intentionally blocked in preview.
+
 ## Acceptance stages
 1. Static preview and repository workflow; no production CNAME.
 2. Match existing visual design and migrate assets.

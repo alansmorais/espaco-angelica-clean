@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { STUDIO_ADDRESS } from './data/mockData';
+
 import {
   Service,
   Appointment,
@@ -234,8 +234,8 @@ export default function App() {
   // 6: Inadimplentes Blacklist State (Requires 100% Pre-payment via Pix)
   const [blacklist, setBlacklist] = useState<BlacklistEntry[]>([]);
 
-  // 3: Studio Address State (Rua Vereador José Luiz Soares, 92 - Pontal da Cruz, São Sebastião - SP)
-  const [studioAddress, setStudioAddress] = useState<StudioAddressConfig>(STUDIO_ADDRESS);
+  // Studio address has no client-side fallback; it is loaded from the official Apps Script/Sheets settings.
+  const [studioAddress, setStudioAddress] = useState<StudioAddressConfig>({ street: '', number: '', neighborhood: '', city: '', state: '', fullAddress: '', mapsUrl: '', wazeUrl: '' });
   const [paymentConfig, setPaymentConfig] = useState<PaymentConfig>({ pixKey: '', pixBeneficiary: '', depositAmount: 40 });
   const [paymentConfigLoaded, setPaymentConfigLoaded] = useState(false);
   const [paymentConfigConfigured, setPaymentConfigConfigured] = useState(false);
@@ -555,7 +555,7 @@ export default function App() {
         if (!isMounted) return;
         setServices(remoteServices);
         if (remoteServices.length > 0) {
-          setSelectedService(current => remoteServices.find(service => service.id === current.id) || remoteServices[0]);
+          setSelectedService(current => remoteServices.find(service => service.id === current?.id) || remoteServices[0]);
         }
       } catch (error) {
         if (isMounted) {

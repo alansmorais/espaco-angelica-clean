@@ -248,6 +248,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   const handleConfirmBooking = async () => {
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+      setSubmitError('Este é um ambiente de pré-visualização. Os agendamentos ainda não estão ativados.');
+      return;
+    }
     if (isSubmittingBooking) return;
 
     if (isDateBlocked(selectedDate)) {

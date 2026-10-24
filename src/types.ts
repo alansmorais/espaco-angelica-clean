@@ -76,6 +76,9 @@ export interface PaymentConfig {
 export interface WhatsAppConfig {
   autoSendOnConfirm: boolean;
   customTemplate?: string;
+  /** Public business contact loaded from the official WHATSAPP_CONFIG sheet setting. */
+  phone?: string;
+  instagramUrl?: string;
 }
 
 export interface WhatsAppLogItem {

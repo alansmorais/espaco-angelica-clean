@@ -168,18 +168,20 @@ export function getNotificationWebhookUrl(): string {
   if (typeof window === 'undefined') {
     return isLocalOrStagingFrontend() ? '' : DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
   }
-  const explicitUrl = (
-    (import.meta as any).env?.VITE_NOTIFICATION_WEBHOOK_URL ||
-    localStorage.getItem(NOTIFICATION_WEBHOOK_STORAGE_KEY) ||
-    ''
-  ).trim();
+  const envUrl = String((import.meta as any).env?.VITE_NOTIFICATION_WEBHOOK_URL || '').trim();
   if (isLocalOrStagingFrontend()) {
-    if (!explicitUrl || explicitUrl === DEFAULT_APPS_SCRIPT_WEBHOOK_URL) {
+    // Never let a stale browser-local URL silently reconnect a staging preview
+    // to production. Staging API access must be an explicit build-time choice.
+    const stagingApiOptIn = String((import.meta as any).env?.VITE_ALLOW_STAGING_APPS_SCRIPT_URL || '').toLowerCase() === 'true';
+    if (!stagingApiOptIn || !envUrl || envUrl === DEFAULT_APPS_SCRIPT_WEBHOOK_URL) {
       return '';
     }
-    return explicitUrl;
+    return envUrl;
   }
-  return explicitUrl || DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
+  const savedUrl = (typeof window !== 'undefined'
+    ? localStorage.getItem(NOTIFICATION_WEBHOOK_STORAGE_KEY) || ''
+    : '').trim();
+  return envUrl || savedUrl || DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
 }
 
 /**

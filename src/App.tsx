@@ -871,7 +871,7 @@ export default function App() {
               const el = document.getElementById('wizard-agendamento');
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
-            onOpenAdmin={() => { if (!READ_ONLY_PREVIEW) setAdminLoginModalOpen(true); }}
+            onOpenAdmin={() => { setAdminLoginError(null); setAdminLoginModalOpen(true); }}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
             onOpenGallery={() => {
@@ -945,7 +945,7 @@ export default function App() {
             instagramUrl={String((whatsappConfig as WhatsAppConfig & { instagramUrl?: string }).instagramUrl || '')}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
-            onOpenAdmin={() => { if (!READ_ONLY_PREVIEW) setAdminLoginModalOpen(true); }}
+            onOpenAdmin={() => { setAdminLoginError(null); setAdminLoginModalOpen(true); }}
           />
 
           {/* ONLY ONE Floating Action Button on Public Website: Centered "Agendar" */}

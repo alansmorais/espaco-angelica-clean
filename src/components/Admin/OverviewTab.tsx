@@ -41,11 +41,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   });
   const procedureEntries = Object.entries(procedureCounts);
 
-  const totalSlotsEstimated = 8;
-  const occupancyPercent = todayAppointments.length > 0
-    ? Math.min(100, Math.round((todayAppointments.length / totalSlotsEstimated) * 100))
-    : 0;
-
   return (
     <div className="flex flex-col gap-8 text-[#49382E]">
       {/* Top Greeting Ribbon */}
@@ -97,7 +92,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       <OverviewCalendar appointments={allAppointments} onOpenAgenda={() => onNavigateToTab('agenda-bloqueios')} />
 
       {/* 4 KPIs Cards (Calculated from Real Data) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {/* KPI 1: Faturamento Confirmado */}
         <div className="p-5 rounded-2xl bg-[#FFFFFF] flex flex-col justify-between shadow-xs border border-[#E8D9B5] transition-all hover:shadow-md min-w-0 box-border">
           <div className="flex items-start justify-between gap-2">
@@ -178,33 +173,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        {/* KPI 4: Ocupação Real */}
-        <div className="p-5 rounded-2xl bg-[#FFFFFF] flex flex-col justify-between shadow-xs border border-[#E8D9B5] transition-all hover:shadow-md min-w-0 box-border">
-          <div className="flex items-start justify-between gap-2">
-            <span className="font-jakarta text-[11px] uppercase tracking-widest text-[#786C63] font-bold truncate">
-              Ocupação da Grade
-            </span>
-            <div className="w-9 h-9 rounded-full bg-[#F7EFEA] flex items-center justify-center text-[#D4AF37] border border-[#E8D9B5] shrink-0">
-              <span className="material-symbols-outlined text-[20px]">calendar_view_week</span>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-col gap-1.5 min-w-0">
-            <div className="flex items-baseline justify-between font-jakarta min-w-0">
-              <span className="font-syne text-2xl sm:text-3xl text-[#49382E] font-bold truncate">
-                {occupancyPercent}%
-              </span>
-              <span className="text-[11px] text-[#D4AF37] uppercase font-bold tracking-wider truncate pl-2">
-                {todayAppointments.length === 0 ? 'Livre' : `${todayAppointments.length} agendamento(s)`}
-              </span>
-            </div>
-            <div className="w-full bg-[#F7EFEA] h-2 rounded-full overflow-hidden border border-[#E8D9B5]">
-              <div
-                className="bg-[#D4AF37] h-full rounded-full transition-all duration-500"
-                style={{ width: `${occupancyPercent}%` }}
-              />
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Main Asymmetric Grid */}

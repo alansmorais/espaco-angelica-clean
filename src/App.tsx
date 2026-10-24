@@ -215,7 +215,7 @@ export default function App() {
   const [publicAvailabilityLoaded, setPublicAvailabilityLoaded] = useState(false);
   const [publicAvailabilityError, setPublicAvailabilityError] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<Service>(
-    activeServices[0] || services[0] || SERVICES_CATALOG[0]
+    activeServices[0] || services[0] || undefined
   );
 
   // 4: Operating Hours & Time Slots State (Add, Edit, Delete, Block)

@@ -899,7 +899,7 @@ export default function App() {
             {READ_ONLY_PREVIEW ? (
               <section id="wizard-agendamento" className="mx-auto my-12 max-w-3xl rounded-2xl border border-[#E8D9B5] bg-white p-8 text-center">
                 <h2 className="font-syne text-xl font-bold text-[#49382E]">Pré-visualização segura</h2>
-                <p className="mt-2 text-sm text-[#786C63]">Os serviços e as configurações são consultados sem ativar gravações. O agendamento e o painel administrativo só serão ativados após validar o Apps Script e os pagamentos oficiais.</p>
+                <p className="mt-2 text-sm text-[#786C63]">Esta é uma pré-visualização isolada: não cria agendamentos nem altera a planilha oficial. Os dados reais só aparecem quando uma fonte de teste aprovada estiver configurada; o agendamento e o painel administrativo continuam desativados.</p>
               </section>
             ) : activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
               <BookingWizard

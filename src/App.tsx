@@ -1331,6 +1331,7 @@ export default function App() {
 
               {adminTab === 'configuracoes' && (
                 <SettingsTab
+                   readOnlyPreview={READ_ONLY_PREVIEW}
                    adminSessionToken={adminSessionToken}
                   timeSlots={timeSlots}
                   onUpdateTimeSlots={handleUpdateTimeSlots}

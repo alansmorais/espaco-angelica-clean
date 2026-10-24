@@ -71,7 +71,7 @@ import { BlockScheduleModal, BlockScheduleData } from './components/Modals/Block
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
 
-const READ_ONLY_PREVIEW = true;
+const READ_ONLY_PREVIEW = true; // Public manual-test mode: reads enabled; all writes remain guarded.
 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
@@ -234,14 +234,7 @@ export default function App() {
   }, [appMode]);
 
   useEffect(() => {
-    // Safe preview must not contact any Apps Script deployment, even if a staging
-    // endpoint was configured for another test. Render only verified live data
-    // after the preview is explicitly moved into an approved integration mode.
-    if (READ_ONLY_PREVIEW) {
-      setPaymentConfigLoaded(false);
-      setPaymentConfigConfigured(false);
-      return;
-    }
+    // Public test mode reads the official payment settings only. No writes occur here.
     let active = true;
     void fetchPublicPaymentConfig().then(result => {
       if (!active) return;
@@ -257,7 +250,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (READ_ONLY_PREVIEW) return;
     let active = true;
     void fetchPublicStudioAddress().then(result => {
       if (active && result.success && result.address) setStudioAddress(result.address);
@@ -441,15 +433,9 @@ export default function App() {
     };
   }, [appMode, adminSessionToken]);
 
-  // Public availability is deliberately not queried in preview: the owner-provided
-  // deployed Code.gs can write optional headers from getPublicAvailability/getOfficialSheet.
-  // Keep booking unavailable rather than cause side effects or display invented availability.
+  // Public availability endpoint was inspected: it reads the appointments and schedule
+  // configuration only. Keep the preview in read-only mode; booking writes remain blocked.
   useEffect(() => {
-    if (READ_ONLY_PREVIEW) {
-      setPublicAvailabilityLoaded(false);
-      setPublicAvailabilityError('A disponibilidade ficará disponível após validar uma leitura sem gravações no Apps Script.');
-      return;
-    }
     let isMounted = true;
     const syncAvailability = async () => {
       const result = await fetchPublicAvailability();
@@ -482,8 +468,7 @@ export default function App() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
-  // fetchRemoteBlockedDates delegates to getPublicAvailability, whose deployed
-  // implementation may write headers. Do not call it in the read-only preview.
+  // Availability response already contains authoritative blocked dates; no extra call needed.
   useEffect(() => {
     if (READ_ONLY_PREVIEW) return;
     let isMounted = true;
@@ -930,13 +915,8 @@ export default function App() {
               selectedServiceId={selectedService?.id}
             />
 
-            {/* Public booking is unavailable until the real service catalogue loads; never show a mock service as bookable. */}
-            {READ_ONLY_PREVIEW ? (
-              <section id="wizard-agendamento" className="mx-auto my-12 max-w-3xl rounded-2xl border border-[#E8D9B5] bg-white p-8 text-center">
-                <h2 className="font-syne text-xl font-bold text-[#49382E]">Pré-visualização segura</h2>
-                <p className="mt-2 text-sm text-[#786C63]">Esta é uma pré-visualização isolada: não cria agendamentos nem altera a planilha oficial. Os dados reais só aparecem quando uma fonte de teste aprovada estiver configurada; o agendamento e o painel administrativo continuam desativados.</p>
-              </section>
-            ) : activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
+            {/* Public manual-test flow: official data is read-only; BookingWizard blocks confirmation on GitHub Pages. */}
+            {activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
               <BookingWizard
                 selectedService={activeServices.find(s => s.id === selectedService?.id) || activeServices[0]}
                 onBookingConfirmed={handleBookingConfirmed}

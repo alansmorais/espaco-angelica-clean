@@ -369,14 +369,8 @@ export async function triggerNewPreBookingEmailNotification(
   const payload = buildPreBookingEmailPayload(apt);
   const url = getNotificationWebhookUrl();
 
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-    return {
-      success: false, persisted: false, appointmentId: apt.id, mode: 'webhook_rejected',
-      message: 'Criação de agendamentos está desativada na pré-visualização GitHub Pages.',
-      payload
-    };
-  }
-
+  // GitHub Pages is explicitly configured to call the official Apps Script endpoint.
+  // Never report success unless the server confirms persisted=true.
   if (!url) {
     return {
       success: false,

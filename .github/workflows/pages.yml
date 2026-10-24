@@ -34,7 +34,7 @@ jobs:
         with:
           path: dist
   deploy:
-    if: false # Enable only after Pages is manually configured for this repository and its preview has been reviewed.
+    # Publish only the isolated GitHub Pages preview. Do not attach the production custom domain here.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

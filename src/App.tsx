@@ -694,6 +694,8 @@ export default function App() {
     }
 
     setAppointments(prev => prev.filter(a => a.id !== appointment.id));
+  };
+
   const handleUpdateClient = async (updated: ClientProfile) => {
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }

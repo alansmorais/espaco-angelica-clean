@@ -96,10 +96,9 @@ export default function App() {
   const [remoteAppointmentsError, setRemoteAppointmentsError] = useState<string | null>(null);
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (READ_ONLY_PREVIEW) {
-      setAdminLoginError('O painel administrativo está desativado na pré-visualização. Nenhuma alteração será feita na planilha oficial.');
-      return;
-    }
+    // A autenticação pode ser testada em modo de pré-visualização.
+    // As operações de escrita continuam bloqueadas pelos guardas READ_ONLY_PREVIEW
+    // nos respetivos handlers; o login só cria sessão e lê agendamentos.
     const entered = adminPasswordInput.trim();
     if (!entered) return;
 
@@ -1037,7 +1036,7 @@ export default function App() {
       {/* ========================================================
           ADMIN MASTER ARTIST EXPERIENCE
       ======================================================== */}
-      {!READ_ONLY_PREVIEW && appMode === 'admin' && (
+      {appMode === 'admin' && (
         <div className="w-full min-h-screen bg-[#FBF7F2] text-[#49382E] flex">
           {/* Admin Sidebar */}
           <AdminSidebar

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#FBF7F2">
+<meta name="description" content="Espaço Angélica do Carmo — manicure, nail designer e agendamento.">
+<title>Espaço Angélica do Carmo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+<script src="./config.js"></script>
+<script src="./app.js" defer></script>
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="./" aria-label="Espaço Angélica do Carmo — início"><img src="https://raw.githubusercontent.com/alansmorais/espacoangelica/main/images/angelica_logo_round_emblem.png" alt="Logo Angélica do Carmo"></a>
+  <nav aria-label="Navegação principal"><a href="#servicos">Serviços</a><a href="#sobre">O espaço</a><a href="#galeria">Galeria</a><a href="#agendar">Agendar</a></nav>
+  <button id="admin-open" class="button button-outline" type="button">Painel administrativo</button>
+</header>
+<main>
+  <section class="hero"><div class="hero-copy"><p class="eyebrow">São Sebastião · Pontal da Cruz</p><h1>Cuidado em cada detalhe.<br><span>Beleza com identidade.</span></h1><p>Um refúgio privativo para unhas cuidadas com técnica, delicadeza e arte autoral.</p><a class="button button-primary" href="#agendar">＋ Agendar horário</a></div><div class="hero-mark" aria-hidden="true"><img src="https://raw.githubusercontent.com/alansmorais/espacoangelica/main/images/angelica_logo_round_emblem.png" alt=""></div></section>
+  <section id="servicos" class="section"><div class="section-heading"><p class="eyebrow">O que fazemos</p><h2>Serviços</h2><p>Catálogo carregado da planilha oficial.</p></div><div id="services" class="service-grid" aria-live="polite"><p class="state-message">A consultar os serviços oficiais…</p></div></section>
+  <section id="sobre" class="section section-soft"><div class="section-heading"><p class="eyebrow">O espaço</p><h2>Um atendimento pensado para si</h2><p id="studio-address">A consultar o endereço oficial…</p></div></section>
+  <section id="galeria" class="section"><div class="section-heading"><p class="eyebrow">Detalhes que inspiram</p><h2>Galeria</h2></div><div id="gallery" class="gallery-grid" aria-live="polite"><p class="state-message">A consultar as fotos oficiais…</p></div></section>
+  <section id="agendar" class="section booking-section"><div class="section-heading"><p class="eyebrow">O próximo passo</p><h2>Agendar atendimento</h2><p>Os horários e serviços são consultados na fonte oficial.</p></div><div id="booking-status" class="state-message" role="status">A verificar a ligação ao Apps Script…</div><div id="booking-entry" class="booking-entry" hidden><p>Esta versão de pré-visualização está em modo de leitura. Os agendamentos e as alterações administrativas ficam desativados até validar o contrato real do Apps Script e os valores de pagamento.</p></div></section>
+</main>
+<footer><p>© <span id="year"></span> Espaço Angélica do Carmo</p><p>Pré-visualização independente — não substitui o site atual.</p></footer>
+<dialog id="admin-dialog"><form method="dialog" class="dialog-close"><button class="icon-button" aria-label="Fechar">×</button></form><p class="eyebrow">Acesso restrito</p><h2>Painel administrativo</h2><p>A autenticação será integrada depois de verificar o Apps Script. Nenhuma senha é armazenada neste site.</p><p class="state-message">Painel ainda não ativado nesta pré-visualização.</p></dialog>
+</body>
+</html>

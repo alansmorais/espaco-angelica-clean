@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 export interface BlockScheduleData {
   reason: string;
   date: string;
+  endDate?: string;
   timeSpan: string;
   notes?: string;
 }
@@ -22,6 +23,7 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
 }) => {
   const [reason, setReason] = useState('Folga / Descanso');
   const [date, setDate] = useState(() => { const parts = new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()); const p = Object.fromEntries(parts.map(part => [part.type, part.value])); return `${p.year}-${p.month}-${p.day}`; });
+  const [endDate, setEndDate] = useState(date);
   const [isAllDay, setIsAllDay] = useState(true);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('19:30');
@@ -32,6 +34,7 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
   useEffect(() => {
     if (initialDate) {
       setDate(initialDate);
+      setEndDate(initialDate);
     }
   }, [initialDate, isOpen]);
 
@@ -53,6 +56,10 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
       setSubmitError('Por favor, informe a data para bloqueio.');
       return;
     }
+    if (!date.trim() || !endDate.trim() || endDate < date) {
+      setSubmitError('A data final deve ser igual ou posterior à data inicial.');
+      return;
+    }
     if (!isAllDay) {
       const toMinutes = (value: string) => { const match = /^(\d{2}):(\d{2})$/.exec(value); return match ? Number(match[1]) * 60 + Number(match[2]) : NaN; };
       const start = toMinutes(startTime);
@@ -72,6 +79,7 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
       const result = await onConfirmBlock({
         reason,
         date: date.trim(),
+        endDate: endDate.trim(),
         timeSpan,
         notes: notes.trim() || undefined
       });
@@ -142,16 +150,18 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3 items-end">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] uppercase text-[#786C63] font-bold">Data *</label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                required
-                className="bg-[#FDFBF9] text-[#49382E] px-3 py-2.5 rounded-xl border border-[#E8D9B5] outline-none focus:border-[#D4AF37] font-semibold"
-              />
+              <label className="text-[10px] uppercase text-[#786C63] font-bold">Data inicial *</label>
+              <input type="date" value={date}
+                onChange={e => { setDate(e.target.value); if (endDate < e.target.value) setEndDate(e.target.value); }}
+                required className="bg-[#FDFBF9] text-[#49382E] px-3 py-2.5 rounded-xl border border-[#E8D9B5] outline-none focus:border-[#D4AF37] font-semibold" />
             </div>
             <div className="flex flex-col gap-1">
+              <label className="text-[10px] uppercase text-[#786C63] font-bold">Data final *</label>
+              <input type="date" min={date} value={endDate} onChange={e => setEndDate(e.target.value)}
+                required className="bg-[#FDFBF9] text-[#49382E] px-3 py-2.5 rounded-xl border border-[#E8D9B5] outline-none focus:border-[#D4AF37] font-semibold" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
               <label className="text-[10px] uppercase text-[#786C63] font-bold">Tipo de Bloqueio</label>
               <button
                 type="button"

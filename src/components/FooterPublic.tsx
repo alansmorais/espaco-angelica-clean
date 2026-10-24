@@ -4,13 +4,19 @@ interface FooterPublicProps {
   onOpenAbout: () => void;
   onOpenFAQ: () => void;
   onOpenAdmin: () => void;
+  studioWhatsApp?: string;
+  instagramUrl?: string;
 }
 
 export const FooterPublic: React.FC<FooterPublicProps> = ({
   onOpenAbout,
   onOpenFAQ,
-  onOpenAdmin
+  onOpenAdmin,
+  studioWhatsApp = '',
+  instagramUrl = ''
 }) => {
+  const whatsappDigits = studioWhatsApp.replace(/\\D/g, '');
+  const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : '';
   return (
     <footer className="w-full bg-[#F7EFEA] mt-16 border-t border-[#E8D9B5] shadow-xs text-[#49382E]">
       <div className="w-full px-4 sm:px-8 lg:px-12 py-12 sm:py-16 max-w-6xl mx-auto">
@@ -82,24 +88,28 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
               Conexão &amp; Social
             </h4>
             <div className="flex flex-col gap-2.5 font-jakarta text-xs sm:text-sm text-[#786C63]">
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 hover:text-[#D4AF37] text-[#49382E] transition-colors min-h-[44px] py-1"
-              >
-                <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">camera</span>
-                <span>@angelicadocarmo_nails</span>
-              </a>
-              <a
-                href="https://wa.me/5512974062241"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 hover:text-[#D4AF37] text-[#49382E] transition-colors min-h-[44px] py-1"
-              >
-                <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">call</span>
-                <span>(12) 97406 2241 (WhatsApp Studio)</span>
-              </a>
+              {instagramUrl && (
+                <a
+                  href={instagramUrl || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 hover:text-[#D4AF37] text-[#49382E] transition-colors min-h-[44px] py-1"
+                >
+                  <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">camera</span>
+                  <span>@angelicadocarmo_nails</span>
+                </a>
+              )}
+              {whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 hover:text-[#D4AF37] text-[#49382E] transition-colors min-h-[44px] py-1"
+                >
+                  <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">call</span>
+                  <span>WhatsApp do Ateliê</span>
+                </a>
+              )}
             </div>
             <p className="font-jakarta text-xs text-[#786C63] leading-relaxed pt-1">
               Boutique de estética manual privativa com esterilização cirúrgica em autoclave hospitalar.

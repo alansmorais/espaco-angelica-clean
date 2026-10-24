@@ -532,7 +532,6 @@ export default function App() {
   useEffect(() => {
     if (READ_ONLY_PREVIEW) {
       setServices([]);
-      setSelectedService(undefined);
       return;
     }
     let isMounted = true;

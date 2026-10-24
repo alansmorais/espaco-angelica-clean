@@ -73,6 +73,10 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+      setSubmitError('Agendamentos manuais estão desativados nesta pré-visualização.');
+      return;
+    }
     setSubmitError(null);
 
     const trimmedName = clientName.trim();

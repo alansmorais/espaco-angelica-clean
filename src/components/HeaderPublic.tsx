@@ -8,6 +8,8 @@ interface HeaderPublicProps {
   onOpenFAQ: () => void;
   onOpenGallery: () => void;
   onOpenServices: () => void;
+  studioWhatsApp?: string;
+  studioCityLabel?: string;
 }
 
 export const HeaderPublic: React.FC<HeaderPublicProps> = ({
@@ -16,9 +18,12 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
   onOpenAbout,
   onOpenFAQ,
   onOpenGallery,
-  onOpenServices
+  onOpenServices,
+  studioWhatsApp = '',
+  studioCityLabel = ''
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const whatsappUrl = studioWhatsApp.replace(/\D/g, '') ? `https://wa.me/${studioWhatsApp.replace(/\D/g, '')}` : '';
 
   const handleNavClick = (action: () => void) => {
     action();
@@ -99,24 +104,22 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
 
           {/* Right Header Controls */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* WhatsApp Studio Contact (hidden on small screens) */}
-            <a
-              href="https://wa.me/5512974062241"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden lg:flex items-center gap-2 bg-[#FFFFFF] hover:bg-[#F7EFEA] px-3 py-1.5 rounded-full border border-[#E8D9B5] transition-all text-left shadow-xs min-h-[40px]"
-              title="Falar no WhatsApp com o Ateliê"
-            >
-              <span className="material-symbols-outlined text-[#D4AF37] text-[17px]">chat</span>
-              <div className="flex flex-col">
-                <span className="font-jakarta text-[11px] text-[#49382E] font-bold leading-tight">
-                  (12) 97406 2241
-                </span>
-                <span className="font-jakarta text-[9px] text-[#786C63] leading-tight">
-                  São Sebastião • SP
-                </span>
-              </div>
-            </a>
+            {/* Contact is shown only when loaded from official settings. */}
+            {whatsappUrl && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden lg:flex items-center gap-2 bg-[#FFFFFF] hover:bg-[#F7EFEA] px-3 py-1.5 rounded-full border border-[#E8D9B5] transition-all text-left shadow-xs min-h-[40px]"
+                title="Falar no WhatsApp com o Ateliê"
+              >
+                <span className="material-symbols-outlined text-[#D4AF37] text-[17px]">chat</span>
+                <div className="flex flex-col">
+                  <span className="font-jakarta text-[11px] text-[#49382E] font-bold leading-tight">WhatsApp do Ateliê</span>
+                  <span className="font-jakarta text-[9px] text-[#786C63] leading-tight">{studioCityLabel}</span>
+                </div>
+              </a>
+            )}
 
             {/* Primary "Agendar Horário" button - visible from sm+ screens to preserve header space on 320px/360px */}
             <button
@@ -227,21 +230,17 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
               </button>
             </div>
 
-            {/* Studio WhatsApp Hotline */}
-            <div className="pt-2 border-t border-[#E8D9B5]">
-              <a
-                href="https://wa.me/5512974062241"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 p-3.5 rounded-xl bg-[#F7EFEA] text-[#49382E] hover:text-[#D4AF37] border border-[#E8D9B5] min-h-[48px] active:scale-[0.99] transition-transform"
-              >
-                <span className="material-symbols-outlined text-[#D4AF37] text-[20px] shrink-0">chat</span>
-                <div className="text-xs">
-                  <span className="font-bold text-[#49382E] block">(12) 97406 2241</span>
-                  <span className="text-[#786C63]">WhatsApp Direto • Horário Comercial</span>
-                </div>
-              </a>
-            </div>
+            {whatsappUrl && (
+              <div className="pt-2 border-t border-[#E8D9B5]">
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3.5 rounded-xl bg-[#F7EFEA] text-[#49382E] hover:text-[#D4AF37] border border-[#E8D9B5] min-h-[48px] active:scale-[0.99] transition-transform">
+                  <span className="material-symbols-outlined text-[#D4AF37] text-[20px] shrink-0">chat</span>
+                  <div className="text-xs">
+                    <span className="font-bold text-[#49382E] block">WhatsApp do Ateliê</span>
+                    <span className="text-[#786C63]">{studioCityLabel}</span>
+                  </div>
+                </a>
+              </div>
+            )}
 
             {/* Admin Entry in Mobile Navigation Menu */}
             <div className="pt-2 border-t border-[#E8D9B5]">

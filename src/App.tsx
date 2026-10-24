@@ -424,7 +424,7 @@ export default function App() {
 
   // Official service catalogue is always reloaded from Google Sheets; do not cache it as a source of truth.
 
-  // Centralized Appointments Synchronization (Cloud Run / Sheets)
+  // Centralized synchronization with Google Apps Script / Google Sheets only.
   useEffect(() => {
     if (appMode !== 'admin') return;
     let isMounted = true;
@@ -661,38 +661,31 @@ export default function App() {
   const [encaixeModalOpen, setEncaixeModalOpen] = useState<boolean>(false);
   const [newClientModalOpen, setNewClientModalOpen] = useState<boolean>(false);
 
-  // Handlers for Services Management
+  // Disable service writes during the isolated read-only preview.
   const handleUpdateService = async (updated: Service) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Edição de serviços desativada na pré-visualização.');
     const res = await saveRemoteService(updated, adminSessionToken);
-    if (!res.success) {
-      throw new Error(res.error || 'Falha ao atualizar procedimento no servidor.');
-    }
+    if (!res.success) throw new Error(res.error || 'Falha ao atualizar procedimento na planilha oficial.');
     const finalService = res.service || updated;
     setServices(prev => prev.map(s => (s.id === finalService.id ? finalService : s)));
-    if (selectedService.id === finalService.id) {
-      setSelectedService(finalService);
-    }
+    if (selectedService?.id === finalService.id) setSelectedService(finalService);
   };
 
   const handleAddService = async (newService: Service) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Criação de serviços desativada na pré-visualização.');
     const res = await saveRemoteService(newService, adminSessionToken);
-    if (!res.success) {
-      throw new Error(res.error || 'Falha ao salvar novo procedimento no servidor.');
-    }
+    if (!res.success) throw new Error(res.error || 'Falha ao salvar serviço na planilha oficial.');
     const finalService = res.service || newService;
     setServices(prev => [finalService, ...prev.filter(s => s.id !== finalService.id)]);
   };
 
   const handleDeleteService = async (id: string) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Alteração de serviços desativada na pré-visualização.');
     const res = await deleteRemoteService(id, adminSessionToken);
-    if (!res.success) {
-      throw new Error(res.error || 'Falha ao excluir procedimento no servidor.');
-    }
+    if (!res.success) throw new Error(res.error || 'Falha ao desativar serviço na planilha oficial.');
     setServices(prev => {
       const remaining = prev.filter(s => s.id !== id);
-      if (selectedService.id === id && remaining.length > 0) {
-        setSelectedService(remaining[0]);
-      }
+      if (selectedService?.id === id && remaining.length > 0) setSelectedService(remaining[0]);
       return remaining;
     });
   };

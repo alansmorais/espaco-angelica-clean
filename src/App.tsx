@@ -944,7 +944,7 @@ export default function App() {
               const el = document.getElementById('wizard-agendamento');
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
-            onOpenAdmin={() => setAdminLoginModalOpen(true)}
+            onOpenAdmin={() => { if (!READ_ONLY_PREVIEW) setAdminLoginModalOpen(true); }}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
             onOpenGallery={() => {
@@ -1108,7 +1108,7 @@ export default function App() {
       {/* ========================================================
           ADMIN MASTER ARTIST EXPERIENCE
       ======================================================== */}
-      {appMode === 'admin' && (
+      {!READ_ONLY_PREVIEW && appMode === 'admin' && (
         <div className="w-full min-h-screen bg-[#FBF7F2] text-[#49382E] flex">
           {/* Admin Sidebar */}
           <AdminSidebar

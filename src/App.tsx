@@ -217,7 +217,9 @@ export default function App() {
   const [clients, setClients] = useState<ClientProfile[]>([]);
 
   useEffect(() => {
-    if (appMode !== 'admin') return;
+    // The owner-provided deployed Code.gs may create the schedule-config tab while
+    // servicing getScheduleConfig. Do not call that action from this read-only preview.
+    if (appMode !== 'admin' || READ_ONLY_PREVIEW) return;
     let active = true;
     void fetchRemoteScheduleConfig(adminSessionToken).then(result => {
       if (!active || !result.success || !result.weeklySchedule) return;
@@ -431,8 +433,15 @@ export default function App() {
     };
   }, [appMode, adminSessionToken]);
 
-  // Public availability synchronization; expose only date/time/status and fail closed when unavailable.
+  // Public availability is deliberately not queried in preview: the owner-provided
+  // deployed Code.gs can write optional headers from getPublicAvailability/getOfficialSheet.
+  // Keep booking unavailable rather than cause side effects or display invented availability.
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) {
+      setPublicAvailabilityLoaded(false);
+      setPublicAvailabilityError('A disponibilidade ficará disponível após validar uma leitura sem gravações no Apps Script.');
+      return;
+    }
     let isMounted = true;
     const syncAvailability = async () => {
       const result = await fetchPublicAvailability();
@@ -465,8 +474,10 @@ export default function App() {
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
-  // Public Blocked Dates Synchronization (Sem expor PII de clientes)
+  // fetchRemoteBlockedDates delegates to getPublicAvailability, whose deployed
+  // implementation may write headers. Do not call it in the read-only preview.
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) return;
     let isMounted = true;
     const syncPublicBlockedDates = async () => {
       try {

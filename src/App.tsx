@@ -235,6 +235,14 @@ export default function App() {
   }, [appMode]);
 
   useEffect(() => {
+    // Safe preview must not contact any Apps Script deployment, even if a staging
+    // endpoint was configured for another test. Render only verified live data
+    // after the preview is explicitly moved into an approved integration mode.
+    if (READ_ONLY_PREVIEW) {
+      setPaymentConfigLoaded(false);
+      setPaymentConfigConfigured(false);
+      return;
+    }
     let active = true;
     void fetchPublicPaymentConfig().then(result => {
       if (!active) return;
@@ -250,6 +258,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) return;
     let active = true;
     void fetchPublicStudioAddress().then(result => {
       if (active && result.success && result.address) setStudioAddress(result.address);
@@ -521,6 +530,11 @@ export default function App() {
 
   // Sincronização inicial de serviços remotos
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) {
+      setServices([]);
+      setSelectedService(undefined);
+      return;
+    }
     let isMounted = true;
     const syncServices = async () => {
       try {

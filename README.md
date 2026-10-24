@@ -29,7 +29,7 @@ Apps Script Web App URL previously provided:
 Spreadsheet ID found in the old repository:
 `1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0`
 
-Do not assume the deployment currently serves the latest code. Verify Apps Script actions and response shapes read-only before implementing data flows. Avoid printing or exposing personal customer data during diagnostics.
+The owner-provided deployed `Code.gs` text is the compatibility reference for this rebuild. Do not replace it with the repository's reviewed copy or deploy the repository copy to the live project. The deployed text contains read paths with side effects: `getOfficialSheet()` writes optional headers, and schedule-config reads may create the `Configuração da Agenda` tab. Therefore, do not call `getPublicAvailability` or `getScheduleConfig` from the preview until those paths are confirmed safe. Avoid printing or exposing personal customer data during diagnostics.
 
 ## Acceptance stages
 1. Static preview and repository workflow; no production CNAME.
@@ -45,12 +45,12 @@ Do not assume the deployment currently serves the latest code. Verify Apps Scrip
 - The preview remains read-only (`READ_ONLY_PREVIEW = true`); public booking and admin writes are not enabled.
 - Browser-local appointment archives have been removed from the app's source-of-truth flow.
 - Contact links now read the studio WhatsApp number and Instagram URL from the official `WHATSAPP_CONFIG` app setting. Catalogue readers reject incomplete rows instead of inventing service values.
-- The reviewed Apps Script copy at `apps-script/Code.gs` is synchronized with `src/data/codeGsTemplate.ts`, but has **not** been copied into the live Apps Script project or deployed.
+- The repository's `apps-script/Code.gs` and `src/data/codeGsTemplate.ts` are repository copies, not the live source of truth. The owner-provided deployed `Code.gs` text is the reference for frontend compatibility; do not copy or deploy the repository copy over it.
 - GitHub Pages deployment remains intentionally skipped; the workflow only builds and uploads an artifact.
 - The current repository is public. Never put passwords, API tokens, payment credentials, or customer data in commits.
 
 ## Outstanding validation before enabling booking or admin writes
-1. Verify the deployed Apps Script actions and response shapes using read-only requests; the deployed script may not match this repository's reviewed copy.
+1. Reconcile the owner-provided deployed Apps Script actions and response shapes without calling endpoints whose reads mutate Sheets. The preview now skips the known side-effecting availability and schedule-config reads.
 2. Confirm the existing Drive folder ID and sharing permissions for gallery photos.
 3. Confirm the official sheet's schedule and contact settings without creating or editing tabs during discovery.
 4. Test price/deposit validation, scheduling conflicts, admin session expiry, and the customer contact/email flows in isolation.

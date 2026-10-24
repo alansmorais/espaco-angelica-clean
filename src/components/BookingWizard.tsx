@@ -253,10 +253,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       setSubmissionError('Conclua as etapas do agendamento antes de avançar para a revisão.');
       return;
     }
-    if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-      window.alert('Este é um ambiente de pré-visualização. Os agendamentos ainda não estão ativados.');
-      return;
-    }
+    // GitHub Pages is explicitly configured to use the official Apps Script endpoint.
+    // Success is shown only after the server confirms persistence.
     if (isSubmittingBooking) return;
 
     if (isDateBlocked(selectedDate)) {

@@ -108,15 +108,15 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     return appointments.some(a => a.status === 'bloqueado' && areDatesEqual(a.date, dateStr) && isAllDayBlock(a.time));
   };
   const timeToMinutes = (value: string): number | null => {
-    const match = /^(\\d{1,2}):(\\d{2})$/.exec(String(value || '').trim());
+    const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || '').trim());
     if (!match) return null;
     const hours = Number(match[1]), minutes = Number(match[2]);
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
   const durationMinutes = (value: string): number => {
     const text = String(value || '').toLowerCase();
-    const hours = text.match(/(\\d+)\\s*h/);
-    const minutes = text.match(/(\\d+)\\s*(?:min|m\\b)/);
+    const hours = text.match(/(\d+)\s*h/);
+    const minutes = text.match(/(\d+)\s*(?:min|m\b)/);
     const total = (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
     return total > 0 ? total : 30;
   };
@@ -140,7 +140,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       const raw = String(a.time || '').trim();
       if (a.status === 'bloqueado') {
         if (isAllDayBlock(raw)) return true;
-        const interval = /^(\\d{1,2}:\\d{2})\\s*(?:às|as|-)\\s*(\\d{1,2}:\\d{2})$/i.exec(raw);
+        const interval = /^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i.exec(raw);
         if (interval) {
           const blockStart = timeToMinutes(interval[1]), blockEnd = timeToMinutes(interval[2]);
           return blockStart !== null && blockEnd !== null && start < blockEnd && blockStart < end;

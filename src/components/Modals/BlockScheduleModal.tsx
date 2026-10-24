@@ -175,7 +175,6 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
                 {isAllDay ? '✓ Dia Inteiro' : 'Horário Específico'}
               </button>
             </div>
-          </div>
 
           {!isAllDay && (
             <div className="flex flex-col gap-1">

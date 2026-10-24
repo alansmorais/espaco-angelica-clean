@@ -1,4 +1,4 @@
-name: Static preview validation
+name: Build and publish GitHub Pages preview
 
 on:
   push:
@@ -7,26 +7,40 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-preview
+  cancel-in-progress: true
 
 jobs:
-  validate:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check required starter files
-        run: |
-          test -s index.html
-          test -s styles.css
-          test -s app.js
-          test -s config.js
-          ! grep -R -n -E 'cloud\.run\.app|firebaseapp\.com|run\.app' --include='*.js' --include='*.html' --include='*.css' .
-      - name: Upload preview artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/setup-node@v4
         with:
-          name: espaco-angelica-clean-preview
-          path: |
-            index.html
-            styles.css
-            app.js
-            config.js
-            README.md
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+      - name: Validate no production backend dependencies
+        run: |
+          node -e "const p=require('./package.json'); if (p.dependencies?.firebase || p.dependencies?.express || p.dependencies?.dotenv) process.exit(1); console.log('No Firebase/Express/dotenv production dependencies')"
+      - name: Build static frontend
+        run: npm run build
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    if: false # Enable only after Pages is manually configured for this repository and its preview has been reviewed.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

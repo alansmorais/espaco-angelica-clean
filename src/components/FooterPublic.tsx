@@ -15,7 +15,7 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
   studioWhatsApp = '',
   instagramUrl = ''
 }) => {
-  const whatsappDigits = studioWhatsApp.replace(/\\D/g, '');
+  const whatsappDigits = studioWhatsApp.replace(/\D/g, '');
   const whatsappUrl = whatsappDigits ? `https://wa.me/${whatsappDigits}` : '';
   return (
     <footer className="w-full bg-[#F7EFEA] mt-16 border-t border-[#E8D9B5] shadow-xs text-[#49382E]">

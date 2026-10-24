@@ -48,7 +48,7 @@ See [`docs/deployed-apps-script-compatibility.md`](docs/deployed-apps-script-com
 - Browser-local appointment archives have been removed from the app's source-of-truth flow.
 - Contact links now read the studio WhatsApp number and Instagram URL from the official `WHATSAPP_CONFIG` app setting. Catalogue readers reject incomplete rows instead of inventing service values.
 - The repository's `apps-script/Code.gs` and `src/data/codeGsTemplate.ts` are repository copies, not the live source of truth. The owner-provided deployed `Code.gs` text is the reference for frontend compatibility; do not copy or deploy the repository copy over it.
-- GitHub Pages deployment remains intentionally skipped; the workflow only builds and uploads an artifact.
+- GitHub Actions now deploys the isolated, offline GitHub Pages preview after a successful build. This is not a production-domain cutover and remains disconnected from Apps Script while `READ_ONLY_PREVIEW = true`.
 - The current repository is public. Never put passwords, API tokens, payment credentials, or customer data in commits.
 
 ## Outstanding validation before enabling booking or admin writes

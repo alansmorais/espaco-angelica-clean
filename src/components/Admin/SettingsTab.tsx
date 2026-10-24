@@ -18,6 +18,7 @@ import { CODE_GS_TEMPLATE } from '../../data/codeGsTemplate';
 import { fetchRemoteAppSettings, saveRemoteAppSetting } from '../../services/emailNotificationService';
 
 interface SettingsTabProps {
+  readOnlyPreview?: boolean;
   timeSlots?: TimeSlotConfig[];
   onUpdateTimeSlots?: (slots: TimeSlotConfig[]) => void;
   daySchedules?: DayScheduleConfig[];
@@ -33,6 +34,7 @@ interface SettingsTabProps {
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
+  readOnlyPreview = false,
   timeSlots: propTimeSlots,
   onUpdateTimeSlots,
   daySchedules: propDaySchedules,
@@ -404,6 +406,11 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   };
   return (
     <div className="flex flex-col gap-6 max-w-5xl text-[#49382E]">
+      {readOnlyPreview && (
+        <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Pré-visualização somente leitura: alterações de serviços, agenda, pagamentos, clientes, e-mail e WhatsApp estão desativadas até a validação final do Apps Script.
+        </div>
+      )}
       <div>
         <div className="flex items-center gap-1.5 text-[#D4AF37] mb-1">
           <span className="material-symbols-outlined text-[18px]">tune</span>

@@ -704,6 +704,7 @@ export default function App() {
 
   const handleBookingConfirmed = (newApt: Appointment) => {
     if (READ_ONLY_PREVIEW) return;
+    if (READ_ONLY_PREVIEW) return;
     setAppointments(prev => [newApt, ...prev]);
     notifyNewPreBooking(newApt);
 
@@ -711,6 +712,7 @@ export default function App() {
   };
 
   const handleUpdateAppointment = async (updated: Appointment) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Alterações de agendamentos desativadas na pré-visualização.');
     if (READ_ONLY_PREVIEW) throw new Error('Alterações de agendamentos estão desativadas na pré-visualização.');
     // Persist to backend / Google Sheets official storage
     const result = await updateRemoteAppointment(updated, adminSessionToken);
@@ -765,6 +767,7 @@ export default function App() {
 
   const handleDeleteAppointment = async (appointment: Appointment) => {
     if (READ_ONLY_PREVIEW) throw new Error('Exclusão de agendamentos desativada na pré-visualização.');
+    if (READ_ONLY_PREVIEW) throw new Error('Exclusão de agendamentos desativada na pré-visualização.');
     const result = await deleteRemoteAppointment(appointment.id, adminSessionToken);
     if (!result.success) {
       throw new Error(result.error || 'Não foi possível excluir o agendamento.');
@@ -796,6 +799,7 @@ export default function App() {
 
   const handleUpdateClient = async (updated: ClientProfile) => {
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     const result = await saveRemoteClient(updated, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível salvar o perfil da cliente na planilha oficial. ' + (result.error || ''));
@@ -805,6 +809,7 @@ export default function App() {
   };
 
   const handleManualBookingSave = async (newApt: Appointment) => {
+    if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
     if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
     // 1. Atualiza lista local imediatamente evitando duplicações
     setAppointments(prev => {

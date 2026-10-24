@@ -48,6 +48,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   adminSessionToken = '',
   onUpdatePaymentConfig
 }) => {
+  const previewNotice = 'Ação desativada na pré-visualização somente leitura.';
+
   // Local fallbacks if not wired in App
   // Fallbacks are empty/closed only; real hours and slots must come from the sheet.
   const [internalSlots, setInternalSlots] = useState<TimeSlotConfig[]>([]);

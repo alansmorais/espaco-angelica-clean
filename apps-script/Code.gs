@@ -1731,10 +1731,14 @@ function doGet(e) {
       });
     }
 
-    var tokenProvided = e.parameter.token || e.parameter.authToken || e.parameter.key;
-    var auth = validateAuthorization(tokenProvided);
-    if (!auth.valid) {
-      return responseJSON({ status: "error", message: auth.error });
+    // O catálogo público é somente leitura e não exige token.
+    // Qualquer outra ação GET continua protegida por autenticação.
+    if (e.parameter.action !== "getServices") {
+      var tokenProvided = e.parameter.token || e.parameter.authToken || e.parameter.key;
+      var auth = validateAuthorization(tokenProvided);
+      if (!auth.valid) {
+        return responseJSON({ status: "error", message: auth.error });
+      }
     }
 
     if (e.parameter.action === "getServices") {

@@ -249,6 +249,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   const handleConfirmBooking = async () => {
+    if (bookingStep !== 5) {
+      setSubmissionError('Conclua as etapas do agendamento antes de avançar para a revisão.');
+      return;
+    }
     if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
       window.alert('Este é um ambiente de pré-visualização. Os agendamentos ainda não estão ativados.');
       return;
@@ -1009,7 +1013,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               <div className="py-4 border-b border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                  <button type="button" onClick={() => setShowAdditionalServices(true)} className="rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
+                  <button type="button" disabled={bookingStep !== 5} onClick={() => setShowAdditionalServices(true)} className="rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] disabled:opacity-40 disabled:cursor-not-allowed">
                     {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
                   </button>
                 </div>

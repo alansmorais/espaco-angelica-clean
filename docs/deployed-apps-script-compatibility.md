@@ -5,7 +5,7 @@ This document tracks the frontend integration against the owner-provided deploye
 ## Current safe-preview behavior
 
 - `READ_ONLY_PREVIEW` remains enabled. Booking, admin access, and all frontend write handlers remain disabled.
-- GitHub Pages is treated as an isolated staging host: the client does not fall back to the official Apps Script URL there. An explicitly configured non-production endpoint is required for any preview API calls.
+- GitHub Pages is treated as an isolated staging host: the client does not fall back to the official Apps Script URL and ignores browser-local webhook overrides. Staging API access requires both a build-time `VITE_NOTIFICATION_WEBHOOK_URL` and explicit `VITE_ALLOW_STAGING_APPS_SCRIPT_URL=true`; the official default endpoint is rejected in staging. Leave the opt-in unset for ordinary preview builds.
 - The preview does **not** call `getPublicAvailability`: the supplied deployed implementation reaches `getOfficialSheet()`, which writes optional header cells as part of the read path.
 - The preview does **not** call `getScheduleConfig`: the supplied implementation may create the `Configuração da Agenda` sheet while reading.
 - The blocked-date poll is also disabled because it delegates to `getPublicAvailability`.

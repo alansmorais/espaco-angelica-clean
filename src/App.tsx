@@ -528,12 +528,9 @@ export default function App() {
     };
   }, []);
 
-  // Sincronização inicial de serviços remotos
+  // Read the official service catalogue when an explicit Apps Script URL is
+  // configured. This is read-only; public booking and admin mutations stay disabled.
   useEffect(() => {
-    if (READ_ONLY_PREVIEW) {
-      setServices([]);
-      return;
-    }
     let isMounted = true;
     const syncServices = async () => {
       try {

@@ -512,16 +512,14 @@ export async function fetchPublicAvailability(): Promise<PublicAvailabilityResul
     if (!response.ok || data?.status !== 'success' || data?.success !== true || !Array.isArray(data.slots)) {
       return { success: false, appointments: [], blockedDates: [], error: data?.message || `Falha ao consultar disponibilidade oficial (HTTP ${response.status}).` };
     }
+    // Public availability contains only time/status information. Never fabricate client details.
     const appointments: Appointment[] = data.slots.map((slot: any) => ({
       id: String(slot.id || ''),
-      clientName: '',
-      clientPhone: '',
-      serviceTitle: '',
       date: String(slot.date || ''),
       time: String(slot.time || ''),
       serviceDuration: String(slot.serviceDuration || ''),
       status: String(slot.status || 'pendente_pix') as Appointment['status']
-    }));
+    } as Appointment));
     const blockedDates = new Set<string>((Array.isArray(data.blockedDates) ? data.blockedDates : []).map(String));
     if (Array.isArray(data.scheduleBlocks)) {
       data.scheduleBlocks.forEach((block: any) => {

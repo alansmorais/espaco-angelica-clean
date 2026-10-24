@@ -153,7 +153,9 @@ export function isLocalOrStagingFrontend(): boolean {
   if (envMode === 'staging') return true;
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') return true;
+    // GitHub Pages is an isolated preview, not the production site. Never fall
+    // back to the official Apps Script URL from this host.
+    if (host === 'localhost' || host === '127.0.0.1' || host === 'github.io' || host.endsWith('.github.io')) return true;
   }
   return false;
 }

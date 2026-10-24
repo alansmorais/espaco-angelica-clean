@@ -41,3 +41,13 @@ Do not assume the deployment currently serves the latest code. Verify Apps Scrip
 7. Production cutover only after explicit approval.
 
 Current status: starter skeleton only; only the Apps Script health endpoint is checked from the preview. No booking or admin writes are enabled. Not production-ready.
+
+
+## Current migration notes
+The original React public site and admin UI component files have been ported from the Sheets-first branch for visual continuity. Build checks pass. The preview remains separate from the production domain.
+
+Before enabling public booking or admin writes:
+- Deploy the reviewed Apps Script template to a new version of the existing Apps Script Web App (not yet performed).
+- Confirm the deployed `Code.gs` and the frontend service action names agree.
+- Review and remove all remaining sample-only values in the UI data-model configuration, even if they are not used as fallback data.
+- Verify that every public action returns only safe fields and that admin writes require a valid expiring session.

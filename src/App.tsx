@@ -71,7 +71,7 @@ import { BlockScheduleModal, BlockScheduleData } from './components/Modals/Block
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
 
-const READ_ONLY_PREVIEW = true; // Public manual-test mode: reads enabled; all writes remain guarded.
+const READ_ONLY_PREVIEW = false; // Admin edits persist to Sheets; public booking confirmation remains blocked on GitHub Pages.
 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
@@ -775,64 +775,70 @@ export default function App() {
   };
 
   const handleBlockConfirm = async (data: BlockScheduleData): Promise<{ success: boolean; error?: string }> => {
+    const startDate = String(data.date || '').trim();
+    const endDate = String(data.endDate || data.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < startDate) {
+      return { success: false, error: 'Selecione um intervalo de datas válido.' };
+    }
+
+    const dates: string[] = [];
+    const cursor = new Date(startDate + 'T12:00:00Z');
+    const last = new Date(endDate + 'T12:00:00Z');
+    while (cursor <= last) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      if (dates.length > 366) return { success: false, error: 'O intervalo não pode ultrapassar 366 dias.' };
+    }
+
     const isAllDay = data.timeSpan === 'Dia Inteiro';
-    const blockApt: Appointment = {
-      id: `apt-block-${Date.now()}`,
-      clientName: isAllDay ? 'Dia Bloqueado (Folga)' : 'Horário Bloqueado',
-      clientPhone: '',
-      serviceTitle: isAllDay ? 'Bloqueio de Agenda (Dia Inteiro)' : `Bloqueio: ${data.reason}`,
-      servicePrice: 'R$ 0,00',
-      serviceDuration: data.timeSpan,
-      date: data.date,
-      time: isAllDay ? 'Dia Inteiro' : data.timeSpan,
-      status: 'bloqueado',
-      paymentMode: 'sinal_40',
-      depositAmount: 0,
-      depositStatus: 'liquidado',
-      notes: data.notes || (isAllDay ? 'Dia inteiro bloqueado pela administração' : `Bloqueado: ${data.reason}`),
-      blockReason: data.reason
-    };
-
-    const dmy = String(data.date).match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
-    const normalizedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(data.date))
-      ? String(data.date)
-      : dmy ? `${dmy[3]}-${dmy[2]}-${dmy[1]}` : String(data.date);
     const intervalMatch = String(data.timeSpan).match(/(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})/i);
-    const scheduleBlock = { id: blockApt.id, date: normalizedDate, allDay: isAllDay, startTime: intervalMatch?.[1], endTime: intervalMatch?.[2], reason: data.reason, active: true };
-    const savedScheduleBlock = await saveRemoteScheduleBlock(scheduleBlock, adminSessionToken);
-    if (!savedScheduleBlock.success) return { success: false, error: savedScheduleBlock.error || 'Não foi possível persistir o bloqueio na configuração da agenda.' };
-
-    // Preserve the existing appointment block for the calendar and legacy conflict checks.
-    const result = await submitBlockSchedule(blockApt, adminSessionToken);
-    if (!result.success || !result.persisted) {
-      await deleteRemoteScheduleBlock(scheduleBlock.id, adminSessionToken);
-      return { success: false, error: result.error || 'O servidor não confirmou a gravação do bloqueio no armazenamento oficial.' };
-    }
-    if (!result.success || !result.persisted) {
-      return {
-        success: false,
-        error: result.error || 'O servidor não confirmou a gravação do bloqueio no armazenamento oficial.'
+    const blocks = dates.map(date => {
+      const id = `apt-block-${date.replace(/-/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const blockApt: Appointment = {
+        id,
+        clientName: isAllDay ? 'Dia Bloqueado' : 'Horário Bloqueado',
+        clientPhone: '',
+        serviceTitle: isAllDay ? `Bloqueio de Agenda — ${data.reason}` : `Bloqueio: ${data.reason}`,
+        servicePrice: 'R$ 0,00',
+        serviceDuration: data.timeSpan,
+        date,
+        time: isAllDay ? 'Dia Inteiro' : data.timeSpan,
+        status: 'bloqueado',
+        paymentMode: 'sinal_40',
+        depositAmount: 0,
+        depositStatus: 'liquidado',
+        notes: data.notes || (isAllDay ? `${data.reason} — dia inteiro bloqueado pela administração` : `Bloqueado: ${data.reason}`),
+        blockReason: data.reason
       };
+      return {
+        appointment: blockApt,
+        schedule: { id, date, allDay: isAllDay, startTime: intervalMatch?.[1], endTime: intervalMatch?.[2], reason: data.reason, active: true }
+      };
+    });
+
+    const savedScheduleIds: string[] = [];
+    const savedAppointmentIds: string[] = [];
+    for (const item of blocks) {
+      const saved = await saveRemoteScheduleBlock(item.schedule, adminSessionToken);
+      if (!saved.success) {
+        await Promise.all(savedScheduleIds.map(id => deleteRemoteScheduleBlock(id, adminSessionToken)));
+        return { success: false, error: saved.error || `Não foi possível salvar o bloqueio de ${item.schedule.date}.` };
+      }
+      savedScheduleIds.push(item.schedule.id);
     }
 
-    // 1. Atualiza lista local imediatamente
-    setAppointments(prev => [blockApt, ...prev.filter(a => a.id !== blockApt.id)]);
-
-    // 2. Se for horário específico, marca na grade
-    const timeMatch = data.timeSpan.split(' ')[0];
-    if (timeMatch && !isAllDay) {
-      setTimeSlots(prev =>
-        prev.map(s =>
-          s.time.startsWith(timeMatch)
-            ? { ...s, status: 'bloqueado', note: data.reason }
-            : s
-        )
-      );
+    for (const item of blocks) {
+      const result = await submitBlockSchedule(item.appointment, adminSessionToken);
+      if (!result.success || !result.persisted) {
+        await Promise.all(savedScheduleIds.map(id => deleteRemoteScheduleBlock(id, adminSessionToken)));
+        await Promise.all(savedAppointmentIds.map(id => deleteRemoteAppointment(id, adminSessionToken)));
+        return { success: false, error: result.error || `Não foi possível salvar o bloqueio de ${item.appointment.date} na agenda.` };
+      }
+      savedAppointmentIds.push(item.appointment.id);
     }
 
-    // 3. Re-sincroniza com a planilha oficial do Google Sheets (fonte da verdade)
+    setAppointments(prev => [...blocks.map(item => item.appointment), ...prev.filter(a => !savedAppointmentIds.includes(a.id))]);
     await refreshRemoteAppointments();
-
     return { success: true };
   };
 

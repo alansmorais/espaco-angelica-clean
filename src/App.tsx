@@ -924,7 +924,7 @@ export default function App() {
             instagramUrl={String((whatsappConfig as WhatsAppConfig & { instagramUrl?: string }).instagramUrl || '')}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
-            onOpenAdmin={() => setAdminLoginModalOpen(true)}
+            onOpenAdmin={() => { if (!READ_ONLY_PREVIEW) setAdminLoginModalOpen(true); }}
           />
 
           {/* ONLY ONE Floating Action Button on Public Website: Centered "Agendar" */}
@@ -1105,7 +1105,7 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <span className="font-syne text-xs font-bold text-[#49382E]">
                         {remoteAppointmentsError
-                          ? 'Modo Offline (Contingência Local)'
+                          ? 'Falha ao conectar com Google Sheets'
                           : isLoadingRemoteAppointments
                           ? 'Sincronizando na Nuvem'
                           : 'Sincronizado na Nuvem'}
@@ -1141,6 +1141,28 @@ export default function App() {
                   </button>
                 </div>
               </div>
+
+              {adminTab === 'visao-geral' && (
+                <OverviewTab
+                  onOpenManualBooking={() => setManualBookingModalOpen(true)}
+                  onNavigateToTab={setAdminTab}
+                  onSelectAppointmentForReview={_name => {
+                    setAdminTab('gestao-clientes');
+                  }}
+                  todayAppointments={appointments.filter(a => {
+                    if (a.status === 'cancelado' || a.status === 'bloqueado') return false;
+                    const value = String(a.date || '').trim();
+                    const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                    const br = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                    const dateKey = iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : br ? `${br[3]}-${br[2]}-${br[1]}` : '';
+                    const todayParts = new Intl.DateTimeFormat('en', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+                    const todayValues = Object.fromEntries(todayParts.map(part => [part.type, part.value]));
+                    const todayKey = `${todayValues.year}-${todayValues.month}-${todayValues.day}`;
+                    return dateKey === todayKey;
+                  })}
+                  allAppointments={appointments}
+                />
+              )}
 
               {adminTab === 'agenda-bloqueios' && (
                 <CalendarTab

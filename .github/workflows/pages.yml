@@ -1,4 +1,4 @@
-name: Build and publish isolated preview
+name: Build static preview artifact (manual Pages enablement required)
 
 on:
   push:
@@ -7,32 +7,29 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages-preview
-  cancel-in-progress: true
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+      - name: Validate static preview files
+        run: |
+          test -s index.html
+          test -s styles.css
+          test -s app.js
+          test -s config.js
+          ! grep -R -n -E 'cloud\.run\.app|firebaseapp\.com|run\.app' --include='*.js' --include='*.html' --include='*.css' .
+          echo "Static preview files present; no legacy backend URL found in runtime frontend files."
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
         with:
-          path: .
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          name: espaco-angelica-clean-preview
+          path: |
+            index.html
+            styles.css
+            app.js
+            config.js
+            README.md
+          if-no-files-found: error

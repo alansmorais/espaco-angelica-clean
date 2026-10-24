@@ -128,7 +128,7 @@ export const BlockScheduleModal: React.FC<BlockScheduleModalProps> = ({
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] uppercase text-[#786C63] font-bold">Motivo do Bloqueio</label>
             <div className="grid grid-cols-3 gap-2">
-              {['Folga / Descanso', 'Esterilização Autoclave', 'Almoço Privativo'].map(opt => (
+              {['Folga / Descanso', 'Férias', 'Feriado', 'Esterilização Autoclave', 'Almoço Privativo'].map(opt => (
                 <button
                   key={opt}
                   type="button"

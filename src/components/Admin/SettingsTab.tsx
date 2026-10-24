@@ -150,6 +150,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   const [gmailOAuthFeedback, setGmailOAuthFeedback] = useState<{ message: string; success: boolean } | null>(null);
 
   const handleTestDirectGmail = async () => {
+    if (readOnlyPreview) { notify(previewNotice); return; }
     setIsTestingDirectGmail(true);
     setGmailOAuthFeedback(null);
     try {
@@ -199,6 +200,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   }, [propWhatsappConfig]);
 
   const handleSaveStudioAddress = async () => {
+    if (readOnlyPreview) { notify(previewNotice); return; }
     const nextAddress = { ...address, fullAddress: addressText.trim() };
     if (!nextAddress.fullAddress) {
       notify('Informe o endereço oficial antes de salvar.');
@@ -213,6 +215,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   };
 
   const handleSavePixSettings = async () => {
+    if (readOnlyPreview) { notify(previewNotice); return; }
     const nextConfig: PaymentConfig = {
       pixKey: pixKey.trim(),
       pixBeneficiary: pixBeneficiary.trim(),
@@ -234,11 +237,12 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   const handleSaveWebhook = (e: React.FormEvent) => {
     e.preventDefault();
     setNotificationWebhookUrl(webhookUrlInput);
-    setNotificationWebhookToken(webhookTokenInput);
+    if (!readOnlyPreview) setNotificationWebhookToken(webhookTokenInput);
     notify('Parâmetros do Webhook e Chave de Autorização salvos!');
   };
 
   const handleTestWebhook = async () => {
+    if (readOnlyPreview) { notify(previewNotice); return; }
     if (!webhookUrlInput.trim()) {
       setWebhookFeedback({ message: 'Informe a URL do Webhook antes de testar.', success: false });
       return;
@@ -256,6 +260,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   };
 
   const handleSaveWaConfig = async () => {
+    if (readOnlyPreview) { notify(previewNotice); return; }
     const updated: WhatsAppConfig = { ...waConfig, customTemplate: waTemplate };
     if (onUpdateWhatsappConfig) {
       const saved = await onUpdateWhatsappConfig(updated);
@@ -406,6 +411,11 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
   };
   return (
     <div className="flex flex-col gap-6 max-w-5xl text-[#49382E]">
+      {readOnlyPreview && (
+        <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Pré-visualização somente leitura. Nenhuma alteração em serviços, agenda, pagamentos, clientes, WhatsApp ou e-mail será executada.
+        </div>
+      )}
       {readOnlyPreview && (
         <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           Pré-visualização somente leitura: alterações de serviços, agenda, pagamentos, clientes, e-mail e WhatsApp estão desativadas até a validação final do Apps Script.

@@ -727,6 +727,32 @@ export default function App() {
     setClients(prev => prev.map(c => (c.id === updated.id || c.phone.replace(/\D/g, '') === updated.phone.replace(/\D/g, '') ? updated : c)));
   };
 
+  const handleOverviewAppointmentSave = async (updated: Appointment) => {
+    if (READ_ONLY_PREVIEW) {
+      window.alert('Edição desativada na pré-visualização. Nenhuma alteração foi feita na planilha oficial.');
+      return;
+    }
+    const result = await updateRemoteAppointment(updated, adminSessionToken);
+    if (!result.success || !result.persisted) {
+      window.alert('Não foi possível atualizar o agendamento: ' + (result.error || 'o servidor não confirmou a gravação.'));
+      return;
+    }
+    await refreshRemoteAppointments();
+  };
+
+  const handleOverviewAppointmentDelete = async (appointment: Appointment) => {
+    if (READ_ONLY_PREVIEW) {
+      window.alert('Exclusão desativada na pré-visualização. Nenhuma alteração foi feita na planilha oficial.');
+      return;
+    }
+    const result = await deleteRemoteAppointment(appointment.id, adminSessionToken);
+    if (!result.success) {
+      window.alert('Não foi possível excluir o agendamento: ' + (result.error || 'erro desconhecido.'));
+      return;
+    }
+    await refreshRemoteAppointments();
+  };
+
   const handleManualBookingSave = async (newApt: Appointment) => {
     if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
     if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
@@ -1181,6 +1207,8 @@ export default function App() {
                     return dateKey === todayKey;
                   })}
                   allAppointments={appointments}
+                  onSaveAppointment={handleOverviewAppointmentSave}
+                  onDeleteAppointment={handleOverviewAppointmentDelete}
                 />
               )}
 

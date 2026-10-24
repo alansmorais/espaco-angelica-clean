@@ -40,14 +40,19 @@ Do not assume the deployment currently serves the latest code. Verify Apps Scrip
 6. Test isolated GitHub Pages preview on mobile.
 7. Production cutover only after explicit approval.
 
-Current status: starter skeleton only; only the Apps Script health endpoint is checked from the preview. No booking or admin writes are enabled. Not production-ready.
+## Current status (2026-10-24)
+- React public site and admin UI are in the isolated repository and the static build passes in GitHub Actions.
+- The preview remains read-only (`READ_ONLY_PREVIEW = true`); public booking and admin writes are not enabled.
+- Browser-local appointment archives have been removed from the app's source-of-truth flow.
+- Contact links now read the studio WhatsApp number and Instagram URL from the official `WHATSAPP_CONFIG` app setting. Catalogue readers reject incomplete rows instead of inventing service values.
+- The reviewed Apps Script copy at `apps-script/Code.gs` is synchronized with `src/data/codeGsTemplate.ts`, but has **not** been copied into the live Apps Script project or deployed.
+- GitHub Pages deployment remains intentionally skipped; the workflow only builds and uploads an artifact.
+- The current repository is public. Never put passwords, API tokens, payment credentials, or customer data in commits.
 
-
-## Current migration notes
-The original React public site and admin UI component files have been ported from the Sheets-first branch for visual continuity. Build checks pass. The preview remains separate from the production domain.
-
-Before enabling public booking or admin writes:
-- Deploy the reviewed Apps Script template to a new version of the existing Apps Script Web App (not yet performed).
-- Confirm the deployed `Code.gs` and the frontend service action names agree.
-- Review and remove all remaining sample-only values in the UI data-model configuration, even if they are not used as fallback data.
-- Verify that every public action returns only safe fields and that admin writes require a valid expiring session.
+## Outstanding validation before enabling booking or admin writes
+1. Verify the deployed Apps Script actions and response shapes using read-only requests; the deployed script may not match this repository's reviewed copy.
+2. Confirm the existing Drive folder ID and sharing permissions for gallery photos.
+3. Confirm the official sheet's schedule and contact settings without creating or editing tabs during discovery.
+4. Test price/deposit validation, scheduling conflicts, admin session expiry, and the customer contact/email flows in isolation.
+5. Review the isolated GitHub Pages preview on mobile before any deployment decision.
+6. Production cutover requires explicit owner approval.

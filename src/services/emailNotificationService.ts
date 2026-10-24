@@ -173,7 +173,10 @@ export function getNotificationWebhookUrl(): string {
     // Never let a stale browser-local URL silently reconnect a staging preview
     // to production. Staging API access must be an explicit build-time choice.
     const stagingApiOptIn = String((import.meta as any).env?.VITE_ALLOW_STAGING_APPS_SCRIPT_URL || '').toLowerCase() === 'true';
-    if (!stagingApiOptIn || !envUrl || envUrl === DEFAULT_APPS_SCRIPT_WEBHOOK_URL) {
+    // The isolated GitHub Pages preview may perform explicitly opted-in reads
+    // against the official Apps Script. This URL is public configuration, not a secret.
+    // Mutations remain disabled in App.tsx until the backend contract is verified.
+    if (!stagingApiOptIn || !envUrl) {
       return '';
     }
     return envUrl;

@@ -325,6 +325,7 @@ export default function App() {
   }, [appMode, adminSessionToken]);
 
   const handleUpdateBlacklist = async (next: BlacklistEntry[]) => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações desativadas na pré-visualização.'); return; }
     const result = await saveRemoteAppSetting('BLACKLIST', next, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível salvar a lista de bloqueio na planilha oficial. ' + (result.error || ''));
@@ -334,6 +335,7 @@ export default function App() {
   };
 
   const handleUpdateStudioAddress = async (next: StudioAddressConfig): Promise<boolean> => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações desativadas na pré-visualização.'); return false; }
     const result = await saveRemoteAppSetting('STUDIO_ADDRESS', next, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível salvar o endereço na planilha oficial. ' + (result.error || ''));
@@ -344,6 +346,7 @@ export default function App() {
   };
 
   const handleUpdatePaymentConfig = async (next: PaymentConfig): Promise<boolean> => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações desativadas na pré-visualização.'); return false; }
     if (!next.pixKey.trim() || !next.pixBeneficiary.trim()) {
       window.alert('Informe a chave Pix oficial e o nome do favorecido antes de salvar.');
       return false;
@@ -363,6 +366,7 @@ export default function App() {
   };
 
   const handleUpdateWhatsappConfig = async (next: WhatsAppConfig): Promise<boolean> => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações desativadas na pré-visualização.'); return false; }
     const result = await saveRemoteAppSetting('WHATSAPP_CONFIG', next, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível salvar as configurações do WhatsApp na planilha oficial. ' + (result.error || ''));
@@ -373,6 +377,7 @@ export default function App() {
   };
 
   const persistWeeklySchedule = async (nextDays: DayScheduleConfig[], nextSlots: TimeSlotConfig[]): Promise<boolean> => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações de agenda desativadas na pré-visualização.'); return false; }
     const dayMap: Record<string, string> = { seg: 'monday', ter: 'tuesday', qua: 'wednesday', qui: 'thursday', sex: 'friday', sab: 'saturday', dom: 'sunday' };
     const weeklySchedule: Record<string, unknown> = { slots: nextSlots.map(slot => ({ ...slot })) };
     nextDays.forEach(day => {
@@ -698,6 +703,7 @@ export default function App() {
   };
 
   const handleBookingConfirmed = (newApt: Appointment) => {
+    if (READ_ONLY_PREVIEW) return;
     setAppointments(prev => [newApt, ...prev]);
     notifyNewPreBooking(newApt);
 
@@ -705,6 +711,7 @@ export default function App() {
   };
 
   const handleUpdateAppointment = async (updated: Appointment) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Alterações de agendamentos estão desativadas na pré-visualização.');
     // Persist to backend / Google Sheets official storage
     const result = await updateRemoteAppointment(updated, adminSessionToken);
     if (!result.success || !result.persisted) {
@@ -757,6 +764,7 @@ export default function App() {
   };
 
   const handleDeleteAppointment = async (appointment: Appointment) => {
+    if (READ_ONLY_PREVIEW) throw new Error('Exclusão de agendamentos desativada na pré-visualização.');
     const result = await deleteRemoteAppointment(appointment.id, adminSessionToken);
     if (!result.success) {
       throw new Error(result.error || 'Não foi possível excluir o agendamento.');
@@ -787,6 +795,7 @@ export default function App() {
   };
 
   const handleUpdateClient = async (updated: ClientProfile) => {
+    if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     const result = await saveRemoteClient(updated, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível salvar o perfil da cliente na planilha oficial. ' + (result.error || ''));
@@ -796,6 +805,7 @@ export default function App() {
   };
 
   const handleManualBookingSave = async (newApt: Appointment) => {
+    if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
     // 1. Atualiza lista local imediatamente evitando duplicações
     setAppointments(prev => {
       const exists = prev.some(a => a.id === newApt.id);

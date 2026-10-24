@@ -73,10 +73,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
-      setSubmitError('Agendamentos manuais estão desativados nesta pré-visualização.');
-      return;
-    }
+    // GitHub Pages uses the official Google Apps Script backend. Do not block
+    // manual bookings by hostname; submitManualBooking must confirm persisted=true.
     setSubmitError(null);
 
     const trimmedName = clientName.trim();

@@ -94,29 +94,6 @@ export default function App() {
 
   const [isLoadingRemoteAppointments, setIsLoadingRemoteAppointments] = useState(false);
   const [remoteAppointmentsError, setRemoteAppointmentsError] = useState<string | null>(null);
-  const [localOnlyCount, setLocalOnlyCount] = useState<number>(0);
-
-  const calculateLocalOnlyCount = (remoteList: Appointment[]) => {
-    try {
-      const raw = localStorage.getItem('angelica_appointments_local_archive') || localStorage.getItem('angelica_appointments');
-      if (!raw) {
-        setLocalOnlyCount(0);
-        return;
-      }
-      const localList: Appointment[] = JSON.parse(raw);
-      const remoteIds = new Set(remoteList.map(a => a.id));
-      const localOnly = localList.filter(a => !remoteIds.has(a.id));
-      setLocalOnlyCount(localOnly.length);
-      if (localOnly.length > 0) {
-        localStorage.setItem('angelica_appointments_local_archive', JSON.stringify(localOnly));
-      } else {
-        localStorage.removeItem('angelica_appointments_local_archive');
-      }
-    } catch {
-      setLocalOnlyCount(0);
-    }
-  };
-
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (READ_ONLY_PREVIEW) {
@@ -146,7 +123,6 @@ export default function App() {
         setAdminLoginModalOpen(false);
         setAdminPasswordInput('');
         setAppMode('admin');
-        calculateLocalOnlyCount(result.appointments);
       } else if (result.statusCode === 401) {
         setAdminLoginError('Senha administrativa incorreta ou não configurada no servidor. Acesso não autorizado.');
       } else {
@@ -170,7 +146,6 @@ export default function App() {
       const result = await fetchRemoteAppointmentsDetailed(token);
       if (result.success) {
         setAppointments(result.appointments);
-        calculateLocalOnlyCount(result.appointments);
       } else {
         setRemoteAppointmentsError(result.error || 'Erro ao sincronizar com o servidor.');
       }
@@ -189,24 +164,6 @@ export default function App() {
     } catch {}
     setAdminSessionToken('');
     setAppMode('public');
-  };
-
-  const handleExportLocalBackup = () => {
-    try {
-      const raw = localStorage.getItem('angelica_appointments_local_archive') || localStorage.getItem('angelica_appointments');
-      if (!raw) return;
-      const blob = new Blob([raw], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `backup_agendamentos_locais_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Erro ao exportar backup local:', err);
-    }
   };
 
   // Admin Active Tab
@@ -412,7 +369,6 @@ export default function App() {
         setAppointments(result.appointments);
         setRemoteAppointmentsError(null);
         setAppMode('admin');
-        calculateLocalOnlyCount(result.appointments);
       } else {
         try { sessionStorage.removeItem('angelica_admin_session'); } catch {}
         setAdminSessionToken('');
@@ -446,7 +402,6 @@ export default function App() {
         if (result.success) {
           setRemoteAppointmentsError(null);
           setAppointments(result.appointments);
-          calculateLocalOnlyCount(result.appointments);
         } else if (result.statusCode === 401) {
           try {
             sessionStorage.removeItem('angelica_admin_session');
@@ -621,29 +576,6 @@ export default function App() {
     playDiscreteAdminNotificationSound();
   };
 
-  // Real-time synchronization across browser tabs via storage event
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'angelica_appointments' && e.newValue) {
-        try {
-          const updatedList: Appointment[] = JSON.parse(e.newValue);
-          const newPending = updatedList.filter(
-            a => a.status === 'pendente_pix' && !seenNotificationIdsRef.current.has(a.id)
-          );
-
-          setAppointments(updatedList);
-
-          if (newPending.length > 0) {
-            notifyNewPreBooking(newPending[0]);
-          }
-        } catch {}
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
   // Register user interaction to unlock Web Audio API seamlessly
   useEffect(() => {
     const handleInteraction = () => {
@@ -726,18 +658,6 @@ export default function App() {
 
     setAppointments(prev => prev.map(a => (a.id === updated.id ? finalized : a)));
 
-    // Sincroniza armazenamento local
-    for (const storageKey of ['angelica_appointments', 'angelica_appointments_local_archive']) {
-      try {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const list: Appointment[] = JSON.parse(raw);
-          const updatedList = list.map(a => (a.id === updated.id ? finalized : a));
-          localStorage.setItem(storageKey, JSON.stringify(updatedList));
-        }
-      } catch {}
-    }
-
     // If appointment became confirmed and auto-send is enabled
     if (isNowConfirmed && whatsappConfig.autoSendOnConfirm && updated.whatsappStatus !== 'enviado') {
       try {
@@ -774,29 +694,6 @@ export default function App() {
     }
 
     setAppointments(prev => prev.filter(a => a.id !== appointment.id));
-    let archiveCount: number | null = null;
-    for (const storageKey of ['angelica_appointments', 'angelica_appointments_local_archive']) {
-      try {
-        const raw = localStorage.getItem(storageKey);
-        if (!raw) continue;
-
-        const storedAppointments: Appointment[] = JSON.parse(raw);
-        const remaining = storedAppointments.filter(a => a.id !== appointment.id);
-        if (remaining.length > 0) {
-          localStorage.setItem(storageKey, JSON.stringify(remaining));
-        } else {
-          localStorage.removeItem(storageKey);
-        }
-        if (storageKey === 'angelica_appointments_local_archive') {
-          archiveCount = remaining.length;
-        }
-      } catch (err) {
-        console.error(`Não foi possível atualizar ${storageKey} após excluir o agendamento:`, err);
-      }
-    }
-    if (archiveCount !== null) setLocalOnlyCount(archiveCount);
-  };
-
   const handleUpdateClient = async (updated: ClientProfile) => {
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
@@ -1238,34 +1135,6 @@ export default function App() {
                   </button>
                 </div>
               </div>
-
-              {/* Local-only Unpersisted Appointments Warning Card */}
-              {localOnlyCount > 0 && (
-                <div className="mb-6 p-4 rounded-2xl bg-amber-50/90 border border-amber-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-amber-600 text-[22px] shrink-0 mt-0.5">
-                      history_edu
-                    </span>
-                    <div>
-                      <h4 className="font-syne text-xs font-bold text-amber-900">
-                        Histórico Local Detectado ({localOnlyCount} agendamento{localOnlyCount > 1 ? 's' : ''} local{localOnlyCount > 1 ? 'is' : ''})
-                      </h4>
-                      <p className="font-jakarta text-[11px] text-amber-800 mt-0.5">
-                        Existem registros armazenados apenas no navegador deste dispositivo que não constam na planilha do Google Sheets. Para protegê-los contra perda acidental, você pode exportar o arquivo de backup.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleExportLocalBackup}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-jakarta text-xs font-semibold shadow-sm transition-all cursor-pointer shrink-0"
-                    title="Exportar backup dos agendamentos locais em arquivo JSON"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">download</span>
-                    <span>Exportar Backup ({localOnlyCount})</span>
-                  </button>
-                </div>
-              )}
 
               {adminTab === 'visao-geral' && (
                 <OverviewTab

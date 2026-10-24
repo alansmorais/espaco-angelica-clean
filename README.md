@@ -44,7 +44,7 @@ See [`docs/deployed-apps-script-compatibility.md`](docs/deployed-apps-script-com
 
 ## Current status (2026-10-24)
 - React public site and admin UI are in the isolated repository and the static build passes in GitHub Actions.
-- The preview remains read-only (`READ_ONLY_PREVIEW = true`); public booking and admin writes are not enabled. GitHub Pages does not fall back to the official Apps Script URL, and known side-effecting availability/schedule reads are skipped.
+- The preview remains read-only (`READ_ONLY_PREVIEW = true`); public booking and admin writes are not enabled. GitHub Pages does not fall back to the official Apps Script URL, ignores browser-local webhook overrides, and requires explicit build-time opt-in before any staging API endpoint can be used. Known side-effecting availability/schedule reads are skipped.
 - Browser-local appointment archives have been removed from the app's source-of-truth flow.
 - Contact links now read the studio WhatsApp number and Instagram URL from the official `WHATSAPP_CONFIG` app setting. Catalogue readers reject incomplete rows instead of inventing service values.
 - The repository's `apps-script/Code.gs` and `src/data/codeGsTemplate.ts` are repository copies, not the live source of truth. The owner-provided deployed `Code.gs` text is the reference for frontend compatibility; do not copy or deploy the repository copy over it.

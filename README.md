@@ -40,4 +40,4 @@ Do not assume the deployment currently serves the latest code. Verify Apps Scrip
 6. Test isolated GitHub Pages preview on mobile.
 7. Production cutover only after explicit approval.
 
-Current status: starter skeleton only; not production-ready.
+Current status: starter skeleton only; only the Apps Script health endpoint is checked from the preview. No booking or admin writes are enabled. Not production-ready.

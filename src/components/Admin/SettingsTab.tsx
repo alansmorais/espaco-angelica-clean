@@ -134,8 +134,8 @@ Olá, *{cliente}*! Seu horário no nosso atelier privativo foi *CONFIRMADO* com 
 Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`;
   });
   const [waLogs, setWaLogs] = useState<any[]>([]);
-  const [testPhone, setTestPhone] = useState<string>('12999998888');
-  const [testClientName, setTestClientName] = useState<string>('Cliente VIP');
+  const [testPhone, setTestPhone] = useState<string>('');
+  const [testClientName, setTestClientName] = useState<string>('');
   const [isTestingWa, setIsTestingWa] = useState<boolean>(false);
   const [testWaFeedback, setTestWaFeedback] = useState<{ message: string; success: boolean; fallbackUrl?: string } | null>(null);
   const [showWaPreview, setShowWaPreview] = useState<boolean>(false);
@@ -875,7 +875,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
                   Integração WhatsApp Business API
                 </h3>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-jakarta font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  {waStatus?.isConfigured ? 'Meta Cloud API Conectada' : 'Simulação Inteligente Pronta'}
+                  {waStatus?.isConfigured ? 'Meta Cloud API Configurada' : 'Configuração pendente'}
                 </span>
               </div>
               <span className="font-jakarta text-xs text-[#786C63]">
@@ -900,6 +900,40 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
           </div>
         </div>
 
+        {/* Public studio contact values are official settings, not hardcoded site defaults. */}
+        <div className="p-4 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-4">
+          <div>
+            <h4 className="font-syne text-sm font-bold text-[#49382E]">Contato público do ateliê</h4>
+            <p className="font-jakarta text-xs text-[#786C63] mt-1">Estes dados alimentam os links de contato do site. Deixe em branco até confirmar os valores oficiais.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block font-jakarta text-xs text-[#49382E] font-semibold">
+              WhatsApp público (com código do país)
+              <input
+                type="tel"
+                inputMode="tel"
+                value={waConfig.phone || ''}
+                onChange={e => setWaConfig(prev => ({ ...prev, phone: e.target.value }))}
+                disabled={readOnlyPreview}
+                placeholder="Ex.: 5511999999999"
+                className="mt-1 w-full p-3 rounded-xl bg-white text-[#49382E] border border-[#E8D9B5] text-sm focus:border-[#D4AF37] outline-none disabled:opacity-60"
+              />
+            </label>
+            <label className="block font-jakarta text-xs text-[#49382E] font-semibold">
+              Link do Instagram do ateliê
+              <input
+                type="url"
+                inputMode="url"
+                value={waConfig.instagramUrl || ''}
+                onChange={e => setWaConfig(prev => ({ ...prev, instagramUrl: e.target.value }))}
+                disabled={readOnlyPreview}
+                placeholder="https://instagram.com/..."
+                className="mt-1 w-full p-3 rounded-xl bg-white text-[#49382E] border border-[#E8D9B5] text-sm focus:border-[#D4AF37] outline-none disabled:opacity-60"
+              />
+            </label>
+          </div>
+        </div>
+
         {/* API Credentials & Status Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-1">
@@ -909,7 +943,7 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span className="font-syne text-sm text-[#49382E] font-bold">
-                Meta Cloud API ({waStatus?.apiVersion || 'v20.0'})
+                Meta Cloud API ({waStatus?.apiVersion || 'Versão não informada'})
               </span>
             </div>
             <p className="text-[11px] text-[#786C63]">
@@ -1047,13 +1081,13 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
                 </div>
                 <div className="whitespace-pre-line text-xs text-gray-800 leading-relaxed font-sans">
                   {waTemplate
-                    .replace(/{cliente}/g, 'Fernanda Vasconcelos')
-                    .replace(/{servico}/g, 'Alongamento em Fibra Slim')
-                    .replace(/{data}/g, 'Quinta, 14 Nov')
-                    .replace(/{horario}/g, '14:30')
-                    .replace(/{valor}/g, 'R$ 220,00')
-                    .replace(/{sinal}/g, 'R$ 88,00 (40% - Liquidado via Pix)')
-                    .replace(/{endereco}/g, address.fullAddress)}
+                    .replace(/{cliente}/g, '[Nome da cliente]')
+                    .replace(/{servico}/g, '[Procedimento oficial]')
+                    .replace(/{data}/g, '[Data do agendamento]')
+                    .replace(/{horario}/g, '[Horário]')
+                    .replace(/{valor}/g, '[Valor oficial]')
+                    .replace(/{sinal}/g, '[Sinal configurado]')
+                    .replace(/{endereco}/g, address.fullAddress || '[Endereço oficial não configurado]')}
                 </div>
                 <div className="mt-2 text-right flex items-center justify-end gap-1 text-[10px] text-gray-400">
                   <span>14:31</span>

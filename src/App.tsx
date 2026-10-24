@@ -71,7 +71,11 @@ import { BlockScheduleModal, BlockScheduleData } from './components/Modals/Block
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
 
+const READ_ONLY_PREVIEW = true;
+
 export default function App() {
+  // The isolated preview must never write to the official spreadsheet or expose admin controls.
+  // Enable mutations only after Apps Script and payment flows are validated and approved.
   // Mode: 'public' (Client) vs 'admin' (Executive Atelier)
   const [appMode, setAppMode] = useState<'public' | 'admin'>('public');
 
@@ -115,6 +119,10 @@ export default function App() {
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (READ_ONLY_PREVIEW) {
+      setAdminLoginError('O painel administrativo está desativado na pré-visualização. Nenhuma alteração será feita na planilha oficial.');
+      return;
+    }
     const entered = adminPasswordInput.trim();
     if (!entered) return;
 
@@ -243,8 +251,7 @@ export default function App() {
   // Appointments & Clients State (Real data only, default empty)
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try {
-      const saved = localStorage.getItem('angelica_appointments');
-      return saved ? JSON.parse(saved) : [];
+      return [];
     } catch {
       return [];
     }
@@ -390,6 +397,7 @@ export default function App() {
 
   // Restore an existing server-issued session after refresh; expired sessions are rejected server-side.
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) return;
     const token = adminSessionToken;
     if (!token) return;
     let active = true;
@@ -415,12 +423,6 @@ export default function App() {
   }, []);
 
   // Official service catalogue is always reloaded from Google Sheets; do not cache it as a source of truth.
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('angelica_appointments', JSON.stringify(appointments));
-    } catch {}
-  }, [appointments]);
 
   // Centralized Appointments Synchronization (Cloud Run / Sheets)
   useEffect(() => {
@@ -970,11 +972,16 @@ export default function App() {
             <ServiceCatalog
               services={services}
               onSelectService={handleSelectService}
-              selectedServiceId={selectedService.id}
+              selectedServiceId={selectedService?.id}
             />
 
             {/* Public booking is unavailable until the real service catalogue loads; never show a mock service as bookable. */}
-            {activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
+            {READ_ONLY_PREVIEW ? (
+              <section id="wizard-agendamento" className="mx-auto my-12 max-w-3xl rounded-2xl border border-[#E8D9B5] bg-white p-8 text-center">
+                <h2 className="font-syne text-xl font-bold text-[#49382E]">Pré-visualização segura</h2>
+                <p className="mt-2 text-sm text-[#786C63]">Os serviços e as configurações são consultados sem ativar gravações. O agendamento e o painel administrativo só serão ativados após validar o Apps Script e os pagamentos oficiais.</p>
+              </section>
+            ) : activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
               <BookingWizard
                 selectedService={activeServices.find(s => s.id === selectedService?.id) || activeServices[0]}
                 onBookingConfirmed={handleBookingConfirmed}

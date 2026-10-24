@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Appointment } from '../../types';
 import { formatBRL } from '../../services/notificationTemplates';
 import { OverviewCalendar } from './OverviewCalendar';
@@ -9,6 +9,8 @@ interface OverviewTabProps {
   onSelectAppointmentForReview: (clientName: string) => void;
   todayAppointments: Appointment[];
   allAppointments: Appointment[];
+  onSaveAppointment: (appointment: Appointment) => Promise<void> | void;
+  onDeleteAppointment: (appointment: Appointment) => Promise<void> | void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -16,8 +18,47 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onNavigateToTab,
   onSelectAppointmentForReview,
   todayAppointments,
-  allAppointments
+  allAppointments,
+  onSaveAppointment,
+  onDeleteAppointment
 }) => {
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+
+  const startEditing = (apt: Appointment) => {
+    setEditingAppointment(apt);
+    setEditDate(normalizeAppointmentDate(apt.date));
+    setEditTime(apt.time || '');
+    setEditName(apt.clientName || '');
+    setEditPhone(apt.clientPhone || '');
+    setEditNotes(apt.notes || '');
+  };
+
+  const saveEditing = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingAppointment || !editDate || !editTime || !editName.trim()) return;
+    setEditBusy(true);
+    try {
+      await onSaveAppointment({ ...editingAppointment, date: editDate, time: editTime, clientName: editName.trim(), clientPhone: editPhone.trim(), notes: editNotes.trim() });
+      setEditingAppointment(null);
+    } finally { setEditBusy(false); }
+  };
+
+  function normalizeAppointmentDate(value: string): string {
+    const raw = String(value || '').trim();
+    const iso = raw.match(/^(\\d{4}-\\d{2}-\\d{2})$/);
+    if (iso) return iso[1];
+    const br = raw.match(/^(\\d{2})[/.](\\d{2})[/.](\\d{4})$/);
+    if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+    const monthDayYear = raw.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+    if (monthDayYear) return `${monthDayYear[3]}-${monthDayYear[1].padStart(2,'0')}-${monthDayYear[2].padStart(2,'0')}`;
+    return '';
+  }
   // Real dynamic metrics calculated from actual appointments
   const confirmedAppointments = todayAppointments.filter(
     a => a.status === 'confirmado' || a.depositStatus === 'liquidado'
@@ -288,6 +329,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                       </span>
                       <button
                         type="button"
+                        title="Editar agendamento"
+                        onClick={() => startEditing(apt)}
+                        className="w-8 h-8 rounded-full bg-[#FFFFFF] text-[#49382E] hover:text-[#9A7410] border border-[#E8D9B5] flex items-center justify-center cursor-pointer shadow-xs"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir agendamento"
+                        onClick={() => {
+                          if (window.confirm(`Tem certeza de que deseja excluir o agendamento de ${apt.clientName} em ${apt.date} às ${apt.time}? Esta ação não pode ser desfeita.`)) void onDeleteAppointment(apt);
+                        }}
+                        className="w-8 h-8 rounded-full bg-[#FFFFFF] text-[#B42318] hover:bg-red-50 border border-[#E8D9B5] flex items-center justify-center cursor-pointer shadow-xs"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                      </button>
+                      <button
+                        type="button"
                         title="Ver detalhes da cliente"
                         onClick={() => {
                           onNavigateToTab('gestao-clientes');
@@ -396,6 +455,39 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
       </div>
+      {editingAppointment && (
+        <div className="fixed inset-0 z-[70] bg-[#49382E]/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={saveEditing} className="bg-white rounded-2xl border border-[#E8D9B5] shadow-2xl p-6 w-full max-w-lg flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-syne text-xl font-bold text-[#49382E]">Editar agendamento</h3>
+              <button type="button" onClick={() => setEditingAppointment(null)} className="w-9 h-9 rounded-full border border-[#E8D9B5]" aria-label="Fechar">×</button>
+            </div>
+            <p className="text-xs text-[#786C63]">ID do registo: {editingAppointment.id}. O serviço e os valores financeiros atuais serão preservados.</p>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-[#49382E]">Nome da cliente
+              <input required value={editName} onChange={e => setEditName(e.target.value)} className="border border-[#E8D9B5] rounded-lg p-2.5" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-[#49382E]">Telefone
+              <input value={editPhone} onChange={e => setEditPhone(e.target.value)} className="border border-[#E8D9B5] rounded-lg p-2.5" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-[#49382E]">Data
+                <input type="date" required value={editDate} onChange={e => setEditDate(e.target.value)} className="border border-[#E8D9B5] rounded-lg p-2.5" />
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-[#49382E]">Hora
+                <input type="time" required value={editTime} onChange={e => setEditTime(e.target.value)} className="border border-[#E8D9B5] rounded-lg p-2.5" />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-[#49382E]">Observações
+              <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={3} className="border border-[#E8D9B5] rounded-lg p-2.5" />
+            </label>
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">A pré-visualização permanece somente leitura. Guardar ou excluir não alterará a planilha enquanto a escrita não for autorizada.</div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setEditingAppointment(null)} className="rounded-full border border-[#E8D9B5] px-4 py-2 text-sm">Cancelar</button>
+              <button disabled={editBusy} type="submit" className="rounded-full bg-[#D4AF37] text-[#3C2F00] px-5 py-2 text-sm font-bold disabled:opacity-50">{editBusy ? 'A guardar…' : 'Guardar alterações'}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

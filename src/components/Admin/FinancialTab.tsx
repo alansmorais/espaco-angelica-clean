@@ -3,6 +3,7 @@ import { Service, ServiceCategory, Appointment } from '../../types';
 import { uploadServicePhoto, listDrivePhotos, DrivePhoto } from '../../services/emailNotificationService';
 
 interface FinancialTabProps {
+  readOnlyPreview?: boolean;
   services?: Service[];
   onUpdateService?: (updated: Service) => Promise<void> | void;
   onAddService?: (newService: Service) => Promise<void> | void;
@@ -62,6 +63,7 @@ const compressImageFile = (file: File, maxWidth = 1200, maxHeight = 1200, qualit
 };
 
 export const FinancialTab: React.FC<FinancialTabProps> = ({
+  readOnlyPreview = false,
   services: propServices,
   onUpdateService,
   onAddService,

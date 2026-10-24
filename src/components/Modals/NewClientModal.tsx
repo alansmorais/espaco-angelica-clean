@@ -25,6 +25,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (typeof window !== 'undefined' && window.location.hostname.endsWith('github.io')) {
+      window.alert('Criação e edição de clientes estão desativadas na pré-visualização.');
+      return;
+    }
     if (!name.trim()) return;
     if (!phone.trim() || phone.replace(/\D/g, '').length < 8) {
       window.alert('Informe o telefone/WhatsApp real da cliente para salvar o perfil.');

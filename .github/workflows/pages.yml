@@ -28,6 +28,10 @@ jobs:
         run: |
           node -e "const p=require('./package.json'); if (p.dependencies?.firebase || p.dependencies?.express || p.dependencies?.dotenv) process.exit(1); console.log('No Firebase/Express/dotenv production dependencies')"
       - name: Build static frontend
+        env:
+          # Explicit read-only connection for the isolated preview. No credentials are bundled.
+          VITE_ALLOW_STAGING_APPS_SCRIPT_URL: 'true'
+          VITE_NOTIFICATION_WEBHOOK_URL: 'https://script.google.com/macros/s/AKfycbysNBMLthA_GvAZJR1irBGcS-3Lspbfz0NIsvz0P2ax6jzE4M01RwVJ0za6zFsq8bGojw/exec'
         run: npm run build
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3

@@ -57,6 +57,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     return new Date(studioToday.getFullYear(), studioToday.getMonth(), 1);
   });
   const [selectedTime, setSelectedTime] = useState<string>('11:30');
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [showAdditionalServices, setShowAdditionalServices] = useState(false);
   const [customRequest, setCustomRequest] = useState<string>('');
@@ -459,8 +460,56 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left Flow (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
+            <div className="flex flex-wrap gap-2" aria-label="Etapas do agendamento">
+              {[
+                { n: 1, label: 'Contacto' }, { n: 2, label: 'Data' }, { n: 3, label: 'Procedimento' },
+                { n: 4, label: 'Horário' }, { n: 5, label: 'Revisão' }
+              ].map(step => (
+                <span key={step.n} className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${bookingStep === step.n ? 'bg-[#D4AF37] text-[#3C2F00] border-[#D4AF37]' : bookingStep > step.n ? 'bg-[#F7EFEA] text-[#49382E] border-[#E8D9B5]' : 'bg-white text-[#786C63] border-[#E8D9B5]'}`}>
+                  {step.n}. {step.label}
+                </span>
+              ))}
+            </div>
+
+            {bookingStep === 1 && (
+              <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
+                <h3 className="font-syne text-lg font-semibold text-[#49382E]">1. Como podemos contactar-te?</h3>
+                <p className="font-jakarta text-xs text-[#786C63]">O WhatsApp é obrigatório para podermos responder ao pedido. O e-mail é opcional.</p>
+                <label className="block text-xs font-semibold text-[#49382E]">Nome completo *
+                  <input required value={clientName} onChange={e => setClientName(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="O teu nome" />
+                </label>
+                <label className="block text-xs font-semibold text-[#49382E]">WhatsApp com DDD *
+                  <input required type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="(12) 99123-4567" />
+                </label>
+                <label className="block text-xs font-semibold text-[#49382E]">E-mail (opcional)
+                  <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="voce@exemplo.com" />
+                </label>
+                <button type="button" onClick={() => {
+                  if (!clientName.trim() || !clientPhone.trim()) { setSubmissionError('Preencha o nome e o WhatsApp para continuar.'); return; }
+                  setSubmissionError(null); setBookingStep(2);
+                }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher a data</button>
+              </div>
+            )}
+
+            {bookingStep === 3 && (
+              <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
+                <h3 className="font-syne text-lg font-semibold text-[#49382E]">3. Escolhe o procedimento</h3>
+                <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
+                <div className="space-y-2">
+                  {services.filter(service => service.active !== false).map(service => (
+                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setBookingStep(4); }}
+                      className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
+                      <span className="block font-semibold text-[#49382E]">{service.title}</span>
+                      <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
+                      {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Panel 1: Data e Horário */}
-            <div className="p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-5">
+            <div className={`p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-5 ${bookingStep === 2 || bookingStep === 4 ? '' : 'hidden'}`}>
               <div className="flex items-center justify-between pb-3 border-b border-[#E8D9B5]">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#D4AF37]">calendar_today</span>
@@ -474,7 +523,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               </div>
 
               {/* Dynamic calendar: today through four months ahead */}
-              <div className="space-y-3">
+              <div className={`space-y-3 ${bookingStep === 2 ? '' : 'hidden'}`}>
                 <div className="flex items-center justify-between gap-3">
                   <button type="button" aria-label="Mês anterior" disabled={monthOffset <= 0}
                     onClick={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}
@@ -510,7 +559,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               </div>
 
               {/* Time Slots Section */}
-              <div className="pt-3 border-t border-[#E8D9B5] space-y-3">
+              {bookingStep === 4 && <div className="pt-3 border-t border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-jakarta text-xs text-[#786C63] font-medium">
                     Horários Disponíveis para {selectedDate}:
@@ -562,11 +611,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     })}
                   </div>
                 )}
-              </div>
+              </div>}
+              {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setBookingStep(3); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o procedimento</button>}
+              {bookingStep === 4 && <button type="button" onClick={() => { if (isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Escolha um horário disponível para a duração deste procedimento.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 
             {/* Panel 2: Agendamento Recorrente */}
-            <div className="p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-4">
+            <div className={`p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-4 ${bookingStep === 5 ? '' : 'hidden'}`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#D4AF37] text-[24px]">
@@ -664,7 +715,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             </div>
 
             {/* Panel 3: Dados da Cliente */}
-            <div className="p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-4">
+            <div className="hidden">
               <div className="flex items-center gap-2 pb-3 border-b border-[#E8D9B5]">
                 <span className="material-symbols-outlined text-[#D4AF37]">person</span>
                 <h3 className="font-syne text-lg text-[#49382E] font-semibold">
@@ -747,7 +798,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             </div>
 
             {/* Panel 4: Escolha de Pagamento Pix (Sinal vs Pré-pagamento Total) */}
-            <div className="p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md relative overflow-hidden">
+            <div className={`p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md relative overflow-hidden ${bookingStep === 5 ? '' : 'hidden'}`}>
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-[#D4AF37] text-[26px]">

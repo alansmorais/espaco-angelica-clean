@@ -1,4 +1,4 @@
-name: Build static preview artifact (manual Pages enablement required)
+name: Static preview validation
 
 on:
   push:
@@ -12,16 +12,14 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Validate static preview files
+      - uses: actions/checkout@v4
+      - name: Check required starter files
         run: |
           test -s index.html
           test -s styles.css
           test -s app.js
           test -s config.js
           ! grep -R -n -E 'cloud\.run\.app|firebaseapp\.com|run\.app' --include='*.js' --include='*.html' --include='*.css' .
-          echo "Static preview files present; no legacy backend URL found in runtime frontend files."
       - name: Upload preview artifact
         uses: actions/upload-artifact@v4
         with:
@@ -32,4 +30,3 @@ jobs:
             app.js
             config.js
             README.md
-          if-no-files-found: error

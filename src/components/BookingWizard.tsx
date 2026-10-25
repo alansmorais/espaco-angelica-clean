@@ -1109,6 +1109,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
           {/* Right Summary Sticky Card (5 cols) */}
           <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-28">
+            {bookingStep >= 3 ? (
             <div className="p-6 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-xl relative overflow-hidden">
               <div className="flex items-center justify-between pb-3 border-b border-[#E8D9B5]">
                 <span className="font-jakarta text-[11px] uppercase tracking-widest text-[#D4AF37] font-bold">
@@ -1301,6 +1302,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 </p>
               </div>
             </div>
+            ) : null}
 
             {/* Endereço do Espaço */}
             <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] flex items-start gap-3 shadow-xs">

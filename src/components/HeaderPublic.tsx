@@ -6,7 +6,6 @@ interface HeaderPublicProps {
   onOpenAdmin: () => void;
   onOpenAbout: () => void;
   onOpenFAQ: () => void;
-  onOpenGallery: () => void;
   onOpenServices: () => void;
   studioWhatsApp?: string;
   studioCityLabel?: string;
@@ -17,7 +16,6 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
   onOpenAdmin,
   onOpenAbout,
   onOpenFAQ,
-  onOpenGallery,
   onOpenServices,
   studioWhatsApp = '',
   studioCityLabel = ''
@@ -72,12 +70,6 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
               className="px-3 py-1.5 rounded-full font-jakarta text-[13px] bg-[#FFFFFF] text-[#49382E] font-bold shadow-xs border border-[#E8D9B5] transition-all cursor-pointer"
             >
               Agendamento Online
-            </button>
-            <button
-              onClick={onOpenGallery}
-              className="px-3 py-1.5 rounded-full font-jakarta text-[13px] text-[#786C63] hover:text-[#49382E] hover:bg-[#FFFFFF] transition-all cursor-pointer"
-            >
-              Galeria Nail Art
             </button>
             <button
               onClick={onOpenAbout}
@@ -181,16 +173,6 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
                 <span className="material-symbols-outlined text-[18px] text-[#786C63]">chevron_right</span>
               </button>
 
-              <button
-                onClick={() => handleNavClick(onOpenGallery)}
-                className="w-full min-h-[48px] flex items-center justify-between p-3.5 rounded-xl bg-[#FDFBF9] hover:bg-[#F7EFEA] border border-[#E8D9B5]/60 text-[#49382E] font-jakarta text-sm cursor-pointer text-left active:scale-[0.99] transition-transform"
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-[#D4AF37] text-[20px]">photo_library</span>
-                  <span>Galeria de Criações Nail Art</span>
-                </div>
-                <span className="material-symbols-outlined text-[18px] text-[#786C63]">chevron_right</span>
-              </button>
 
               <button
                 onClick={() => handleNavClick(onOpenAbout)}

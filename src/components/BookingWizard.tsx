@@ -714,7 +714,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <p className="font-jakarta text-[11px] text-[#786C63]">Selecione uma data disponível. A agenda mostra o mês atual e até quatro meses à frente.</p>
               </div>
 
-              {/* Time Slots Section */}
+              {<div className="flex flex-wrap gap-2 pt-2"><button type="button" onClick={() => { setSelectedTime(''); setBookingStep(3); setShowAddAnotherPrompt(false); setShowAdditionalServices(false); }} className="rounded-full border border-[#D4AF37] px-4 py-2.5 text-xs font-bold text-[#49382E] hover:bg-[#FBF2D5]">← Voltar aos procedimentos</button><button type="button" onClick={() => { setSelectedTime(''); setBookingStep(2); }} className="rounded-full border border-[#E8D9B5] px-4 py-2.5 text-xs font-semibold text-[#786C63] hover:bg-[#FDFBF9]">Escolher outra data</button></div>
+              /* Time Slots Section */}
               {bookingStep === 4 && <div className="pt-3 border-t border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-jakarta text-xs text-[#786C63] font-medium">

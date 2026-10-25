@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Service, Appointment, TimeSlotConfig, BlacklistEntry, StudioAddressConfig, PaymentConfig, RecurrenceConfig, DayScheduleConfig } from '../types';
 import {
   buildOfficialWhatsAppUrl,
@@ -639,6 +640,18 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     </button>
                   ))}
                 </div>
+                <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
+                      <p className="text-[11px] text-[#786C63]">Adicione outros serviços ao procedimento escolhido.</p>
+                    </div>
+                    <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
+                      {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
+                    </button>
+                  </div>
+                  {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
+                </div>
               </div>
             )}
 
@@ -1143,13 +1156,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               <div className="py-4 border-b border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                  <button type="button" disabled={bookingStep !== 5} onClick={() => setShowAdditionalServices(true)} className="rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] disabled:opacity-40 disabled:cursor-not-allowed">
+                  <button type="button" onClick={() => setShowAdditionalServices(true)} className="rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] disabled:opacity-40 disabled:cursor-not-allowed">
                     {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
                   </button>
                 </div>
                 <p className="text-[10px] text-[#786C63]">Escolha entre os serviços ativos cadastrados no sistema. Os preços são os valores oficiais carregados do cadastro.</p>
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                {showAdditionalServices && <div className="fixed inset-0 z-[70] bg-[#49382E]/50 backdrop-blur-sm flex items-center justify-center p-4">
+                {showAdditionalServices && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
                     <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Complementos para {selectedService.title}</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
                     <p className="text-xs text-[#786C63] mb-3">Selecione os serviços adicionais desejados. Os valores e descrições vêm do cadastro oficial; pedidos personalizados sem preço cadastrado não alteram o total automaticamente.</p>
@@ -1157,7 +1170,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     {!(['alongamento', 'blindagem'].includes(selectedService.category)) && <p className="text-xs text-[#786C63] py-3">Não há complementos cadastrados para este procedimento. Registre pedidos especiais abaixo, sem alterar o preço automaticamente.</p>}
                     <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
                   </div>
-                </div>}
+                </div>, document.body)}
                 <label className="block text-xs font-semibold text-[#49382E]">Pedido personalizado (opcional)
                   <textarea value={customRequest} onChange={event => setCustomRequest(event.target.value)}
                     placeholder="Ex.: decoração especial de unhas (preço sujeito à confirmação)"

@@ -16,7 +16,6 @@ import {
   WhatsAppConfig,
   PaymentConfig
 } from './types';
-import { sendAppointmentWhatsAppConfirmation } from './services/whatsappService';
 import { playDiscreteAdminNotificationSound, registerUserInteraction } from './services/soundNotificationService';
 import { calculateDeposit40, formatBRL } from './services/notificationTemplates';
 import {
@@ -666,36 +665,12 @@ export default function App() {
     }
 
     const prevApt = appointments.find(a => a.id === updated.id);
-    const isNowConfirmed = updated.status === 'confirmado' && (!prevApt || prevApt.status !== 'confirmado');
     const finalized = result.appointment ? { ...updated, ...result.appointment } : updated;
-
     setAppointments(prev => prev.map(a => (a.id === updated.id ? finalized : a)));
 
-    // If appointment became confirmed and auto-send is enabled
-    if (isNowConfirmed && whatsappConfig.autoSendOnConfirm && updated.whatsappStatus !== 'enviado') {
-      try {
-        const res = await sendAppointmentWhatsAppConfirmation(
-          updated,
-          whatsappConfig.customTemplate,
-          studioAddress.fullAddress
-        );
-        const withWa: Appointment = {
-          ...updated,
-          whatsappStatus: res.status === 'sent' ? 'enviado' : res.status === 'simulated' ? 'simulado' : 'falha',
-          whatsappSentAt: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          whatsappLastMessage: res.previewText || res.message
-        };
-        setAppointments(prev => prev.map(a => (a.id === updated.id ? withWa : a)));
-        setWaGlobalToast({
-          message: res.message,
-          clientName: updated.clientName,
-          clientPhone: updated.clientPhone,
-          success: res.status === 'sent',
-          fallbackUrl: res.fallbackUrl
-        });
-        setTimeout(() => setWaGlobalToast(null), 6000);
-      } catch {}
-    }
+    // A confirmação por WhatsApp é exclusiva da criação manual no painel administrativo.
+    // Alterar o estado de um agendamento existente nunca dispara esta mensagem.
+
   };
 
   const handleDeleteAppointment = async (appointment: Appointment) => {

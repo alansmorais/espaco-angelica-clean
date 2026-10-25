@@ -148,6 +148,118 @@ function getServicesSheet() {
   return sheets.length ? sheets[0] : null;
 }
 
+
+// Public, read-only service catalogue shared by GET and POST.
+// Keep this action unauthenticated; admin/write actions remain protected.
+var SERVICE_CATALOG_API_VERSION = "2026-10-25-depilacao-fix-1";
+
+function getOfficialServicesCatalogueResponse() {
+  try {
+    var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+    if (!ss) {
+      return { status: "error", message: "Não foi possível abrir a planilha oficial de serviços.", apiVersion: SERVICE_CATALOG_API_VERSION };
+    }
+
+    var expectedNames = ["Serviços", "Servicos", "Depilação", "Depilacao"];
+    var serviceSheets = [];
+    expectedNames.forEach(function(name) {
+      var sheet = ss.getSheetByName(name);
+      if (sheet && serviceSheets.indexOf(sheet) === -1) serviceSheets.push(sheet);
+    });
+
+    if (!serviceSheets.length) {
+      return {
+        status: "error",
+        message: "Nenhuma aba oficial de serviços encontrada. Verifique os nomes Serviços, Servicos, Depilação ou Depilacao.",
+        apiVersion: SERVICE_CATALOG_API_VERSION,
+        total: 0
+      };
+    }
+
+    var servicesList = [];
+    var seenServiceIds = {};
+    var skippedRows = 0;
+    serviceSheets.forEach(function(servSheet) {
+      var sRows = servSheet.getDataRange().getValues();
+      var isDepilationSheet = /^depila[cç][aã]o$/i.test(String(servSheet.getName() || "").trim());
+      for (var s = 1; s < sRows.length; s++) {
+        var sRow = sRows[s];
+        var sId = String(sRow[0] || "").trim();
+        var sTitle = String(sRow[1] || "").trim();
+        var sCategory = String(sRow[2] || "").trim();
+        var category = isDepilationSheet ? "depilacao" : sCategory;
+        var sPriceRaw = sRow[3];
+        var sDuration = String(sRow[5] || "").trim();
+
+        // Sheet name is authoritative for Depilação; all other tabs require a category in column C.
+        if (!sId || !sTitle || !category || sPriceRaw === "" || sPriceRaw === null ||
+            sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) {
+          skippedRows++;
+          continue;
+        }
+        if (seenServiceIds[sId]) {
+          // Do not return duplicate IDs: booking validation identifies services by ID.
+          skippedRows++;
+          continue;
+        }
+        seenServiceIds[sId] = true;
+
+        var specsVal = String(sRow[10] || "");
+        var specsArr = specsVal ? specsVal.split(",").map(function(item) {
+          return item.trim();
+        }).filter(Boolean) : [];
+        var updatedAt = "";
+        if (sRow[12]) {
+          try {
+            var updateDate = sRow[12] instanceof Date ? sRow[12] : new Date(sRow[12]);
+            if (!isNaN(updateDate.getTime())) updatedAt = updateDate.toISOString();
+          } catch (dateError) {}
+        }
+
+        servicesList.push({
+          id: sId,
+          title: sTitle,
+          category: category,
+          price: Number(sPriceRaw),
+          priceFormatted: String(sRow[4] || ""),
+          duration: sDuration,
+          badge: String(sRow[6] || ""),
+          description: String(sRow[7] || ""),
+          note: String(sRow[8] || ""),
+          imageUrl: String(sRow[9] || ""),
+          specs: specsArr,
+          active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== "false",
+          updatedAt: updatedAt
+        });
+      }
+    });
+
+    return {
+      status: "success",
+      services: servicesList,
+      total: servicesList.length,
+      apiVersion: SERVICE_CATALOG_API_VERSION,
+      diagnostics: {
+        sheetsRead: serviceSheets.map(function(sheet) { return sheet.getName(); }),
+        rowsSkipped: skippedRows,
+        depilationServices: servicesList.filter(function(service) {
+          return String(service.category || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "depilacao";
+        }).length,
+        depilationImages: servicesList.filter(function(service) {
+          return String(service.category || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "depilacao" && !!String(service.imageUrl || "").trim();
+        }).length
+      }
+    };
+  } catch (error) {
+    console.error("Official services catalogue read failed: " + error);
+    return {
+      status: "error",
+      message: "Falha ao ler o catálogo oficial. Confirme o acesso do script à planilha e tente novamente.",
+      apiVersion: SERVICE_CATALOG_API_VERSION
+    };
+  }
+}
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
   return String(str)
@@ -939,42 +1051,7 @@ function doPost(e) {
     }
 
     if (data.action === "getServices") {
-      var serviceSheets = getServicesSheets();
-      if (!serviceSheets.length) {
-        return responseJSON({ status: "error", message: "Nenhuma aba oficial de serviços encontrada (Serviços, Servicos ou Depilação)." });
-      }
-      var servicesList = [];
-      var seenServiceIds = {};
-      serviceSheets.forEach(function(servSheet) {
-        var sRows = servSheet.getDataRange().getValues();
-        for (var s = 1; s < sRows.length; s++) {
-          var sRow = sRows[s];
-          var sId = String(sRow[0] || '').trim();
-          var sTitle = String(sRow[1] || '').trim();
-          var sCategory = String(sRow[2] || '').trim();
-          var isDepilationSheet = /^depila[cç][aã]o$/i.test(String(servSheet.getName() || '').trim());
-          var category = isDepilationSheet ? "depilacao" : sCategory;
-          var sPriceRaw = sRow[3];
-          var sDuration = String(sRow[5] || '').trim();
-          // The official Depilação tab itself defines the category. Do not discard
-          // valid rows just because their category cell (column C) is blank.
-          if (!sId || !sTitle || (!category && !sCategory) || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
-          if (seenServiceIds[sId]) continue;
-          seenServiceIds[sId] = true;
-          var specsVal = String(sRow[10] || '');
-          var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-          servicesList.push({
-            id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
-            priceFormatted: String(sRow[4] || ''), duration: sDuration,
-            badge: String(sRow[6] || ''), description: String(sRow[7] || ''),
-            note: String(sRow[8] || ''), imageUrl: String(sRow[9] || ''),
-            specs: specsArr,
-            active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
-            updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
-          });
-        }
-      });
-      return responseJSON({ status: "success", services: servicesList, total: servicesList.length });
+      return responseJSON(getOfficialServicesCatalogueResponse());
     }
 
     if (data.action === "saveService") {
@@ -1750,42 +1827,7 @@ function doGet(e) {
     }
 
     if (e.parameter.action === "getServices") {
-      var serviceSheets = getServicesSheets();
-      if (!serviceSheets.length) {
-        return responseJSON({ status: "error", message: "Nenhuma aba oficial de serviços encontrada (Serviços, Servicos ou Depilação)." });
-      }
-      var servicesList = [];
-      var seenServiceIds = {};
-      serviceSheets.forEach(function(servSheet) {
-        var sRows = servSheet.getDataRange().getValues();
-        for (var s = 1; s < sRows.length; s++) {
-          var sRow = sRows[s];
-          var sId = String(sRow[0] || '').trim();
-          var sTitle = String(sRow[1] || '').trim();
-          var sCategory = String(sRow[2] || '').trim();
-          var isDepilationSheet = /^depila[cç][aã]o$/i.test(String(servSheet.getName() || '').trim());
-          var category = isDepilationSheet ? "depilacao" : sCategory;
-          var sPriceRaw = sRow[3];
-          var sDuration = String(sRow[5] || '').trim();
-          // The official Depilação tab itself defines the category. Do not discard
-          // valid rows just because their category cell (column C) is blank.
-          if (!sId || !sTitle || (!category && !sCategory) || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
-          if (seenServiceIds[sId]) continue;
-          seenServiceIds[sId] = true;
-          var specsVal = String(sRow[10] || '');
-          var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-          servicesList.push({
-            id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
-            priceFormatted: String(sRow[4] || ''), duration: sDuration,
-            badge: String(sRow[6] || ''), description: String(sRow[7] || ''),
-            note: String(sRow[8] || ''), imageUrl: String(sRow[9] || ''),
-            specs: specsArr,
-            active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
-            updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
-          });
-        }
-      });
-      return responseJSON({ status: "success", services: servicesList, total: servicesList.length });
+      return responseJSON(getOfficialServicesCatalogueResponse());
     }
 
     return fetchAppointmentsFromSheet();

@@ -46,7 +46,7 @@ export const ExtraEncaixeModal: React.FC<ExtraEncaixeModalProps> = ({
         </div>
 
         <p className="font-jakarta text-xs text-[#786C63]">
-          Permite criar um atendimento fora dos horários habituais do ateliê ou sobrepor um intervalo com taxa de urgência opcional.
+          Permite criar um atendimento fora dos horários habituais do Espaço ou sobrepor um intervalo com taxa de urgência opcional.
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 font-jakarta text-xs">

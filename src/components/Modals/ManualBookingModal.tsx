@@ -26,6 +26,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
+  const [clientBirthDate, setClientBirthDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'debito' | 'credito' | 'pix' | 'permuta' | 'pacote_mensal' | 'outro'>('pix');
   const [selectedServiceId, setSelectedServiceId] = useState(services[0]?.id || '');
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [showAdditionalServices, setShowAdditionalServices] = useState(false);
@@ -90,6 +92,11 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       return;
     }
 
+    if (!clientBirthDate.trim()) {
+      setSubmitError('A data de nascimento da cliente é obrigatória.');
+      return;
+    }
+
     if (!date.trim() || !time.trim()) {
       setSubmitError('Por favor, informe a data e o horário do atendimento.');
       return;
@@ -110,7 +117,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
     const recurrenceConfig: RecurrenceConfig | undefined = isRecurring
       ? {
           frequencyDays: recurrenceFreq,
-          frequencyLabel: `A cada ${recurrenceFreq} dias`,
+          frequencyLabel: recurrenceFreq === 7 ? 'Toda semana' : `A cada ${recurrenceFreq} dias`,
           totalSessions,
           seriesId: `series-${Date.now()}`,
           currentSession: 1
@@ -124,6 +131,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       clientName: trimmedName,
       clientPhone: trimmedPhone,
       clientEmail: clientEmail.trim() || undefined,
+      clientBirthDate,
+      paymentMethod,
       serviceId: serv.id,
       additionalServiceIds,
       customRequest: customRequest.trim() || undefined,
@@ -275,6 +284,11 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
           </div>
 
           <div>
+            <label className="block text-[#49382E] font-semibold mb-1">Data de nascimento da cliente *</label>
+            <input required type="date" value={clientBirthDate} max={new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })} onChange={e => setClientBirthDate(e.target.value)} disabled={isSubmitting}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#FDFBF9] text-[#49382E] border border-[#E8D9B5] min-h-[44px]" />
+          </div>
+          <div>
             <label className="block text-[#49382E] font-semibold mb-1">Procedimento</label>
             <select
               value={selectedServiceId}
@@ -377,6 +391,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
                     onChange={e => setRecurrenceFreq(Number(e.target.value))}
                     className="w-full p-2 rounded-lg bg-[#FFFFFF] text-[#49382E] border border-[#E8D9B5]"
                   >
+                    <option value={7}>Toda semana</option>
                     <option value={15}>A cada 15 dias</option>
                     <option value={21}>A cada 21 dias (Recomendado)</option>
                     <option value={30}>A cada 30 dias</option>
@@ -400,7 +415,11 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
 
           {/* Forma de Pagamento */}
           <div>
-            <label className="block text-[#49382E] font-semibold mb-1">Modalidade Pix</label>
+            <label className="block text-[#49382E] font-semibold mb-1">Forma de pagamento</label>
+            <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as typeof paymentMethod)} className="mb-2 w-full p-3 rounded-xl bg-white border border-[#E8D9B5] text-[#49382E]">
+              <option value="debito">Cartão de débito</option><option value="credito">Cartão de crédito</option><option value="pix">Pix</option><option value="permuta">Permuta</option><option value="pacote_mensal">Pacote mensal</option><option value="outro">Outro</option>
+            </select>
+            <label className="block text-[#49382E] font-semibold mb-1">Condição do Pix (quando aplicável)</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"

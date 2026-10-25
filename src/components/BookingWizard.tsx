@@ -163,13 +163,22 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
   const nextAvailableSuggestion = (() => {
     const configuredSlots = timeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
-    for (let offset = 0; offset <= 120; offset++) {
+    // First offer another time on the date the client already selected.
+    if (!isDateBlocked(selectedDate)) {
+      const sameDaySlot = configuredSlots.find(slot => !isSlotUnavailable(slot.time, selectedDate));
+      if (sameDaySlot) {
+        const sameDay = new Date(`${selectedDate}T12:00:00`);
+        return { date: selectedDate, time: sameDaySlot.time, label: 'Nesta mesma data', sameDate: true };
+      }
+    }
+    // Only suggest a different date if the selected date has no free configured slots.
+    for (let offset = 1; offset <= 120; offset++) {
       const candidate = new Date(`${selectedDate}T12:00:00`);
       candidate.setDate(candidate.getDate() + offset);
       const candidateKey = toDateKey(candidate);
       if (isPastDate(candidate) || isDateBlocked(candidateKey)) continue;
       const available = configuredSlots.find(slot => !isSlotUnavailable(slot.time, candidateKey));
-      if (available) return { date: candidateKey, time: available.time, label: candidate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) };
+      if (available) return { date: candidateKey, time: available.time, label: candidate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }), sameDate: false };
     }
     return null;
   })();
@@ -745,7 +754,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 {!isDateBlocked(selectedDate) && timeSlots.filter(s => s.active && s.status === 'disponivel' && !isSlotUnavailable(s.time)).length === 0 ? (
                   <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 text-center space-y-2">
                     <p className="font-jakarta text-sm font-semibold text-[#49382E]">Não há horários disponíveis nesta data.</p>
-                    <p className="font-jakarta text-xs text-[#786C63]">Não encontramos um horário livre nesta data. Você pode tentar esta sugestão:</p>
+                    <p className="font-jakarta text-xs text-[#786C63]">{nextAvailableSuggestion?.sameDate ? 'Este horário não está disponível. Podemos sugerir outro horário nesta mesma data:' : 'Não encontramos outro horário livre nesta data. Podemos sugerir a próxima data disponível:'}</p>
                     {nextAvailableSuggestion ? (
                       <div className="rounded-lg bg-white border border-[#E8D9B5] p-3 space-y-1">
                         <p className="font-jakarta text-sm font-bold text-[#49382E]">{nextAvailableSuggestion.label}</p>

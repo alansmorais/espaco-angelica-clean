@@ -295,7 +295,8 @@ function getPublicAvailabilityData() {
 function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
   var config = getScheduleConfigData();
   var start = timeToMinutes(timeKey);
-  var end = start + durationMinutes;
+  // Availability is controlled by manually configured slots, not service duration.
+  var end = start;
   var parts = dateKey.split("-");
   var date = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
   var dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -308,7 +309,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
     if (day.open === true) {
       var open = timeToMinutes(String(day.openTime || ""));
       var close = timeToMinutes(String(day.closeTime || ""));
-      if (open === null || close === null || start < open || end > close) {
+      if (open === null || close === null || start < open || start >= close) {
         return { allowed: false, message: "Este horário está fora do expediente configurado. Escolha outro horário." };
       }
     }
@@ -321,7 +322,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
       var slotStatus = String(slot.status || "").toLowerCase();
       if (["bloqueado", "autoclave", "almoco"].indexOf(slotStatus) === -1) continue;
       var slotStart = timeToMinutes(String(slot.time || ""));
-      if (slotStart !== null && intervalsOverlap(start, end, slotStart, slotStart + 30)) {
+      if (slotStart !== null && start >= slotStart && start < slotStart + 30) {
         return { allowed: false, message: "Este horário está bloqueado na configuração semanal. Escolha outro horário." };
       }
     }
@@ -334,7 +335,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
     if (block.allDay === true) return { allowed: false, message: "Esta data está bloqueada para atendimentos. Escolha outro dia." };
     var blockStart = timeToMinutes(String(block.startTime || ""));
     var blockEnd = timeToMinutes(String(block.endTime || ""));
-    if (blockStart !== null && blockEnd !== null && intervalsOverlap(start, end, blockStart, blockEnd)) {
+    if (blockStart !== null && blockEnd !== null && start >= blockStart && start < blockEnd) {
       return { allowed: false, message: "Este intervalo está bloqueado. Escolha outro horário." };
     }
   }
@@ -1391,7 +1392,7 @@ function doPost(e) {
       // Enforce persisted weekly hours and date/time blocks on the authoritative
       // booking endpoint, not only in the public calendar UI.
       var savedScheduleValidation = validateAgainstSavedSchedule(
-        requestedDateKey, requestedTimeKey, requestedServiceDuration
+        requestedDateKey, requestedTimeKey, 0
       );
       if (!savedScheduleValidation.allowed) {
         return responseJSON({
@@ -1448,17 +1449,17 @@ function doPost(e) {
         var existingTimeKey = normalizeBookingTime(existingTimeRaw);
         var sameDate = requestedDateKey === existingDateKey;
         var requestedStart = timeToMinutes(requestedTimeKey);
-        var requestedEnd = requestedStart + requestedServiceDuration;
+        var requestedEnd = requestedStart;
         var allDayBlocked = existingStatus === 'bloqueado' && sameDate &&
           ['dia inteiro', 'dia todo', 'all day'].indexOf(existingTimeRaw.toLowerCase()) !== -1;
         var blockInterval = existingStatus === 'bloqueado' && sameDate ? parseBlockInterval(existingTimeRaw) : null;
-        var slotBlocked = Boolean(blockInterval && intervalsOverlap(requestedStart, requestedEnd, blockInterval.start, blockInterval.end));
+        var slotBlocked = Boolean(blockInterval && requestedStart >= blockInterval.start && requestedStart < blockInterval.end);
         var activeBookingConflict = false;
         if (sameDate && ['cancelado', 'teste_sistema', 'bloqueado'].indexOf(existingStatus) === -1) {
           var existingStart = timeToMinutes(existingTimeKey);
           if (existingStart !== null) {
-            var existingDuration = getServiceDurationMinutes(existing[i][15], String(existing[i][4] || ''));
-            activeBookingConflict = intervalsOverlap(requestedStart, requestedEnd, existingStart, existingStart + existingDuration);
+            // Prevent duplicate bookings at the same configured start time only.
+            activeBookingConflict = requestedStart === existingStart;
           }
         }
         if (allDayBlocked || slotBlocked || activeBookingConflict) {

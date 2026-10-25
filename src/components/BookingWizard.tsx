@@ -128,7 +128,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const isSlotUnavailable = (slotTime: string): boolean => {
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
-    const end = start + durationMinutes(selectedService.duration);
+    const end = start + combinedDurationMinutes;
     if (daySchedules && daySchedules.length > 0) {
       const date = new Date(`${selectedDate}T12:00:00`);
       const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
@@ -175,12 +175,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   // Price calculations (40% deposit or 100% full prepayment of selected procedure's official price)
-  const canAddNailArt = ['alongamento', 'blindagem'].includes(selectedService.category);
-  const eligibleAdditionalServices = canAddNailArt
-    ? services.filter(service => service.active !== false && service.category === 'nailart' && service.id !== selectedService.id)
-    : [];
+  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id);
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const servicePrice = selectedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0);
+  const combinedDurationMinutes = durationMinutes(selectedService.duration) + additionalServices.reduce((sum, service) => sum + durationMinutes(service.duration), 0);
   const fullPrepayment = calculateFullPrepayment(servicePrice);
   const standardDeposit = calculateDeposit40(servicePrice, paymentConfig.depositAmount);
   const standardBalance = calculateRemainingBalance(servicePrice, standardDeposit);
@@ -456,7 +454,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       homeAddress: appointmentLocation === 'home' ? homeAddress.trim() : undefined,
       serviceTitle: [selectedService.title, ...additionalServices.map(service => service.title)].join(' + '),
       servicePrice: `R$ ${formatBRL(servicePrice)}`,
-      serviceDuration: selectedService.duration,
+      serviceDuration: `${Math.floor(combinedDurationMinutes / 60) > 0 ? `${Math.floor(combinedDurationMinutes / 60)} h ` : ''}${combinedDurationMinutes % 60 > 0 ? `${combinedDurationMinutes % 60} min` : ''}`.trim(),
       date: selectedDate,
       time: selectedTime,
       status: 'pendente_pix',
@@ -650,7 +648,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                      <p className="text-[11px] text-[#786C63]">Adicione apenas os complementos Nail Art cadastrados para alongamento ou blindagem.</p>
+                      <p className="text-[11px] text-[#786C63]">Adicione um ou mais serviços do catálogo ao mesmo agendamento.</p>
                     </div>
                     <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
                       {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
@@ -1155,10 +1153,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
                 {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
-                    <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Complementos para {selectedService.title}</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
+                    <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
                     <p className="text-xs text-[#786C63] mb-3">Selecione os serviços adicionais desejados. Os valores e descrições vêm do cadastro oficial; pedidos personalizados sem preço cadastrado não alteram o total automaticamente.</p>
                     {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="accent-[#D4AF37]" /><span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span></span><span className="font-semibold whitespace-nowrap">{service.priceFormatted}</span></label>)}
-                    {!canAddNailArt && <p className="text-xs text-[#786C63] py-3">Este procedimento não possui serviços adicionais disponíveis.</p>}{canAddNailArt && eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há serviços adicionais ativos cadastrados para este procedimento.</p>}
+                    {eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há outros serviços ativos cadastrados.</p>}
                     <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
                   </div>
                 </div>, document.body)}

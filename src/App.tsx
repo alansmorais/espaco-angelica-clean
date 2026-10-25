@@ -177,6 +177,8 @@ export default function App() {
   const [publicAvailability, setPublicAvailability] = useState<Appointment[]>([]);
   const [publicBlockedDates, setPublicBlockedDates] = useState<string[]>([]);
   const [publicAvailabilityLoaded, setPublicAvailabilityLoaded] = useState(false);
+  const [publicScheduleLoaded, setPublicScheduleLoaded] = useState(false);
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [publicAvailabilityError, setPublicAvailabilityError] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<Service>(
     activeServices[0] || services[0] || undefined
@@ -444,6 +446,7 @@ export default function App() {
         setPublicAvailability(result.appointments);
         setPublicBlockedDates(result.blockedDates);
         if (result.weeklySchedule) {
+          setPublicScheduleLoaded(true);
           const weekly = result.weeklySchedule;
           const dayMap: Record<string, string> = { seg: 'monday', ter: 'tuesday', qua: 'wednesday', qui: 'thursday', sex: 'friday', sab: 'saturday', dom: 'sunday' };
           setDaySchedules(current => current.map(day => {
@@ -883,10 +886,7 @@ export default function App() {
           <HeaderPublic
             studioWhatsApp={String(whatsappConfig?.phone || '')}
             studioCityLabel={studioAddress.city ? [studioAddress.city, studioAddress.state].filter(Boolean).join(' • ') : ''}
-            onOpenBooking={() => {
-              const el = document.getElementById('wizard-agendamento');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            }}
+            onOpenBooking={() => setBookingModalOpen(true)}
             onOpenAdmin={() => { setAdminLoginError(null); setAdminLoginModalOpen(true); }}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
@@ -904,10 +904,7 @@ export default function App() {
           <main className="w-full pt-20 flex-1">
             {/* Hero Section with Official Gold Logo and Badges */}
             <HeroSection
-              onStartBooking={() => {
-                const el = document.getElementById('wizard-agendamento');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
+              onStartBooking={() => setBookingModalOpen(true)}
               onViewServices={() => {
                 const el = document.getElementById('catalogo-vitrine');
                 el?.scrollIntoView({ behavior: 'smooth' });
@@ -921,11 +918,12 @@ export default function App() {
               selectedServiceId={selectedService?.id}
             />
 
-            {/* Public manual-test flow: official data is read-only; BookingWizard blocks confirmation on GitHub Pages. */}
-            {activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured ? (
+            {/* Booking form is opened as a focused modal from the public CTAs. */}
+            {bookingModalOpen && activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured && (
               <BookingWizard
                 selectedService={activeServices.find(s => s.id === selectedService?.id) || activeServices[0]}
                 onBookingConfirmed={handleBookingConfirmed}
+                onClose={() => setBookingModalOpen(false)}
                 timeSlots={timeSlots}
                 blacklist={blacklist}
                 studioAddress={studioAddress}
@@ -934,13 +932,17 @@ export default function App() {
                 onSelectService={handleSelectService}
                 appointments={publicAvailability}
                 blockedDates={publicBlockedDates}
-                daySchedules={daySchedules}
+                daySchedules={publicScheduleLoaded ? daySchedules : undefined}
               />
-            ) : (
-              <section id="wizard-agendamento" className="mx-auto my-12 max-w-3xl rounded-2xl border border-[#E8D9B5] bg-white p-8 text-center">
-                <h2 className="font-syne text-xl font-bold text-[#49382E]">Agenda temporariamente indisponível</h2>
-                <p className="mt-2 text-sm text-[#786C63]">{!publicAvailabilityLoaded ? (publicAvailabilityError || 'Carregando a disponibilidade oficial da agenda…') : !paymentConfigLoaded ? 'Carregando a configuração oficial de pagamento…' : !paymentConfigConfigured ? 'Os dados oficiais de Pix ainda não foram cadastrados na planilha. O agendamento está temporariamente indisponível para evitar instruções de pagamento incorretas.' : 'Não foi possível carregar o catálogo oficial de serviços. Nenhum serviço de demonstração será exibido. Tente novamente em instantes ou entre em contato com o espaço.'}</p>
-              </section>
+            )}
+            {bookingModalOpen && (!publicAvailabilityLoaded || !paymentConfigLoaded || !paymentConfigConfigured || activeServices.length === 0) && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#49382E]/60 p-4" role="dialog" aria-modal="true">
+                <div className="w-full max-w-lg rounded-2xl border border-[#E8D9B5] bg-white p-6 text-center shadow-2xl">
+                  <button type="button" onClick={() => setBookingModalOpen(false)} className="mb-4 ml-auto block rounded-full border border-[#E8D9B5] px-4 py-2 text-sm">Fechar</button>
+                  <h2 className="font-syne text-xl font-bold text-[#49382E]">Agenda temporariamente indisponível</h2>
+                  <p className="mt-2 text-sm text-[#786C63]">{!publicAvailabilityLoaded ? (publicAvailabilityError || 'Carregando a disponibilidade oficial da agenda…') : !paymentConfigLoaded ? 'Carregando a configuração oficial de pagamento…' : !paymentConfigConfigured ? 'Os dados oficiais de Pix ainda não foram cadastrados na planilha. O agendamento está temporariamente indisponível para evitar instruções de pagamento incorretas.' : 'Não foi possível carregar o catálogo oficial de serviços. Nenhum serviço de demonstração será exibido. Tente novamente em instantes ou entre em contato com o espaço.'}</p>
+                </div>
+              </div>
             )}
 
             {/* Galeria de Criações Recentes */}

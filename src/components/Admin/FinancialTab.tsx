@@ -520,7 +520,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
             </span>
           </div>
           <span className="font-jakarta text-[11px] text-[#786C63]">
-            Segurança de comparecimento no ateliê
+            Segurança de comparecimento no Espaço
           </span>
         </div>
       </div>
@@ -751,7 +751,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
                   <div className="p-4 border-b border-[#E8D9B5] flex items-center justify-between gap-3">
                     <div>
                       <h3 className="font-syne text-lg font-bold text-[#49382E]">Escolher do Google Drive</h3>
-                      <p className="font-jakarta text-xs text-[#786C63]">Fotos da pasta oficial do ateliê</p>
+                      <p className="font-jakarta text-xs text-[#786C63]">Fotos da pasta oficial do Espaço</p>
                     </div>
                     <button type="button" onClick={() => setIsDrivePickerOpen(false)} className="rounded-lg p-2 hover:bg-[#F7EFEA]" aria-label="Fechar seletor">✕</button>
                   </div>
@@ -1024,7 +1024,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
 
                 <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-[#49382E] space-y-2 leading-relaxed">
                   <p>
-                    O procedimento <strong className="text-[#49382E]">"{serviceToDelete.title}"</strong> está vinculado a <strong>{referencedCount} agendamento(s)</strong> no histórico do ateliê.
+                    O procedimento <strong className="text-[#49382E]">"{serviceToDelete.title}"</strong> está vinculado a <strong>{referencedCount} agendamento(s)</strong> no histórico do Espaço.
                   </p>
                   <p className="text-amber-800">
                     Para garantir a exatidão dos relatórios financeiros e o histórico de atendimentos das clientes, não é recomendada a exclusão permanente deste registro.

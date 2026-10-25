@@ -73,6 +73,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [pixCopyError, setPixCopyError] = useState<boolean>(false);
   const [receiptFileName, setReceiptFileName] = useState<string | null>(null);
   const [bookingWhatsAppModal, setBookingWhatsAppModal] = useState<boolean>(false);
+  const [isSharingRequestImage, setIsSharingRequestImage] = useState<boolean>(false);
   const [confirmedAppointment, setConfirmedAppointment] = useState<Appointment | null>(null);
   const [isSubmittingBooking, setIsSubmittingBooking] = useState<boolean>(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
@@ -245,6 +246,132 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       setReceiptFileName(file.name);
+    }
+  };
+
+  const handleShareRequestImage = async () => {
+    const appointment = confirmedAppointment;
+    if (!appointment || isSharingRequestImage) return;
+    setIsSharingRequestImage(true);
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1350;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Não foi possível preparar a imagem neste dispositivo.');
+
+      // Branded, data-driven PNG. All appointment details come from the saved request.
+      ctx.fillStyle = '#FBF7F2';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(42, 42, 996, 1266);
+      ctx.strokeStyle = '#E8D9B5';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(42, 42, 996, 1266);
+
+      ctx.fillStyle = '#D4AF37';
+      ctx.fillRect(42, 42, 996, 14);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#49382E';
+      ctx.font = 'bold 42px Arial, sans-serif';
+      ctx.fillText('ESPAÇO ANGÉLICA DO CARMO', 540, 132);
+      ctx.fillStyle = '#9A7B20';
+      ctx.font = 'bold 24px Arial, sans-serif';
+      ctx.fillText('SOLICITAÇÃO DE AGENDAMENTO', 540, 184);
+
+      ctx.fillStyle = '#F7EFEA';
+      ctx.fillRect(92, 222, 896, 88);
+      ctx.fillStyle = '#49382E';
+      ctx.font = 'bold 28px Arial, sans-serif';
+      ctx.fillText('PENDENTE DE CONFIRMAÇÃO', 540, 275);
+
+      const left = 112;
+      let y = 378;
+      const valueX = 112;
+      const maxWidth = 850;
+      const lineHeight = 40;
+      const drawField = (label: string, value: string) => {
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#786C63';
+        ctx.font = 'bold 22px Arial, sans-serif';
+        ctx.fillText(label.toUpperCase(), left, y);
+        y += 38;
+        ctx.fillStyle = '#49382E';
+        ctx.font = '28px Arial, sans-serif';
+        const words = String(value || 'Não informado').split(/\\s+/);
+        let line = '';
+        for (const word of words) {
+          const candidate = line ? line + ' ' + word : word;
+          if (ctx.measureText(candidate).width > maxWidth && line) {
+            ctx.fillText(line, valueX, y);
+            y += lineHeight;
+            line = word;
+          } else {
+            line = candidate;
+          }
+        }
+        if (line) { ctx.fillText(line, valueX, y); y += lineHeight; }
+        y += 22;
+      };
+
+      drawField('Procedimento', appointment.serviceTitle || selectedService.title);
+      drawField('Data desejada', String(appointment.date || selectedDate));
+      drawField('Horário desejado', String(appointment.time || selectedTime));
+      drawField('Valor informado', String(appointment.servicePrice || selectedService.priceFormatted));
+      drawField(
+        appointment.paymentMode === 'pre_pagamento_100' ? 'Pré-pagamento informado' : 'Sinal informado',
+        'R$ ' + formatBRL(Number(appointment.depositAmount ?? depositValue))
+      );
+      drawField(
+        'Local do atendimento',
+        appointment.appointmentLocation === 'home'
+          ? (appointment.homeAddress || 'Atendimento em domicílio — endereço a confirmar')
+          : (studioAddress.fullAddress || [studioAddress.street, studioAddress.number, studioAddress.neighborhood, studioAddress.city, studioAddress.state].filter(Boolean).join(', ') || 'Endereço a confirmar')
+      );
+
+      ctx.strokeStyle = '#E8D9B5';
+      ctx.beginPath();
+      ctx.moveTo(112, Math.min(y + 4, 1110));
+      ctx.lineTo(968, Math.min(y + 4, 1110));
+      ctx.stroke();
+      y = Math.min(y + 54, 1160);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#786C63';
+      ctx.font = '22px Arial, sans-serif';
+      ctx.fillText('Esta imagem registra uma solicitação, não uma confirmação de horário.', 112, y);
+      ctx.fillText('A disponibilidade e o pagamento serão conferidos pela profissional.', 112, y + 34);
+      ctx.fillStyle = '#9A7B20';
+      ctx.font = 'bold 20px Arial, sans-serif';
+      ctx.fillText('WhatsApp: (12) 97406-2241', 112, 1250);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(file => file ? resolve(file) : reject(new Error('Falha ao gerar o PNG.')), 'image/png');
+      });
+      const file = new File([blob], 'solicitacao-agendamento-angelica.png', { type: 'image/png' });
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Solicitação de agendamento',
+          text: 'Olá, Angélica! Segue a imagem com os dados da minha solicitação de agendamento. Por favor, confirme a disponibilidade.'
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+        window.alert('A imagem PNG foi baixada. Abra o WhatsApp e anexe o arquivo à conversa com a Angélica.');
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      window.alert(error instanceof Error ? error.message : 'Não foi possível compartilhar a imagem. Tente novamente.');
+    } finally {
+      setIsSharingRequestImage(false);
     }
   };
 
@@ -1243,6 +1370,15 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               </div>
             ) : (
               <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={handleShareRequestImage}
+                  disabled={isSharingRequestImage}
+                  className="w-full py-3 px-4 rounded-full bg-[#25D366] hover:bg-[#20bd5a] disabled:opacity-60 text-white font-jakarta text-xs sm:text-sm font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 min-h-[46px]"
+                >
+                  <span className="material-symbols-outlined text-[20px]">ios_share</span>
+                  <span>{isSharingRequestImage ? 'Preparando imagem...' : 'Compartilhar solicitação em PNG'}</span>
+                </button>
                 <a
                   href={buildOfficialWhatsAppUrl({
                     clientName: confirmedAppointment?.clientName || clientName,

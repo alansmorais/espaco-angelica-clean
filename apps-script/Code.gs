@@ -1741,40 +1741,39 @@ function doGet(e) {
     }
 
     if (e.parameter.action === "getServices") {
-      var servSheet = getServicesSheet();
-      if (!servSheet) {
-        return responseJSON({ status: "error", message: "Aba 'Serviços' (ou 'Servicos') não encontrada na planilha oficial." });
+      var serviceSheets = getServicesSheets();
+      if (!serviceSheets.length) {
+        return responseJSON({ status: "error", message: "Nenhuma aba oficial de serviços encontrada (Serviços, Servicos ou Depilação)." });
       }
-      var sRows = servSheet.getDataRange().getValues();
       var servicesList = [];
-      for (var s = 1; s < sRows.length; s++) {
-        var sRow = sRows[s];
-        var sId = String(sRow[0] || '').trim();
-        var sTitle = String(sRow[1] || '').trim();
-        var sCategory = String(sRow[2] || '').trim();
-        var sPriceRaw = sRow[3];
-        var sDuration = String(sRow[5] || '').trim();
-        // Ignore incomplete official rows instead of publishing invented category,
-        // price or duration defaults as if they were real services.
-        if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
-        var specsVal = String(sRow[10] || '');
-        var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-        servicesList.push({
-          id: sId,
-          title: sTitle,
-          category: sCategory,
-          price: Number(sPriceRaw),
-          priceFormatted: String(sRow[4] || ''),
-          duration: sDuration,
-          badge: String(sRow[6] || ''),
-          description: String(sRow[7] || ''),
-          note: String(sRow[8] || ''),
-          imageUrl: String(sRow[9] || ''),
-          specs: specsArr,
-          active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
-          updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
-        });
-      }
+      var seenServiceIds = {};
+      serviceSheets.forEach(function(servSheet) {
+        var sRows = servSheet.getDataRange().getValues();
+        for (var s = 1; s < sRows.length; s++) {
+          var sRow = sRows[s];
+          var sId = String(sRow[0] || '').trim();
+          var sTitle = String(sRow[1] || '').trim();
+          var sCategory = String(sRow[2] || '').trim();
+          var sPriceRaw = sRow[3];
+          var sDuration = String(sRow[5] || '').trim();
+          if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
+          if (seenServiceIds[sId]) continue;
+          seenServiceIds[sId] = true;
+          var specsVal = String(sRow[10] || '');
+          var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
+          var category = sCategory;
+          if (/^depila[cç][aã]o$/i.test(servSheet.getName())) category = "depilacao";
+          servicesList.push({
+            id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
+            priceFormatted: String(sRow[4] || ''), duration: sDuration,
+            badge: String(sRow[6] || ''), description: String(sRow[7] || ''),
+            note: String(sRow[8] || ''), imageUrl: String(sRow[9] || ''),
+            specs: specsArr,
+            active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
+            updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
+          });
+        }
+      });
       return responseJSON({ status: "success", services: servicesList, total: servicesList.length });
     }
 

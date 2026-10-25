@@ -17,6 +17,8 @@ export interface EmailNotificationPayload {
   clientName: string;
   clientPhone: string;
   clientEmail?: string;
+  clientBirthDate?: string;
+  paymentMethod?: 'debito' | 'credito' | 'pix' | 'permuta' | 'pacote_mensal' | 'outro';
   serviceId?: string;
   additionalServiceIds?: string[];
   customRequest?: string;
@@ -121,6 +123,8 @@ export function buildPreBookingEmailPayload(apt: Appointment): EmailNotification
     clientName: apt.clientName,
     clientPhone: apt.clientPhone,
     clientEmail: apt.clientEmail,
+    clientBirthDate: apt.clientBirthDate,
+    paymentMethod: apt.paymentMethod,
     serviceId: apt.serviceId,
     additionalServiceIds: apt.additionalServiceIds,
     customRequest: apt.customRequest,

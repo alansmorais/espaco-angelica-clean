@@ -85,7 +85,7 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({
           {/* Notifications */}
           <button
             type="button"
-            title="Notificações do ateliê"
+            title="Notificações do Espaço"
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#FFFFFF] border border-[#E8D9B5] flex items-center justify-center text-[#786C63] hover:text-[#D4AF37] hover:bg-[#F7EFEA] transition-colors cursor-pointer shadow-xs"
           >
             <span className="material-symbols-outlined text-[20px]">notifications</span>

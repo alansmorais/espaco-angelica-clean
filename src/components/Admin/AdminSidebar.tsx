@@ -44,7 +44,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       icon: 'group'
     },
     { id: 'financeiro-servicos', label: 'Financeiro & Serviços', icon: 'diamond' },
-    { id: 'configuracoes', label: 'Configurações Ateliê', icon: 'tune' }
+    { id: 'configuracoes', label: 'Configurações Espaço', icon: 'tune' }
   ];
 
   return (
@@ -110,7 +110,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     Status
                   </span>
                   <span className="font-jakarta text-xs text-[#49382E] mt-1 font-semibold">
-                    {studioOpen ? 'Ateliê Aberto' : 'Ateliê Fechado'}
+                    {studioOpen ? 'Espaço Aberto' : 'Espaço Fechado'}
                   </span>
                 </div>
               </div>

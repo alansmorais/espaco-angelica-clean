@@ -1287,30 +1287,37 @@ function doPost(e) {
 
       // 7. Validação financeira baseada exclusivamente na aba oficial 'Serviços'.
 // Não aceitar preços ou títulos enviados pelo navegador como fonte de verdade.
-      var servicesSheetForBooking = getServicesSheet();
-      if (!servicesSheetForBooking) {
-        return responseJSON({ status: "error", message: "Aba 'Serviços' (ou 'Servicos') não encontrada na planilha oficial." });
+      var serviceSheetsForBooking = getServicesSheets();
+      if (!serviceSheetsForBooking.length) {
+        return responseJSON({ status: "error", message: "Nenhuma aba oficial de serviços encontrada. Nenhum agendamento foi gravado." });
       }
 
-      var serviceRowsForBooking = servicesSheetForBooking.getDataRange().getValues();
-      if (serviceRowsForBooking.length < 2) {
+      var hasAnyServiceRows = serviceSheetsForBooking.some(function(sheet) {
+        return sheet.getLastRow() > 1;
+      });
+      if (!hasAnyServiceRows) {
         return responseJSON({ status: "error", message: "O catálogo oficial de serviços está vazio. Nenhum agendamento foi gravado." });
       }
 
+      // Resolve main-catalog and Depilação services against the same official tabs
+      // used by the public catalogue. The browser never supplies authoritative prices.
       function findOfficialService(serviceId, serviceTitle) {
         var idToFind = String(serviceId || "").trim().toLowerCase();
         var titleToFind = String(serviceTitle || "").trim().toLowerCase();
-        for (var rowIndex = 1; rowIndex < serviceRowsForBooking.length; rowIndex++) {
-          var serviceRow = serviceRowsForBooking[rowIndex];
-          var rowId = String(serviceRow[0] || "").trim();
-          if (!rowId) continue;
-          var isActive = serviceRow[11] !== false && String(serviceRow[11]).toLowerCase() !== "false";
-          if (!isActive) continue;
-          if (idToFind && rowId.toLowerCase() === idToFind) {
-            return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
-          }
-          if (!idToFind && titleToFind && String(serviceRow[1] || "").trim().toLowerCase() === titleToFind) {
-            return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
+        for (var sheetIndex = 0; sheetIndex < serviceSheetsForBooking.length; sheetIndex++) {
+          var serviceRowsForBooking = serviceSheetsForBooking[sheetIndex].getDataRange().getValues();
+          for (var rowIndex = 1; rowIndex < serviceRowsForBooking.length; rowIndex++) {
+            var serviceRow = serviceRowsForBooking[rowIndex];
+            var rowId = String(serviceRow[0] || "").trim();
+            if (!rowId) continue;
+            var isActive = serviceRow[11] !== false && String(serviceRow[11]).toLowerCase() !== "false";
+            if (!isActive) continue;
+            if (idToFind && rowId.toLowerCase() === idToFind) {
+              return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
+            }
+            if (!idToFind && titleToFind && String(serviceRow[1] || "").trim().toLowerCase() === titleToFind) {
+              return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
+            }
           }
         }
         return null;

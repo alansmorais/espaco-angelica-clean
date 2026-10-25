@@ -660,18 +660,45 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
             {days.map(d => (
               <div
                 key={d.dayKey}
-                onClick={() => handleToggleDay(d.dayKey)}
-                className={`p-3 rounded-xl border text-center cursor-pointer transition-all ${
+                className={`p-3 rounded-xl border text-center transition-all ${
                   d.isOpen
                     ? 'bg-[#FFFFFF] border-[#D4AF37] text-[#49382E] shadow-xs'
                     : 'bg-[#F7EFEA]/50 border-[#E8D9B5] text-[#A39A90]'
                 }`}
               >
                 <span className="block font-bold text-xs">{d.dayLabel}</span>
-                <span className={`text-[10px] uppercase font-bold mt-1 block ${d.isOpen ? 'text-[#D4AF37]' : 'text-[#A39A90]'}`}>
-                  {d.isOpen ? `${d.openTime} às ${d.closeTime}` : 'Fechado'}
-                </span>
-                <span className="text-[9px] text-[#786C63] mt-1 block">Clique p/ alternar</span>
+                <button
+                  type="button"
+                  aria-pressed={d.isOpen}
+                  onClick={() => handleToggleDay(d.dayKey)}
+                  className={`text-[10px] uppercase font-bold mt-1 block w-full rounded-md py-1 ${d.isOpen ? 'text-[#D4AF37]' : 'text-[#A39A90]'}`}
+                >
+                  {d.isOpen ? 'Aberto' : 'Fechado'} · alterar
+                </button>
+                {d.isOpen && (
+                  <div className="mt-2 space-y-2 text-left" onClick={event => event.stopPropagation()}>
+                    <label className="block text-[10px] font-semibold text-[#786C63]">
+                      Abre
+                      <input
+                        type="time"
+                        aria-label={`Abertura ${d.dayLabel}`}
+                        value={d.openTime || '09:00'}
+                        onChange={event => updateDays(days.map(day => day.dayKey === d.dayKey ? { ...day, openTime: event.target.value } : day))}
+                        className="mt-1 w-full min-w-0 rounded-md border border-[#E8D9B5] bg-white px-2 py-2 text-xs text-[#49382E]"
+                      />
+                    </label>
+                    <label className="block text-[10px] font-semibold text-[#786C63]">
+                      Fecha
+                      <input
+                        type="time"
+                        aria-label={`Encerramento ${d.dayLabel}`}
+                        value={d.closeTime || '19:30'}
+                        onChange={event => updateDays(days.map(day => day.dayKey === d.dayKey ? { ...day, closeTime: event.target.value } : day))}
+                        className="mt-1 w-full min-w-0 rounded-md border border-[#E8D9B5] bg-white px-2 py-2 text-xs text-[#49382E]"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
             ))}
           </div>

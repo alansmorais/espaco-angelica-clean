@@ -13,6 +13,7 @@ import { triggerNewPreBookingEmailNotification } from '../services/emailNotifica
 interface BookingWizardProps {
   selectedService: Service;
   onBookingConfirmed: (newApt: Appointment) => void;
+  onClose?: () => void;
   timeSlots?: TimeSlotConfig[];
   blacklist?: BlacklistEntry[];
   studioAddress?: StudioAddressConfig;
@@ -27,6 +28,7 @@ interface BookingWizardProps {
 export const BookingWizard: React.FC<BookingWizardProps> = ({
   selectedService,
   onBookingConfirmed,
+  onClose,
   timeSlots = [],
   blacklist = [],
   studioAddress = { street: '', number: '', neighborhood: '', city: '', state: '', fullAddress: '', mapsUrl: '', wazeUrl: '' },
@@ -489,8 +491,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   return (
-    <section className="relative w-full px-4 sm:px-8 lg:px-12 py-16 bg-[#FBF7F2]" id="wizard-agendamento">
-      <div className="max-w-6xl mx-auto">
+    <section className="fixed inset-0 z-[80] overflow-y-auto bg-[#49382E]/60 px-3 py-4 sm:px-6 sm:py-8" id="wizard-agendamento" role="dialog" aria-modal="true" aria-label="Solicitação de agendamento">
+      <div className="mx-auto min-h-full w-full max-w-6xl rounded-2xl bg-[#FBF7F2] px-3 py-5 shadow-2xl sm:px-8 sm:py-8 lg:px-12">
+        <div className="mb-4 flex justify-end">
+          <button type="button" onClick={onClose} aria-label="Fechar agendamento" className="flex min-h-11 items-center gap-2 rounded-full border border-[#E8D9B5] bg-white px-4 py-2 text-sm font-semibold text-[#49382E] hover:bg-[#F7EFEA]"><span aria-hidden="true">×</span> Fechar</button>
+        </div>
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="font-jakarta text-[11px] uppercase tracking-widest text-[#D4AF37] font-bold">

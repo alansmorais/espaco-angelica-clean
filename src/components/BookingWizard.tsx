@@ -654,8 +654,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <label className="block text-xs font-semibold text-[#49382E]">E-mail (opcional)
                   <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="voce@exemplo.com" />
                 </label>
+                <label className="block text-xs font-semibold text-[#49382E]">Data de nascimento *
+                  <input required type="date" max={toDateKey(today)} value={clientBirthDate} onChange={e => setClientBirthDate(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" />
+                </label>
                 <button type="button" onClick={() => {
-                  if (!clientName.trim() || !clientPhone.trim()) { setSubmissionError('Preencha o nome e o WhatsApp para continuar.'); return; }
+                  if (!clientName.trim() || !clientPhone.trim() || !clientBirthDate.trim()) { setSubmissionError('Preencha o nome, o WhatsApp e a data de nascimento para continuar.'); return; }
                   setSubmissionError(null); setBookingStep(2);
                 }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher a data</button>
               </div>
@@ -851,8 +854,9 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     <label className="block text-[11px] text-[#49382E] uppercase tracking-wider font-bold mb-2">
                       Intervalo entre Sessões:
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       {[
+                        { days: 7, label: 'Toda semana (7 dias)', note: 'Manutenção semanal' },
                         { days: 15, label: 'Quinzenal (15 dias)', note: 'Esmaltação & Spa' },
                         { days: 21, label: 'A cada 21 dias', note: 'Ideal Fibra Slim' },
                         { days: 30, label: 'Mensal (30 dias)', note: 'Blindagem Diamante' }

@@ -107,7 +107,7 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
                   className="inline-flex items-center gap-2 hover:text-[#D4AF37] text-[#49382E] transition-colors min-h-[44px] py-1"
                 >
                   <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">call</span>
-                  <span>WhatsApp do Ateliê</span>
+                  <span>WhatsApp do Espaço</span>
                 </a>
               )}
             </div>
@@ -129,7 +129,7 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FFFFFF] hover:bg-[#FDFBF9] border border-[#E8D9B5] hover:border-[#D4AF37] text-[#49382E] hover:text-[#D4AF37] font-jakarta text-xs font-semibold transition-all cursor-pointer shadow-xs min-h-[44px] active:scale-95"
           >
             <span className="material-symbols-outlined text-[17px] text-[#D4AF37]">admin_panel_settings</span>
-            <span>Acesso ao Painel do Ateliê (Admin)</span>
+            <span>Acesso ao Painel do Espaço (Admin)</span>
           </button>
         </div>
 
@@ -138,7 +138,7 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
           <p>© 2024 Espaço Angelica do Carmo • São Sebastião SP. Todos os direitos reservados.</p>
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             <button type="button" onClick={onOpenAbout} className="hover:text-[#D4AF37] transition-colors cursor-pointer min-h-[36px] flex items-center">
-              Sobre o Atelier
+              Sobre o Espaçor
             </button>
             <button type="button" onClick={onOpenFAQ} className="hover:text-[#D4AF37] transition-colors cursor-pointer min-h-[36px] flex items-center">
               Biossegurança &amp; Autoclave

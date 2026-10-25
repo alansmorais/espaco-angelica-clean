@@ -171,6 +171,8 @@ export default function App() {
 
   // 1 & 2: Services State (Shared between Public Catalog & Admin Price/Photo Manager)
   const [services, setServices] = useState<Service[]>([]);
+  const [serviceCatalogError, setServiceCatalogError] = useState<string | null>(null);
+  const [serviceCatalogLoaded, setServiceCatalogLoaded] = useState(false);
 
   const activeServices = services.filter(s => s.active !== false);
   const [publicAvailability, setPublicAvailability] = useState<Appointment[]>([]);
@@ -524,13 +526,16 @@ export default function App() {
         const remoteServices = await fetchRemoteServices();
         if (!isMounted) return;
         setServices(remoteServices);
+        setServiceCatalogError(null);
+        setServiceCatalogLoaded(true);
         if (remoteServices.length > 0) {
           setSelectedService(current => remoteServices.find(service => service.id === current?.id) || remoteServices[0]);
         }
       } catch (error) {
         if (isMounted) {
           setServices([]);
-          setPublicAvailabilityError(error instanceof Error ? error.message : 'Não foi possível carregar o catálogo oficial.');
+          setServiceCatalogError(error instanceof Error ? error.message : 'Não foi possível carregar o catálogo oficial.');
+          setServiceCatalogLoaded(true);
         }
         console.error('[Official service catalogue] Read failed:', error);
       }
@@ -912,6 +917,8 @@ export default function App() {
               services={services}
               onSelectService={handleSelectService}
               selectedServiceId={selectedService?.id}
+              catalogError={serviceCatalogError}
+              catalogLoaded={serviceCatalogLoaded}
             />
 
             {/* Booking form is opened as a focused modal from the public CTAs. */}

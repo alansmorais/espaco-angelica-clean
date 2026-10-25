@@ -76,7 +76,7 @@ const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
   // Enable mutations only after Apps Script and payment flows are validated and approved.
-  // Mode: 'public' (Client) vs 'admin' (Executive Atelier)
+  // Mode: 'public' (Client) vs 'admin' (Executive Espaçor)
   const [appMode, setAppMode] = useState<'public' | 'admin'>('public');
 
   // Admin Login Modal & Session State (volatile, never stored permanently or in bundle)
@@ -992,7 +992,7 @@ export default function App() {
               }}
               className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#D4AF37] hover:bg-[#E5C158] text-[#3C2F00] font-jakarta font-bold text-xs sm:text-sm shadow-[0_10px_25px_-3px_rgba(212,175,55,0.45),0_4px_12px_rgba(73,56,46,0.15)] border border-[#E8D9B5] transition-all cursor-pointer transform active:scale-95 whitespace-nowrap min-h-[46px]"
               style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
-              title="Agendar Horário no Ateliê"
+              title="Agendar Horário no Espaço"
             >
               <span className="material-symbols-outlined text-[19px]">calendar_month</span>
               <span>Agendar</span>
@@ -1058,7 +1058,7 @@ export default function App() {
                         <span>Verificando credencial...</span>
                       </>
                     ) : (
-                      <span>Entrar no Painel do Ateliê</span>
+                      <span>Entrar no Painel do Espaço</span>
                     )}
                   </button>
                 </form>

@@ -126,13 +126,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const total = (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
     return total > 0 ? total : 30;
   };
-  const isSlotUnavailable = (slotTime: string): boolean => {
+  const isSlotUnavailable = (slotTime: string, dateKey: string = selectedDate): boolean => {
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
     // Availability follows manually configured slots, not the procedure duration.
-    const end = start;
     if (daySchedules && daySchedules.length > 0) {
-      const date = new Date(`${selectedDate}T12:00:00`);
+      const date = new Date(`${dateKey}T12:00:00`);
       const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
       const dayConfig = daySchedules.find(day => day.dayKey === keys[date.getDay()]);
       if (dayConfig) {
@@ -143,7 +142,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       }
     }
     return appointments.some(a => {
-      if (!areDatesEqual(a.date, selectedDate) || ['cancelado', 'teste_sistema'].includes(a.status)) return false;
+      if (!areDatesEqual(a.date, dateKey) || ['cancelado', 'teste_sistema'].includes(a.status)) return false;
       const raw = String(a.time || '').trim();
       if (a.status === 'bloqueado') {
         if (isAllDayBlock(raw)) return true;
@@ -167,7 +166,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     if (!isDateBlocked(selectedDate)) {
       const sameDaySlot = configuredSlots.find(slot => !isSlotUnavailable(slot.time, selectedDate));
       if (sameDaySlot) {
-        const sameDay = new Date(`${selectedDate}T12:00:00`);
         return { date: selectedDate, time: sameDaySlot.time, label: 'Nesta mesma data', sameDate: true };
       }
     }

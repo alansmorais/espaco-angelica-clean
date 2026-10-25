@@ -160,6 +160,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     });
   };
 
+  const isPastDate = (date: Date) => toDateKey(date) < toDateKey(today);
+
   const nextAvailableSuggestion = (() => {
     const configuredSlots = timeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
     // First offer another time on the date the client already selected.
@@ -189,7 +191,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     ...Array.from({ length: monthStartOffset }, () => null),
     ...Array.from({ length: daysInVisibleMonth }, (_, index) => index + 1)
   ];
-  const isPastDate = (date: Date) => toDateKey(date) < toDateKey(today);
   const isDateUnavailable = (date: Date) => {
     const key = toDateKey(date);
     const sameDayAppointments = appointments.filter(a => areDatesEqual(a.date, key) && !['cancelado', 'teste_sistema'].includes(a.status));

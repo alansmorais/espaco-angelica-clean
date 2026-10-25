@@ -114,7 +114,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#D4AF37]" />
               </span>
               <span className="font-jakarta text-xs text-[#49382E] font-semibold">
-                Atelier Privativo
+                Espaçor Privativo
               </span>
             </div>
 

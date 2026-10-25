@@ -186,14 +186,15 @@ export default function App() {
 
   // 4: Operating Hours & Time Slots State (Add, Edit, Delete, Block)
   const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>([]);
-  // Empty, closed weekday structure is UI scaffolding only; actual opening hours come from Sheets.
+  // Default operating hours: Tuesday–Saturday, 09:00–19:30; Monday and Sunday closed.
+  // The official saved schedule from Apps Script/Sheets replaces these defaults when available.
   const [daySchedules, setDaySchedules] = useState<DayScheduleConfig[]>([
     { dayKey: 'seg', dayLabel: 'Segunda-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: false, openTime: '', closeTime: '' },
+    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
+    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
+    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
+    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
+    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: true, openTime: '09:00', closeTime: '19:30' },
     { dayKey: 'dom', dayLabel: 'Domingo', isOpen: false, openTime: '', closeTime: '' }
   ]);
 

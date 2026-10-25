@@ -263,7 +263,17 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
 
   const handleSaveWaConfig = async () => {
     if (readOnlyPreview) { notify(previewNotice); return; }
-    const updated: WhatsAppConfig = { ...waConfig, customTemplate: waTemplate };
+    const rawInstagram = String(waConfig.instagramUrl || '').trim();
+    const instagramUrl = rawInstagram
+      ? (/^https?:\/\//i.test(rawInstagram)
+          ? rawInstagram
+          : `https://www.instagram.com/${rawInstagram.replace(/^@+/, '').replace(/^instagram\.com\//i, '').replace(/^www\.instagram\.com\//i, '').replace(/\/+$/, '')}/`)
+      : '';
+    if (instagramUrl && !/^https?:\/\/(www\.)?instagram\.com\/[A-Za-z0-9._]+\/?$/i.test(instagramUrl)) {
+      notify('Informe um @usuário válido ou um link do Instagram, por exemplo @angelicadocarmo_nails.');
+      return;
+    }
+    const updated: WhatsAppConfig = { ...waConfig, instagramUrl, customTemplate: waTemplate };
     if (onUpdateWhatsappConfig) {
       const saved = await onUpdateWhatsappConfig(updated);
       if (saved === false) return;
@@ -920,14 +930,14 @@ Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuida
               />
             </label>
             <label className="block font-jakarta text-xs text-[#49382E] font-semibold">
-              Link do Instagram do ateliê
+              Instagram do ateliê (@usuário ou link completo)
               <input
                 type="url"
                 inputMode="url"
                 value={waConfig.instagramUrl || ''}
                 onChange={e => setWaConfig(prev => ({ ...prev, instagramUrl: e.target.value }))}
                 disabled={readOnlyPreview}
-                placeholder="https://instagram.com/..."
+                placeholder="@angelicadocarmo_nails ou https://www.instagram.com/..."
                 className="mt-1 w-full p-3 rounded-xl bg-white text-[#49382E] border border-[#E8D9B5] text-sm focus:border-[#D4AF37] outline-none disabled:opacity-60"
               />
             </label>

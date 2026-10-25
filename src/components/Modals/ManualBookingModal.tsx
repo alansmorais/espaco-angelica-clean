@@ -178,7 +178,21 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       // Disparar WhatsApp se habilitado
       if (sendWhatsAppAuto && trimmedPhone) {
         try {
-          const waRes = await sendAppointmentWhatsAppConfirmation(newApt);
+          const confirmationTemplate = [
+            'Olá, {cliente}! 💕',
+            '',
+            'Seu agendamento está confirmado!',
+            '',
+            '📅 Data: {data}',
+            '⏰ Horário: {horario}',
+            '💅 Procedimento: {servico}',
+            '',
+            'Até breve! ✨',
+            '',
+            'Espaço Angelica do Carmo',
+            'Felicidade é fazer as unhas. 💖'
+          ].join('\n');
+          const waRes = await sendAppointmentWhatsAppConfirmation(newApt, confirmationTemplate);
           newApt.whatsappStatus = waRes.status === 'sent' ? 'enviado' : waRes.status === 'simulated' ? 'simulado' : 'falha';
           newApt.whatsappSentAt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
           newApt.whatsappLastMessage = waRes.previewText || waRes.message;

@@ -154,7 +154,7 @@ export const PixReconciliationTab: React.FC<PixReconciliationTabProps> = ({
   const handleRequestNewReceipt = (apt: Appointment) => {
     const phoneDigits = apt.clientPhone.replace(/\D/g, '');
     const msg = encodeURIComponent(
-      `Olá, ${apt.clientName}! Aqui é a Angélica do Carmo do atelier. Identificamos sua solicitação de agendamento para ${apt.date} às ${apt.time}, mas precisamos da confirmação do comprovante da chave Pix +5512974062241 para liberar sua vaga. Você poderia nos enviar o comprovante por aqui? Obrigada!`
+      `Olá, ${apt.clientName}! Aqui é a Angélica do Carmo do Espaçor. Identificamos sua solicitação de agendamento para ${apt.date} às ${apt.time}, mas precisamos da confirmação do comprovante da chave Pix +5512974062241 para liberar sua vaga. Você poderia nos enviar o comprovante por aqui? Obrigada!`
     );
     window.open(`https://wa.me/${phoneDigits || '5512974062241'}?text=${msg}`, '_blank');
     showToast(`WhatsApp aberto para solicitar comprovante de ${apt.clientName}.`);

@@ -113,25 +113,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [waStatus, setWaStatus] = useState<WhatsAppStatus | null>(null);
   const [waConfig, setWaConfig] = useState<WhatsAppConfig>(() => propWhatsappConfig || { autoSendOnConfirm: false });
   const [waTemplate, setWaTemplate] = useState<string>(() => {
-    return waConfig.customTemplate || `✨ *Confirmação de Agendamento • Espaço Angélica do Carmo* ✨
+    return waConfig.customTemplate || `✨ *Solicitação de agendamento • Espaço Angélica do Carmo* ✨
 
-Olá, *{cliente}*! Seu horário no nosso atelier privativo foi *CONFIRMADO* com sucesso na grade. 💅✨
+Olá, Angélica! 💅✨ Gostaria de solicitar um horário no seu espaço privativo.
 
-📋 *Detalhes do seu atendimento:*
+📋 *Detalhes do atendimento:*
 • *Procedimento:* {servico}
-• *Data:* {data}
-• *Horário:* às {horario}
-• *Valor:* {valor}
-• *Sinal:* {sinal}
+• *Data desejada:* {data}
+• *Horário desejado:* {horario}
+• *Valor informado:* {valor}
+• *Sinal de 40%:* {sinal}
 
-📍 *Endereço:* {endereco}
+📍 *Endereço do atendimento:* {endereco}
 
-ℹ️ *Orientações importantes:*
-• Pedimos a gentileza de chegar com 5 a 10 minutos de antecedência.
-• Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.
-• Em caso de desistência ou não comparecimento, o sinal não é reembolsado.
+Estou ciente de que:
+• Devo chegar com 5 a 10 minutos de antecedência.
+• Para alterar a data, preciso avisar com pelo menos 24 horas de antecedência.
+• Em caso de desistência ou não comparecimento, o sinal pago não é reembolsável.
 
-Qualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`;
+Por favor, confirme a disponibilidade e as instruções para o pagamento do sinal. Obrigada! 💕`;
   });
   const [waLogs, setWaLogs] = useState<any[]>([]);
   const [testPhone, setTestPhone] = useState<string>('');

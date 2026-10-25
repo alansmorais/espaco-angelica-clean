@@ -441,7 +441,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
           </span>
         </div>
         <h1 className="font-syne text-2xl sm:text-3xl md:text-4xl text-[#49382E] font-bold tracking-tight">
-          Configurações do Ateliê &amp; Grade de Atendimento
+          Configurações do Espaço &amp; Grade de Atendimento
         </h1>
         <p className="font-jakarta text-xs sm:text-sm text-[#786C63]">
           Gerencie horários de atendimento, bloqueios preventivos de agenda, números com exigência de pré-pagamento via Pix e endereço do estúdio.
@@ -643,7 +643,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         {/* Days of Week Operating Hours */}
         <div className="pt-4 border-t border-[#E8D9B5]">
           <span className="font-syne text-sm text-[#D4AF37] font-bold block mb-3">
-            Dias de Abertura do Atelier:
+            Dias de Abertura do Espaçor:
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
             {days.map(d => (
@@ -696,7 +696,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] flex items-start gap-3 text-xs text-[#786C63]">
           <span className="material-symbols-outlined text-[#D4AF37] text-[20px] shrink-0 mt-0.5">verified_user</span>
           <p>
-            <strong>Como funciona:</strong> Ao tentar agendar pelo site com qualquer um dos números abaixo, o sistema detecta a inadimplência e emite um alerta formal. O agendamento só é aceito mediante <strong>Pré-pagamento Integral (100% via Pix)</strong>, protegendo o atelier contra no-shows recorrentes.
+            <strong>Como funciona:</strong> Ao tentar agendar pelo site com qualquer um dos números abaixo, o sistema detecta a inadimplência e emite um alerta formal. O agendamento só é aceito mediante <strong>Pré-pagamento Integral (100% via Pix)</strong>, protegendo o Espaçor contra no-shows recorrentes.
           </p>
         </div>
 
@@ -761,7 +761,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         <div className="flex items-center gap-2 pb-3 border-b border-[#E8D9B5]">
           <span className="material-symbols-outlined text-[#D4AF37]">pin_drop</span>
           <h3 className="font-syne text-lg text-[#49382E] font-bold">
-            Endereço Oficial do Atelier
+            Endereço Oficial do Espaçor
           </h3>
         </div>
 
@@ -913,7 +913,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         {/* Public studio contact values are official settings, not hardcoded site defaults. */}
         <div className="p-4 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-4">
           <div>
-            <h4 className="font-syne text-sm font-bold text-[#49382E]">Contato público do ateliê</h4>
+            <h4 className="font-syne text-sm font-bold text-[#49382E]">Contato público do Espaço</h4>
             <p className="font-jakarta text-xs text-[#786C63] mt-1">Estes dados alimentam os links de contato do site. Deixe em branco até confirmar os valores oficiais.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -930,7 +930,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
               />
             </label>
             <label className="block font-jakarta text-xs text-[#49382E] font-semibold">
-              Instagram do ateliê (@usuário ou link completo)
+              Instagram do Espaço (@usuário ou link completo)
               <input
                 type="url"
                 inputMode="url"
@@ -1042,7 +1042,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
               <button
                 type="button"
                 onClick={() => {
-                  setWaTemplate(`✨ *Confirmação de Agendamento • Espaço Angélica do Carmo* ✨\n\nOlá, *{cliente}*! Seu horário no nosso atelier privativo foi *CONFIRMADO* com sucesso na grade. 💅✨\n\n📋 *Detalhes do seu atendimento:*\n• *Procedimento:* {servico}\n• *Data:* {data}\n• *Horário:* às {horario}\n• *Valor:* {valor}\n• *Sinal:* {sinal}\n\n📍 *Endereço:* {endereco}\n\nℹ️ *Orientações importantes:*\n• Pedimos a gentileza de chegar com 5 a 10 minutos de antecedência.\n• Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.\n• Em caso de desistência ou não comparecimento, o sinal não é reembolsado.\n\nQualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`);
+                  setWaTemplate(`✨ *Confirmação de Agendamento • Espaço Angélica do Carmo* ✨\n\nOlá, *{cliente}*! Seu horário no nosso Espaçor privativo foi *CONFIRMADO* com sucesso na grade. 💅✨\n\n📋 *Detalhes do seu atendimento:*\n• *Procedimento:* {servico}\n• *Data:* {data}\n• *Horário:* às {horario}\n• *Valor:* {valor}\n• *Sinal:* {sinal}\n\n📍 *Endereço:* {endereco}\n\nℹ️ *Orientações importantes:*\n• Pedimos a gentileza de chegar com 5 a 10 minutos de antecedência.\n• Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.\n• Em caso de desistência ou não comparecimento, o sinal não é reembolsado.\n\nQualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`);
                   notify('Modelo padrão restaurado!');
                 }}
                 className="px-3 py-1 rounded-full bg-[#F7EFEA] hover:bg-[#E8D3C7] text-[#786C63] hover:text-[#49382E] font-semibold cursor-pointer transition-colors"
@@ -1062,7 +1062,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
               { tag: '{horario}', label: 'Horário' },
               { tag: '{valor}', label: 'Valor' },
               { tag: '{sinal}', label: 'Sinal Pix' },
-              { tag: '{endereco}', label: 'Endereço Atelier' }
+              { tag: '{endereco}', label: 'Endereço Espaçor' }
             ].map(item => (
               <button
                 key={item.tag}

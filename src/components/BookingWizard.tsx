@@ -478,12 +478,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         setBookingWhatsAppModal(true);
       } else {
         setSubmissionError(
-          dispatchResult.message || 'Não foi possível confirmar e persistir a reserva na planilha oficial do ateliê. Por favor, tente novamente.'
+          dispatchResult.message || 'Não foi possível confirmar e persistir a reserva na planilha oficial do Espaço. Por favor, tente novamente.'
         );
       }
     } catch (err: any) {
       setSubmissionError(
-        err?.message || 'Falha de comunicação ao conectar com o servidor do ateliê. Verifique sua conexão e tente novamente.'
+        err?.message || 'Falha de comunicação ao conectar com o servidor do Espaço. Verifique sua conexão e tente novamente.'
       );
     } finally {
       setIsSubmittingBooking(false);
@@ -1301,7 +1301,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               </div>
             </div>
 
-            {/* Atelier Address Card */}
+            {/* Espaçor Address Card */}
             <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] flex items-start gap-3 shadow-xs">
               <span className="material-symbols-outlined text-[#D4AF37] text-[22px] shrink-0 mt-0.5">
                 location_on

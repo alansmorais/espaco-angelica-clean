@@ -939,8 +939,29 @@ export default function App() {
               <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#49382E]/60 p-4" role="dialog" aria-modal="true">
                 <div className="w-full max-w-lg rounded-2xl border border-[#E8D9B5] bg-white p-6 text-center shadow-2xl">
                   <button type="button" onClick={() => setBookingModalOpen(false)} className="mb-4 ml-auto block rounded-full border border-[#E8D9B5] px-4 py-2 text-sm">Fechar</button>
-                  <h2 className="font-syne text-xl font-bold text-[#49382E]">Agenda temporariamente indisponível</h2>
-                  <p className="mt-2 text-sm text-[#786C63]">{!publicAvailabilityLoaded ? (publicAvailabilityError || 'Carregando a disponibilidade oficial da agenda…') : !paymentConfigLoaded ? 'Carregando a configuração oficial de pagamento…' : !paymentConfigConfigured ? 'Os dados oficiais de Pix ainda não foram cadastrados na planilha. O agendamento está temporariamente indisponível para evitar instruções de pagamento incorretas.' : 'Não foi possível carregar o catálogo oficial de serviços. Nenhum serviço de demonstração será exibido. Tente novamente em instantes ou entre em contato com o espaço.'}</p>
+                  {(!publicAvailabilityLoaded || !paymentConfigLoaded) ? (
+                    <>
+                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#FBF2D5] text-[#9A7B20]">
+                        <span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+                      </div>
+                      <h2 className="font-syne text-xl font-bold text-[#49382E]">Carregando agendamento</h2>
+                      <p className="mt-2 text-sm text-[#786C63]">
+                        {!publicAvailabilityLoaded
+                          ? 'Conectando à agenda oficial e consultando os horários disponíveis…'
+                          : 'Carregando as configurações oficiais de pagamento…'}
+                      </p>
+                      <p className="mt-2 text-xs text-[#786C63]">Isso pode levar alguns instantes. Por favor, aguarde.</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="font-syne text-xl font-bold text-[#49382E]">Agendamento temporariamente indisponível</h2>
+                      <p className="mt-2 text-sm text-[#786C63]">
+                        {!paymentConfigConfigured
+                          ? 'Os dados oficiais de Pix ainda não foram cadastrados na planilha. Para evitar instruções de pagamento incorretas, não é possível continuar agora.'
+                          : 'Não foi possível carregar o catálogo oficial de serviços. Nenhum serviço de demonstração será exibido. Tente novamente em instantes ou entre em contato com o espaço.'}
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}

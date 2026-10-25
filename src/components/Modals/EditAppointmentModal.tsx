@@ -262,7 +262,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
             </label>
             <label className="block text-[#49382E] font-bold">Local do atendimento</label>
             <div className="flex gap-4">
-              <label className="flex items-center gap-2"><input type="radio" name="editLocation" checked={appointmentLocation === 'salon'} onChange={() => setAppointmentLocation('salon')} /> Salão</label>
+              <label className="flex items-center gap-2"><input type="radio" name="editLocation" checked={appointmentLocation === 'salon'} onChange={() => setAppointmentLocation('salon')} /> Espaço</label>
               <label className="flex items-center gap-2"><input type="radio" name="editLocation" checked={appointmentLocation === 'home'} onChange={() => setAppointmentLocation('home')} /> Domicílio</label>
             </div>
             {appointmentLocation === 'home' && <label className="block text-[#49382E] font-bold">Endereço completo *

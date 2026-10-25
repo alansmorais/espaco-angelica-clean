@@ -160,7 +160,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           </div>
         </div>
 
-        {/* Quick Atelier Actions */}
+        {/* Quick Espaçor Actions */}
         <div className="flex flex-wrap items-center gap-2.5 z-10">
           <button
             type="button"

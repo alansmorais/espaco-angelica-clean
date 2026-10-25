@@ -417,9 +417,20 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
 
   // Handle Day Schedule Toggle
   const handleToggleDay = (dayKey: string) => {
-    const updated = days.map(d => d.dayKey === dayKey ? { ...d, isOpen: !d.isOpen } : d);
+    const updated = days.map(d => {
+      if (d.dayKey !== dayKey) return d;
+      const opening = !d.isOpen;
+      // Official opening hours: Tuesday through Saturday, 09:00–19:30.
+      // Monday and Sunday remain closed unless the owner explicitly opens them.
+      return {
+        ...d,
+        isOpen: opening,
+        openTime: opening ? (d.openTime || '09:00') : d.openTime,
+        closeTime: opening ? (d.closeTime || '19:30') : d.closeTime
+      };
+    });
     updateDays(updated);
-    notify('Dia de expediente atualizado!');
+    notify('Dia de expediente atualizado. Horário padrão ao abrir: 09:00 às 19:30; ajuste se necessário.');
   };
   return (
     <div className="flex flex-col gap-6 max-w-5xl text-[#49382E]">
@@ -643,7 +654,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         {/* Days of Week Operating Hours */}
         <div className="pt-4 border-t border-[#E8D9B5]">
           <span className="font-syne text-sm text-[#D4AF37] font-bold block mb-3">
-            Dias de Abertura do Espaçor:
+            Dias de Abertura do Espaço:
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
             {days.map(d => (

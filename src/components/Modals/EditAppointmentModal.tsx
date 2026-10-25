@@ -82,6 +82,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     const matchedService = services.find(s => s.id === appointment.serviceId) || services.find(s => s.title.toLowerCase() === serviceTitle.toLowerCase());
     const additionalServices = services.filter(service => additionalServiceIds.includes(service.id) && service.id !== matchedService?.id);
     const combinedPrice = matchedService ? matchedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0) : undefined;
+    const combinedDuration = matchedService ? [matchedService, ...additionalServices].reduce((sum, service) => { const match = String(service.duration || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:min|m))?/i); return sum + (match ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : 30); }, 0) : 0;
 
     const updatedApt: Appointment = {
       ...appointment,
@@ -92,7 +93,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       ...(matchedService && {
         serviceId: matchedService.id,
         servicePrice: combinedPrice === undefined ? matchedService.priceFormatted : `R$ ${combinedPrice.toFixed(2).replace('.', ',')}`,
-        serviceDuration: matchedService.duration
+        serviceDuration: `${Math.floor(combinedDuration / 60) > 0 ? `${Math.floor(combinedDuration / 60)} h ` : ''}${combinedDuration % 60 > 0 ? `${combinedDuration % 60} min` : ''}`.trim() || matchedService.duration
       }),
       additionalServiceIds,
       customRequest: customRequest.trim() || undefined,
@@ -249,7 +250,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
 
           <div className="rounded-xl border border-[#E8D9B5] p-3 space-y-3">
             <label className="block text-[#49382E] font-bold mb-1">Serviços adicionais</label>
-            {services.filter(service => service.id !== appointment?.serviceId).map(service => (
+            {services.filter(service => service.active !== false && service.id !== appointment?.serviceId).map(service => (
               <label key={service.id} className="flex items-center gap-2">
                 <input type="checkbox" checked={additionalServiceIds.includes(service.id)}
                   onChange={e => setAdditionalServiceIds(current => e.target.checked ? [...current, service.id] : current.filter(id => id !== service.id))} />

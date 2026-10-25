@@ -161,6 +161,18 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     });
   };
 
+  const nextAvailableSuggestion = (() => {
+    const configuredSlots = timeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
+    for (let offset = 0; offset <= 120; offset++) {
+      const candidate = new Date(`${selectedDate}T12:00:00`);
+      candidate.setDate(candidate.getDate() + offset);
+      const candidateKey = toDateKey(candidate);
+      if (isPastDate(candidate) || isDateBlocked(candidateKey)) continue;
+      const available = configuredSlots.find(slot => !isSlotUnavailable(slot.time, candidateKey));
+      if (available) return { date: candidateKey, time: available.time, label: candidate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }) };
+    }
+    return null;
+  })();
   const dateLabel = (date: Date) => date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
   const monthLabel = visibleMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   const monthOffset = (visibleMonth.getFullYear() - today.getFullYear()) * 12 + visibleMonth.getMonth() - today.getMonth();
@@ -733,8 +745,15 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 {!isDateBlocked(selectedDate) && timeSlots.filter(s => s.active && s.status === 'disponivel' && !isSlotUnavailable(s.time)).length === 0 ? (
                   <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 text-center space-y-2">
                     <p className="font-jakarta text-sm font-semibold text-[#49382E]">Não há horários disponíveis nesta data.</p>
-                    <p className="font-jakarta text-xs text-[#786C63]">Por favor, escolha outra data ou volte aos procedimentos. Você não precisa recomeçar o agendamento.</p>
-                    <button type="button" onClick={() => { setSelectedTime(''); setBookingStep(2); }} className="rounded-full border border-[#D4AF37] px-4 py-2 text-xs font-bold text-[#49382E]">Sugerir outra data</button>
+                    <p className="font-jakarta text-xs text-[#786C63]">Não encontramos um horário livre nesta data. Você pode tentar esta sugestão:</p>
+                    {nextAvailableSuggestion ? (
+                      <div className="rounded-lg bg-white border border-[#E8D9B5] p-3 space-y-1">
+                        <p className="font-jakarta text-sm font-bold text-[#49382E]">{nextAvailableSuggestion.label}</p>
+                        <p className="font-jakarta text-sm text-[#786C63]">às <strong>{nextAvailableSuggestion.time}</strong></p>
+                        <button type="button" onClick={() => { setSelectedDate(nextAvailableSuggestion.date); setSelectedTime(nextAvailableSuggestion.time); setVisibleMonth(new Date(`${nextAvailableSuggestion.date}T12:00:00`)); setSubmissionError(null); }} className="mt-2 rounded-full bg-[#D4AF37] px-4 py-2 text-xs font-bold text-[#3C2F00]">Escolher {nextAvailableSuggestion.time}</button>
+                      </div>
+                    ) : <p className="font-jakarta text-xs text-[#786C63]">Não encontramos horários configurados nos próximos 120 dias. Entre em contato com o Espaço para combinar um horário.</p>}
+                    <button type="button" onClick={() => { setSelectedTime(''); setBookingStep(2); }} className="rounded-full border border-[#D4AF37] px-4 py-2 text-xs font-bold text-[#49382E]">Ver outras datas</button>
                   </div>
                 ) : isDateBlocked(selectedDate) ? (
                   <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-center space-y-1">

@@ -1357,7 +1357,7 @@ function doPost(e) {
 
       var clientPhone = data.clientPhone ? String(data.clientPhone).trim() : "";
       var clientBirthDate = String(data.clientBirthDate || "").trim();
-      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(clientBirthDate) || clientBirthDate > Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd")) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate) || clientBirthDate > Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd")) {
         return responseJSON({ status: "error", persisted: false, message: "A data de nascimento é obrigatória e deve ser uma data válida no passado." });
       }
       var phoneDigits = clientPhone.replace(/\D/g, "");

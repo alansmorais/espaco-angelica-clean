@@ -125,20 +125,27 @@ function ensureOptionalBookingHeaders(sheet) {
   }
 }
 
-function getServicesSheet() {
+function getServicesSheets() {
   try {
     var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-    if (!ss) return null;
-
-    // Use the existing official catalogue tab. Never create or populate a replacement
-    // sheet with sample services: a missing tab must be reported as a configuration error.
-    var sheet = ss.getSheetByName("Serviços") || ss.getSheetByName("Servicos");
-    if (!sheet) return null;
-
-    return sheet;
+    if (!ss) return [];
+    // Read existing official tabs only. Do not create or seed a replacement catalogue.
+    var names = ["Serviços", "Servicos", "Depilação", "Depilacao"];
+    var sheets = [];
+    names.forEach(function(name) {
+      var sheet = ss.getSheetByName(name);
+      if (sheet && sheets.indexOf(sheet) === -1) sheets.push(sheet);
+    });
+    return sheets;
   } catch (e) {
-    return null;
+    return [];
   }
+}
+
+// Legacy write paths continue targeting the main services tab only.
+function getServicesSheet() {
+  var sheets = getServicesSheets();
+  return sheets.length ? sheets[0] : null;
 }
 
 function escapeHtml(str) {
@@ -177,13 +184,14 @@ function parseDurationMinutes(value) {
 
 function getServiceDurationMinutes(serviceId, serviceTitle) {
   try {
-    var sheet = getServicesSheet();
-    if (!sheet) return 30;
-    var rows = sheet.getDataRange().getValues();
-    for (var i = 1; i < rows.length; i++) {
-      var idMatches = serviceId && String(rows[i][0] || "").trim() === String(serviceId).trim();
-      var titleMatches = serviceTitle && String(rows[i][1] || "").trim().toLowerCase() === String(serviceTitle).trim().toLowerCase();
-      if (idMatches || titleMatches) return parseDurationMinutes(rows[i][5]);
+    var sheets = getServicesSheets();
+    for (var sh = 0; sh < sheets.length; sh++) {
+      var rows = sheets[sh].getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        var idMatches = serviceId && String(rows[i][0] || "").trim() === String(serviceId).trim();
+        var titleMatches = serviceTitle && String(rows[i][1] || "").trim().toLowerCase() === String(serviceTitle).trim().toLowerCase();
+        if (idMatches || titleMatches) return parseDurationMinutes(rows[i][5]);
+      }
     }
   } catch (e) {
     console.error("Unable to read service duration: " + e);
@@ -191,34 +199,32 @@ function getServiceDurationMinutes(serviceId, serviceTitle) {
   return 30;
 }
 
-// Strict duration lookup for new public bookings. Unlike legacy display/conflict
-// helpers, this never invents a duration when the official catalogue is unavailable
-// or the selected service cannot be matched.
+// Strict duration lookup resolves services across the official services and depilation tabs.
 function getConfiguredServiceDurationMinutes(serviceId, serviceTitle) {
   try {
-    var sheet = getServicesSheet();
-    if (!sheet) return null;
-    var rows = sheet.getDataRange().getValues();
-    for (var i = 1; i < rows.length; i++) {
-      var rowId = String(rows[i][0] || "").trim();
-      var rowTitle = String(rows[i][1] || "").trim();
-      var idMatches = serviceId && rowId === String(serviceId).trim();
-      var titleMatches = serviceTitle && rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase();
-      if (!idMatches && !titleMatches) continue;
-      if (rows[i][11] === false || String(rows[i][11]).toLowerCase() === "false") return null;
-      var durationText = String(rows[i][5] || "").toLowerCase();
-      var hoursMatch = durationText.match(/(\d+)\s*h/);
-      var minutesMatch = durationText.match(/(\d+)\s*(?:min|m\b)/);
-      var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
-        (minutesMatch ? Number(minutesMatch[1]) : 0);
-      return total > 0 && Number.isFinite(total) ? total : null;
+    var sheets = getServicesSheets();
+    for (var sh = 0; sh < sheets.length; sh++) {
+      var rows = sheets[sh].getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        var rowId = String(rows[i][0] || "").trim();
+        var rowTitle = String(rows[i][1] || "").trim();
+        var idMatches = serviceId && rowId === String(serviceId).trim();
+        var titleMatches = serviceTitle && rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase();
+        if (!idMatches && !titleMatches) continue;
+        if (rows[i][11] === false || String(rows[i][11]).toLowerCase() === "false") return null;
+        var durationText = String(rows[i][5] || "").toLowerCase();
+        var hoursMatch = durationText.match(/(\d+)\s*h/);
+        var minutesMatch = durationText.match(/(\d+)\s*(?:min|m\b)/);
+        var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
+          (minutesMatch ? Number(minutesMatch[1]) : 0);
+        return total > 0 && Number.isFinite(total) ? total : null;
+      }
     }
   } catch (e) {
     console.error("Unable to validate official service duration: " + e);
   }
   return null;
 }
-
 function intervalsOverlap(startA, endA, startB, endB) {
   return startA < endB && startB < endA;
 }
@@ -933,40 +939,39 @@ function doPost(e) {
     }
 
     if (data.action === "getServices") {
-      var servSheet = getServicesSheet();
-      if (!servSheet) {
-        return responseJSON({ status: "error", message: "Aba 'Serviços' (ou 'Servicos') não encontrada na planilha oficial." });
+      var serviceSheets = getServicesSheets();
+      if (!serviceSheets.length) {
+        return responseJSON({ status: "error", message: "Nenhuma aba oficial de serviços encontrada (Serviços, Servicos ou Depilação)." });
       }
-      var sRows = servSheet.getDataRange().getValues();
       var servicesList = [];
-      for (var s = 1; s < sRows.length; s++) {
-        var sRow = sRows[s];
-        var sId = String(sRow[0] || '').trim();
-        var sTitle = String(sRow[1] || '').trim();
-        var sCategory = String(sRow[2] || '').trim();
-        var sPriceRaw = sRow[3];
-        var sDuration = String(sRow[5] || '').trim();
-        // Ignore incomplete official rows instead of publishing invented category,
-        // price or duration defaults as if they were real services.
-        if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
-        var specsVal = String(sRow[10] || '');
-        var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-        servicesList.push({
-          id: sId,
-          title: sTitle,
-          category: sCategory,
-          price: Number(sPriceRaw),
-          priceFormatted: String(sRow[4] || ''),
-          duration: sDuration,
-          badge: String(sRow[6] || ''),
-          description: String(sRow[7] || ''),
-          note: String(sRow[8] || ''),
-          imageUrl: String(sRow[9] || ''),
-          specs: specsArr,
-          active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
-          updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
-        });
-      }
+      var seenServiceIds = {};
+      serviceSheets.forEach(function(servSheet) {
+        var sRows = servSheet.getDataRange().getValues();
+        for (var s = 1; s < sRows.length; s++) {
+          var sRow = sRows[s];
+          var sId = String(sRow[0] || '').trim();
+          var sTitle = String(sRow[1] || '').trim();
+          var sCategory = String(sRow[2] || '').trim();
+          var sPriceRaw = sRow[3];
+          var sDuration = String(sRow[5] || '').trim();
+          if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
+          if (seenServiceIds[sId]) continue;
+          seenServiceIds[sId] = true;
+          var specsVal = String(sRow[10] || '');
+          var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
+          var category = sCategory;
+          if (/^depila[cç][aã]o$/i.test(servSheet.getName())) category = "depilacao";
+          servicesList.push({
+            id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
+            priceFormatted: String(sRow[4] || ''), duration: sDuration,
+            badge: String(sRow[6] || ''), description: String(sRow[7] || ''),
+            note: String(sRow[8] || ''), imageUrl: String(sRow[9] || ''),
+            specs: specsArr,
+            active: sRow[11] !== false && String(sRow[11]).toLowerCase() !== 'false',
+            updatedAt: sRow[12] ? new Date(sRow[12]).toISOString() : ''
+          });
+        }
+      });
       return responseJSON({ status: "success", services: servicesList, total: servicesList.length });
     }
 

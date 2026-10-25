@@ -243,10 +243,10 @@ function getOfficialServicesCatalogueResponse() {
         sheetsRead: serviceSheets.map(function(sheet) { return sheet.getName(); }),
         rowsSkipped: skippedRows,
         depilationServices: servicesList.filter(function(service) {
-          return String(service.category || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "depilacao";
+          return String(service.category || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "depilacao";
         }).length,
         depilationImages: servicesList.filter(function(service) {
-          return String(service.category || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "depilacao" && !!String(service.imageUrl || "").trim();
+          return String(service.category || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === "depilacao" && !!String(service.imageUrl || "").trim();
         }).length
       }
     };

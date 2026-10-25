@@ -111,11 +111,11 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hidden lg:flex items-center gap-2 bg-[#FFFFFF] hover:bg-[#F7EFEA] px-3 py-1.5 rounded-full border border-[#E8D9B5] transition-all text-left shadow-xs min-h-[40px]"
-                title="Falar no WhatsApp com o Ateliê"
+                title="Falar no WhatsApp com o Espaço"
               >
                 <span className="material-symbols-outlined text-[#D4AF37] text-[17px]">chat</span>
                 <div className="flex flex-col">
-                  <span className="font-jakarta text-[11px] text-[#49382E] font-bold leading-tight">WhatsApp do Ateliê</span>
+                  <span className="font-jakarta text-[11px] text-[#49382E] font-bold leading-tight">WhatsApp do Espaço</span>
                   <span className="font-jakarta text-[9px] text-[#786C63] leading-tight">{studioCityLabel}</span>
                 </div>
               </a>
@@ -235,7 +235,7 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
                 <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3.5 rounded-xl bg-[#F7EFEA] text-[#49382E] hover:text-[#D4AF37] border border-[#E8D9B5] min-h-[48px] active:scale-[0.99] transition-transform">
                   <span className="material-symbols-outlined text-[#D4AF37] text-[20px] shrink-0">chat</span>
                   <div className="text-xs">
-                    <span className="font-bold text-[#49382E] block">WhatsApp do Ateliê</span>
+                    <span className="font-bold text-[#49382E] block">WhatsApp do Espaço</span>
                     <span className="text-[#786C63]">{studioCityLabel}</span>
                   </div>
                 </a>
@@ -250,7 +250,7 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
                 className="w-full min-h-[44px] flex items-center gap-2.5 p-3 rounded-xl bg-[#FDFBF9] hover:bg-[#F7EFEA] border border-[#E8D9B5] text-[#786C63] hover:text-[#49382E] text-xs font-semibold cursor-pointer transition-colors"
               >
                 <span className="material-symbols-outlined text-[#D4AF37] text-[18px] shrink-0">lock</span>
-                <span>Acesso Administrativo (Painel do Ateliê)</span>
+                <span>Acesso Administrativo (Painel do Espaço)</span>
               </button>
             </div>
           </div>

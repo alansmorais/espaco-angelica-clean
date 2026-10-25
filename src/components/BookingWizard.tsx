@@ -210,10 +210,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     return list;
   };
 
+  const pixKeyToCopy = (paymentConfig.pixKey || '+5512974062241').trim();
+
   const handleCopyPix = async () => {
     try {
       if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText('+5512974062241');
+        await navigator.clipboard.writeText(pixKeyToCopy);
         setCopiedPix(true);
         setPixCopyError(false);
         setTimeout(() => setCopiedPix(false), 3000);
@@ -225,7 +227,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
     try {
       const textArea = document.createElement('textarea');
-      textArea.value = '+5512974062241';
+      textArea.value = pixKeyToCopy;
       textArea.style.position = 'fixed';
       textArea.style.left = '-9999px';
       textArea.style.top = '0';
@@ -1027,32 +1029,32 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
               {/* Pix Details Box */}
               <div className="p-4 rounded-xl bg-[#F7EFEA] border border-[#E8D9B5] space-y-4">
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+                <div className="flex flex-col items-stretch gap-4 w-full">
+                  <div className="flex items-start gap-3 min-w-0 w-full">
                     <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-[#FFFFFF] flex items-center justify-center text-[#D4AF37] border border-[#E8D9B5] shrink-0 shadow-xs">
                       <span className="material-symbols-outlined text-[26px] sm:text-[30px]">qr_code_2</span>
                     </div>
 
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 w-full">
                       <span className="block font-jakarta text-[11px] text-[#786C63]">
-                        Chave Pix Oficial (Telefone Celular)
+                        Chave Pix oficial (telefone celular)
                       </span>
-                      <span className="font-mono text-[#49382E] font-bold text-base sm:text-lg select-all tracking-wider break-all">
-                        +5512974062241
+                      <span className="block w-full font-mono text-[#49382E] font-bold text-base sm:text-lg select-all tracking-normal break-words [overflow-wrap:anywhere]">
+                        {paymentConfig.pixKey || '+55 12 97406-2241'}
                       </span>
                       <span className="block font-jakarta text-[11px] text-[#786C63]">
                         (12) 97406-2241
                       </span>
-                      <span className="block font-jakarta text-xs text-[#D4AF37] font-semibold truncate">
-                        Favorecido: Angelica do Carmo E. Silva ME
+                      <span className="block font-jakarta text-xs text-[#D4AF37] font-semibold whitespace-normal break-words">
+                        Favorecido: {paymentConfig.pixBeneficiary || 'Titular informado no Pix'}
                       </span>
                       <span className="block font-jakarta text-[11px] text-[#786C63] mt-0.5">
-                        Valor a Transferir: <strong className="text-[#49382E] text-sm">R$ {formatBRL(depositValue)}</strong>
+                        Valor a transferir: <strong className="text-[#49382E] text-sm">R$ {formatBRL(depositValue)}</strong>
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                  <div className="flex flex-col sm:flex-row items-center gap-2 w-full">
                     <button
                       type="button"
                       onClick={handleCopyPix}

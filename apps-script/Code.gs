@@ -952,15 +952,17 @@ function doPost(e) {
           var sId = String(sRow[0] || '').trim();
           var sTitle = String(sRow[1] || '').trim();
           var sCategory = String(sRow[2] || '').trim();
+          var isDepilationSheet = /^depila[cç][aã]o$/i.test(String(servSheet.getName() || '').trim());
+          var category = isDepilationSheet ? "depilacao" : sCategory;
           var sPriceRaw = sRow[3];
           var sDuration = String(sRow[5] || '').trim();
-          if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
+          // The official Depilação tab itself defines the category. Do not discard
+          // valid rows just because their category cell (column C) is blank.
+          if (!sId || !sTitle || (!category && !sCategory) || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
           if (seenServiceIds[sId]) continue;
           seenServiceIds[sId] = true;
           var specsVal = String(sRow[10] || '');
           var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-          var category = sCategory;
-          if (/^depila[cç][aã]o$/i.test(servSheet.getName())) category = "depilacao";
           servicesList.push({
             id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
             priceFormatted: String(sRow[4] || ''), duration: sDuration,
@@ -1754,15 +1756,17 @@ function doGet(e) {
           var sId = String(sRow[0] || '').trim();
           var sTitle = String(sRow[1] || '').trim();
           var sCategory = String(sRow[2] || '').trim();
+          var isDepilationSheet = /^depila[cç][aã]o$/i.test(String(servSheet.getName() || '').trim());
+          var category = isDepilationSheet ? "depilacao" : sCategory;
           var sPriceRaw = sRow[3];
           var sDuration = String(sRow[5] || '').trim();
-          if (!sId || !sTitle || !sCategory || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
+          // The official Depilação tab itself defines the category. Do not discard
+          // valid rows just because their category cell (column C) is blank.
+          if (!sId || !sTitle || (!category && !sCategory) || sPriceRaw === "" || sPriceRaw === null || sPriceRaw === undefined || !isFinite(Number(sPriceRaw)) || !sDuration) continue;
           if (seenServiceIds[sId]) continue;
           seenServiceIds[sId] = true;
           var specsVal = String(sRow[10] || '');
           var specsArr = specsVal ? specsVal.split(',').map(function(item) { return item.trim(); }).filter(Boolean) : [];
-          var category = sCategory;
-          if (/^depila[cç][aã]o$/i.test(servSheet.getName())) category = "depilacao";
           servicesList.push({
             id: sId, title: sTitle, category: category, price: Number(sPriceRaw),
             priceFormatted: String(sRow[4] || ''), duration: sDuration,

@@ -60,7 +60,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
           <div className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-[#D4AF37]" />
             <span className="font-jakarta text-[11px] uppercase tracking-widest text-[#D4AF37] font-bold">
-              Ateliê CRM • Fichas &amp; Anamnese
+              Espaço CRM • Fichas &amp; Anamnese
             </span>
           </div>
           <h1 className="font-syne text-2xl sm:text-3xl md:text-4xl text-[#49382E] font-bold tracking-tight mt-1">

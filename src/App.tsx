@@ -71,7 +71,7 @@ import { BlockScheduleModal, BlockScheduleData } from './components/Modals/Block
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
 
-const READ_ONLY_PREVIEW = false; // Admin edits persist to Sheets; public booking confirmation remains blocked on GitHub Pages.
+const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must be confirmed by the official Apps Script/Sheets backend.
 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
@@ -97,7 +97,7 @@ export default function App() {
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     // A autenticação pode ser testada em modo de pré-visualização.
-    // As operações de escrita continuam bloqueadas pelos guardas READ_ONLY_PREVIEW
+    // As operações administrativas só são habilitadas após autenticação; gravações usam o Apps Script oficial.
     // nos respetivos handlers; o login só cria sessão e lê agendamentos.
     const entered = adminPasswordInput.trim();
     if (!entered) return;
@@ -433,8 +433,8 @@ export default function App() {
     };
   }, [appMode, adminSessionToken]);
 
-  // Public availability endpoint was inspected: it reads the appointments and schedule
-  // configuration only. Keep the preview in read-only mode; booking writes remain blocked.
+  // Public availability is read from the official Apps Script. Booking writes are sent to
+  // the same backend and must only be treated as successful when persistence is confirmed.
   useEffect(() => {
     let isMounted = true;
     const syncAvailability = async () => {
@@ -513,7 +513,7 @@ export default function App() {
   }, []);
 
   // Read the official service catalogue when an explicit Apps Script URL is
-  // configured. This is read-only; public booking and admin mutations stay disabled.
+  // configured. Admin changes and public booking requests use the official Apps Script backend.
   useEffect(() => {
     let isMounted = true;
     const syncServices = async () => {

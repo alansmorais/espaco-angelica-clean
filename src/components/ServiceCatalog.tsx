@@ -15,12 +15,22 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [previewPhoto, setPreviewPhoto] = useState<{ title: string; url: string } | null>(null);
 
+  // Normalize category keys so accents/case/spacing in official data do not
+  // prevent the matching category tab from showing its services.
+  const normalizeCategory = (value: unknown): string =>
+    String(value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '');
+
   // Only display active services on public catalog
   const activeServices = services.filter(s => s.active !== false);
 
   const filteredServices = activeCategory === 'all'
     ? activeServices
-    : activeServices.filter(s => s.category === activeCategory);
+    : activeServices.filter(s => normalizeCategory(s.category) === normalizeCategory(activeCategory));
 
   return (
     <section className="relative w-full px-4 sm:px-8 lg:px-12 py-12 sm:py-16 bg-[#FBF7F2]" id="catalogo-vitrine">

@@ -636,7 +636,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
                 <div className="space-y-2">
                   {services.filter(service => service.active !== false).map(service => (
-                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setBookingStep(4); }}
+                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); }}
                       className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
                       <span className="block font-semibold text-[#49382E]">{service.title}</span>
                       <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
@@ -655,6 +655,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     </button>
                   </div>
                   {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
+                </div>
+                <div className="pt-2 space-y-2">
+                  <p className="text-[11px] text-[#786C63]">O serviço principal fica definido aqui. Selecione os complementos acima, se desejar, e continue para escolher data e horário.</p>
+                  <button type="button" onClick={() => setBookingStep(4)} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
                 </div>
               </div>
             )}
@@ -1136,37 +1140,17 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 </div>
 
-                {services.length > 1 && onSelectService && (
-                  <div className="pt-1">
-                    <label className="text-[10px] text-[#786C63] block mb-1">Trocar procedimento:</label>
-                    <select
-                      value={selectedService.id}
-                      onChange={e => {
-                        const match = services.find(s => s.id === e.target.value);
-                        if (match) { onSelectService(match); setAdditionalServiceIds([]); setShowAdditionalServices(false); }
-                      }}
-                      className="w-full px-3 py-2 rounded-lg bg-[#FDFBF9] text-base sm:text-xs text-[#49382E] border border-[#E8D9B5] outline-none focus:border-[#D4AF37] min-h-[44px]"
-                    >
-                      {services.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.title} ({s.priceFormatted})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <p className="pt-1 text-[10px] text-[#786C63]">Serviço principal selecionado — exibido apenas para conferência.</p>
               </div>
 
               <div className="py-4 border-b border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                  <button type="button" onClick={() => setShowAdditionalServices(true)} className="rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] disabled:opacity-40 disabled:cursor-not-allowed">
-                    {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
-                  </button>
+
                 </div>
                 <p className="text-[10px] text-[#786C63]">Escolha entre os serviços ativos cadastrados no sistema. Os preços são os valores oficiais carregados do cadastro.</p>
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                {showAdditionalServices && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
+                {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
                     <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Complementos para {selectedService.title}</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
                     <p className="text-xs text-[#786C63] mb-3">Selecione os serviços adicionais desejados. Os valores e descrições vêm do cadastro oficial; pedidos personalizados sem preço cadastrado não alteram o total automaticamente.</p>
@@ -1318,7 +1302,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               </div>
             </div>
 
-            {/* Espaçor Address Card */}
+            {/* Endereço do Espaço */}
             <div className="p-4 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] flex items-start gap-3 shadow-xs">
               <span className="material-symbols-outlined text-[#D4AF37] text-[22px] shrink-0 mt-0.5">
                 location_on

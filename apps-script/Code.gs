@@ -1370,15 +1370,8 @@ function doPost(e) {
 
       var requestedDateKey = normalizeBookingDate(bookingDate);
       var requestedTimeKey = normalizeBookingTime(bookingTime);
-      var requestedServiceDuration = getConfiguredServiceDurationMinutes(data.serviceId, serviceTitle);
-      if (!requestedServiceDuration) {
-        return responseJSON({
-          status: "error",
-          persisted: false,
-          configurationError: true,
-          message: "Não foi possível confirmar a duração oficial deste serviço. Verifique o catálogo 'Serviços' na planilha e tente novamente."
-        });
-      }
+      // Duration is stored for reference, but it does not determine slot availability.
+      var requestedServiceDuration = getConfiguredServiceDurationMinutes(data.serviceId, serviceTitle) || 0;
       if (!isValidBookingDateKey(requestedDateKey)) {
         return responseJSON({ status: "error", message: "Data inválida. Use uma data real no formato AAAA-MM-DD." });
       }

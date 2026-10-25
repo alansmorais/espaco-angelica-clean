@@ -118,7 +118,7 @@ function getOfficialSheet() {
 // Called only on explicit write paths after validation, never during reads.
 function ensureOptionalBookingHeaders(sheet) {
   if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
-  var extensionHeaders = ["Local do Atendimento", "Endereço Domiciliar", "IDs Serviços Adicionais", "Pedido Personalizado", "ID Serviço Principal"];
+  var extensionHeaders = ["Local do Atendimento", "Endereço Domiciliar", "IDs Serviços Adicionais", "Pedido Personalizado", "ID Serviço Principal", "Data de Nascimento", "Forma de Pagamento"];
   for (var h = 0; h < extensionHeaders.length; h++) {
     var cell = sheet.getRange(1, 12 + h);
     if (!String(cell.getValue() || "").trim()) cell.setValue(extensionHeaders[h]);
@@ -1037,6 +1037,8 @@ function doPost(e) {
         if (data.additionalServiceIds !== undefined) updateSheet.getRange(foundRowIndex, 14).setValue(JSON.stringify(Array.isArray(data.additionalServiceIds) ? data.additionalServiceIds : []));
         if (data.customRequest !== undefined) updateSheet.getRange(foundRowIndex, 15).setValue(String(data.customRequest).trim());
         if (data.serviceId !== undefined) updateSheet.getRange(foundRowIndex, 16).setValue(String(data.serviceId).trim());
+        if (data.clientBirthDate !== undefined) updateSheet.getRange(foundRowIndex, 17).setValue(String(data.clientBirthDate || "").trim());
+        if (data.paymentMethod !== undefined) updateSheet.getRange(foundRowIndex, 18).setValue(String(data.paymentMethod || "").trim());
 
         return responseJSON({
           status: "success",
@@ -1576,7 +1578,9 @@ function doPost(e) {
         location === 'home' ? homeAddress : '',
         JSON.stringify(Array.isArray(data.additionalServiceIds) ? data.additionalServiceIds : []),
         data.customRequest ? String(data.customRequest).trim() : '',
-        data.serviceId ? String(data.serviceId).trim() : ''
+        data.serviceId ? String(data.serviceId).trim() : '',
+        data.clientBirthDate ? String(data.clientBirthDate).trim() : '',
+        data.paymentMethod ? String(data.paymentMethod).trim() : ''
       ]);
 
       // 11. Disparo de e-mails para reserva real
@@ -1800,7 +1804,9 @@ function fetchAppointmentsFromSheet() {
       homeAddress: String(row[12] || '') || undefined,
       additionalServiceIds: (function() { try { var parsed = JSON.parse(String(row[13] || '[]')); return Array.isArray(parsed) ? parsed : []; } catch (e) { return []; } })(),
       customRequest: String(row[14] || '') || undefined,
-      serviceId: String(row[15] || '') || undefined
+      serviceId: String(row[15] || '') || undefined,
+      clientBirthDate: String(row[16] || '') || undefined,
+      paymentMethod: String(row[17] || '') || undefined
     });
   }
   return responseJSON({ status: "success", appointments: appointments, total: appointments.length });

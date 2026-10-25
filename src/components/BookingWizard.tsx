@@ -129,7 +129,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const isSlotUnavailable = (slotTime: string): boolean => {
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
-    const end = start + combinedDurationMinutes;
+    // Availability follows manually configured slots, not the procedure duration.
+    const end = start;
     if (daySchedules && daySchedules.length > 0) {
       const date = new Date(`${selectedDate}T12:00:00`);
       const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
@@ -138,7 +139,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         if (!dayConfig.isOpen) return true;
         const opening = timeToMinutes(dayConfig.openTime);
         const closing = timeToMinutes(dayConfig.closeTime);
-        if (opening === null || closing === null || start < opening || end > closing) return true;
+        if (opening === null || closing === null || start < opening || start >= closing) return true;
       }
     }
     return appointments.some(a => {
@@ -149,13 +150,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         const interval = /^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i.exec(raw);
         if (interval) {
           const blockStart = timeToMinutes(interval[1]), blockEnd = timeToMinutes(interval[2]);
-          return blockStart !== null && blockEnd !== null && start < blockEnd && blockStart < end;
+          return blockStart !== null && blockEnd !== null && start >= blockStart && start < blockEnd;
         }
       }
       const occupiedStart = timeToMinutes(raw);
       if (occupiedStart === null) return false;
-      const occupiedEnd = occupiedStart + durationMinutes(a.serviceDuration || '30 min');
-      return start < occupiedEnd && occupiedStart < end;
+      // A booked slot blocks its own start time; do not infer extra unavailable
+      // slots from the duration of the booked procedure.
+      return start === occupiedStart;
     });
   };
 
@@ -728,7 +730,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </span>
                 </div>
 
-                {isDateBlocked(selectedDate) ? (
+                {!isDateBlocked(selectedDate) && timeSlots.filter(s => s.active && s.status === 'disponivel' && !isSlotUnavailable(s.time)).length === 0 ? (
+                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 text-center space-y-2">
+                    <p className="font-jakarta text-sm font-semibold text-[#49382E]">Não há horários disponíveis nesta data.</p>
+                    <p className="font-jakarta text-xs text-[#786C63]">Por favor, escolha outra data ou volte aos procedimentos. Você não precisa recomeçar o agendamento.</p>
+                    <button type="button" onClick={() => { setSelectedTime(''); setBookingStep(2); }} className="rounded-full border border-[#D4AF37] px-4 py-2 text-xs font-bold text-[#49382E]">Sugerir outra data</button>
+                  </div>
+                ) : isDateBlocked(selectedDate) ? (
                   <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-center space-y-1">
                     <div className="flex items-center justify-center gap-1.5 text-red-700 font-syne text-xs sm:text-sm font-bold">
                       <span className="material-symbols-outlined text-[18px]">event_busy</span>
@@ -770,7 +778,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 )}
               </div>}
               {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setBookingStep(3); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o procedimento</button>}
-              {bookingStep === 4 && <button type="button" onClick={() => { if (isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Escolha um horário disponível para a duração deste procedimento.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
+              {bookingStep === 4 && <button type="button" onClick={() => { if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 
             {/* Panel 2: Agendamento Recorrente */}

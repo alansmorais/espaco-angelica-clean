@@ -5,12 +5,16 @@ interface ServiceCatalogProps {
   services?: Service[];
   onSelectService: (service: Service) => void;
   selectedServiceId?: string;
+  catalogError?: string | null;
+  catalogLoaded?: boolean;
 }
 
 export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
   services = [],
   onSelectService,
-  selectedServiceId
+  selectedServiceId,
+  catalogError = null,
+  catalogLoaded = true
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [previewPhoto, setPreviewPhoto] = useState<{ title: string; url: string } | null>(null);
@@ -129,10 +133,20 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               palette
             </span>
             <h3 className="font-syne text-lg text-[#49382E] font-bold mb-1">
-              Nenhum procedimento ativo nesta categoria
+              {catalogError
+                ? 'Não foi possível carregar os serviços'
+                : !catalogLoaded
+                  ? 'A carregar os serviços oficiais…'
+                  : activeCategory !== 'all'
+                    ? 'Nenhum procedimento ativo nesta categoria'
+                    : 'Nenhum serviço disponível neste momento'}
             </h3>
             <p className="font-jakarta text-xs text-[#786C63] leading-relaxed mb-4">
-              Os procedimentos desta categoria estão temporariamente em revisão técnica no Espaço ou desativados pela administração.
+              {catalogError
+                ? 'O catálogo oficial não respondeu corretamente. Os serviços e preços não serão substituídos por dados de demonstração. Tente atualizar a página mais tarde.'
+                : !catalogLoaded
+                  ? 'Estamos a consultar o catálogo oficial do Espaço.'
+                  : 'Não há procedimentos ativos para apresentar nesta categoria.'}
             </p>
             <button
               type="button"

@@ -37,7 +37,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               Vitrine de Procedimentos
             </h2>
             <p className="font-jakarta text-xs sm:text-sm text-[#786C63] max-w-xl mt-2 leading-relaxed">
-              Fotos reais dos procedimentos executados no atelier. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
+              Fotos reais dos procedimentos executados no Espaçor. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
             </p>
           </div>
 
@@ -122,7 +122,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               Nenhum procedimento ativo nesta categoria
             </h3>
             <p className="font-jakarta text-xs text-[#786C63] leading-relaxed mb-4">
-              Os procedimentos desta categoria estão temporariamente em revisão técnica no ateliê ou desativados pela administração.
+              Os procedimentos desta categoria estão temporariamente em revisão técnica no Espaço ou desativados pela administração.
             </p>
             <button
               type="button"

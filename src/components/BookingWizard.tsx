@@ -63,6 +63,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [showAdditionalServices, setShowAdditionalServices] = useState(false);
+  const [showAddAnotherPrompt, setShowAddAnotherPrompt] = useState(false);
   const [customRequest, setCustomRequest] = useState<string>('');
   const [appointmentLocation, setAppointmentLocation] = useState<'salon' | 'home'>('salon');
   const [homeAddress, setHomeAddress] = useState<string>('');
@@ -636,7 +637,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
                 <div className="space-y-2">
                   {services.filter(service => service.active !== false).map(service => (
-                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); }}
+                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
                       className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
                       <span className="block font-semibold text-[#49382E]">{service.title}</span>
                       <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
@@ -657,8 +658,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
                 </div>
                 <div className="pt-2 space-y-2">
-                  <p className="text-[11px] text-[#786C63]">O serviço principal fica definido aqui. Selecione os complementos acima, se desejar, e continue para escolher data e horário.</p>
-                  <button type="button" onClick={() => setBookingStep(4)} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
+                  <p className="text-[11px] text-[#786C63]">Depois de escolher um procedimento, você pode adicionar outros serviços ao mesmo atendimento ou seguir para escolher data e horário.</p>
+                  <button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
                 </div>
               </div>
             )}
@@ -1151,6 +1152,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 </div>
                 <p className="text-[10px] text-[#786C63]">Escolha entre os serviços ativos cadastrados no sistema. Os preços são os valores oficiais carregados do cadastro.</p>
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
+                {showAddAnotherPrompt && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[125] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Adicionar outro serviço" className="w-full max-w-sm rounded-2xl bg-white border border-[#E8D9B5] p-6 shadow-2xl text-center space-y-3"><h4 className="font-syne text-lg font-semibold text-[#49382E]">Deseja adicionar outro serviço?</h4><p className="text-sm text-[#786C63]">Você pode combinar mais de um procedimento no mesmo agendamento.</p><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setShowAdditionalServices(true); }} className="w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#3C2F00]">Sim, adicionar outro serviço</button><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full border border-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Não, continuar</button></div></div>, document.body)}
                 {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
                     <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>

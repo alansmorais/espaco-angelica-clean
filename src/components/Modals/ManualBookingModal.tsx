@@ -131,7 +131,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       homeAddress: appointmentLocation === 'home' ? homeAddress.trim() : undefined,
       serviceTitle: [serv.title, ...additionalServices.map(service => service.title)].join(' + '),
       servicePrice: `R$ ${formatBRL(totalPrice)}`,
-      serviceDuration: serv.duration,
+      serviceDuration: (() => { const minutes = [serv, ...additionalServices].reduce((sum, service) => { const match = String(service.duration || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:min|m))?/i); return sum + (match ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : 30); }, 0); return `${Math.floor(minutes / 60) > 0 ? `${Math.floor(minutes / 60)} h ` : ''}${minutes % 60 > 0 ? `${minutes % 60} min` : ''}`.trim() || '30 min'; })(),
       date: date.trim(),
       time: time.trim(),
       status: depositStatus === 'liquidado' ? 'confirmado' : 'pendente_pix',
@@ -298,20 +298,20 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
                 {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
               </button>
             </div>
-            <p className="text-[#786C63]">Escolha apenas complementos relacionados ao procedimento principal. Os preços cadastrados permanecem inalterados.</p>
+            <p className="text-[#786C63]">Selecione outros procedimentos para realizar no mesmo atendimento. Os preços cadastrados permanecem inalterados.</p>
             {additionalServiceIds.length > 0 && <div className="space-y-1">{additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2"><span>{service.title}</span><span>{service.priceFormatted}</span></div>)}</div>}
             {showAdditionalServices && <div className="fixed inset-0 z-[70] bg-[#49382E]/50 backdrop-blur-sm flex items-center justify-center p-4">
               <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
-                <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Complementos para {serv.title}</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full px-3 py-2 border border-[#E8D9B5]">Fechar</button></div>
+                <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full px-3 py-2 border border-[#E8D9B5]">Fechar</button></div>
                 <p className="text-xs text-[#786C63] mb-3">Os valores exibidos são os já cadastrados. Complementos sem preço cadastrado podem ser descritos no pedido personalizado, sem alterar o total automaticamente.</p>
-                {services.filter(service => service.id !== serv.id && service.category === 'nailart' && ['alongamento', 'blindagem'].includes(serv.category)).map(service => (
+                {services.filter(service => service.active !== false && service.id !== serv.id).map(service => (
                   <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs">
                     <input type="checkbox" checked={additionalServiceIds.includes(service.id)}
                       onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} />
                     <span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span></span><span className="font-semibold whitespace-nowrap">{service.priceFormatted}</span>
                   </label>
                 ))}
-                {!(['alongamento', 'blindagem'].includes(serv.category)) && <p className="text-xs text-[#786C63] py-3">Não há complementos cadastrados para este procedimento. Use o campo de pedido personalizado para registrar uma solicitação sem alterar o preço automaticamente.</p>}
+                {services.filter(service => service.active !== false && service.id !== serv.id).length === 0 && <p className="text-xs text-[#786C63] py-3">Não há outros serviços ativos cadastrados.</p>}
                 <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
               </div>
             </div>}

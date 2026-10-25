@@ -68,7 +68,7 @@ export function buildOfficialPreBookingWhatsAppMessage(data: PreBookingTemplateD
       : `Para confirmar, faça o PIX do sinal (${depositPercent}%) de ${signalValue}:`;
   const pixDetails = data.pixKey?.trim()
     ? `Chave PIX: ${data.pixKey.trim()}\nTitular: ${data.pixBeneficiary?.trim() || 'Titular não informado'}`
-    : 'Chave PIX não cadastrada. Entre em contato com o atelier para confirmar os dados de pagamento.';
+    : 'Chave PIX não cadastrada. Entre em contato com o Espaçor para confirmar os dados de pagamento.';
 
   return `Olá, ${data.clientName}! Recebemos o seu pré-agendamento na Angelica do Carmo Unhas.
 Serviço: ${data.serviceTitle}${totalLine}

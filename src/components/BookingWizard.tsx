@@ -70,6 +70,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [clientName, setClientName] = useState<string>('');
   const [clientPhone, setClientPhone] = useState<string>('');
   const [clientEmail, setClientEmail] = useState<string>('');
+  const [clientBirthDate, setClientBirthDate] = useState<string>('');
   const [clientInstagram, setClientInstagram] = useState<string>('');
   const [nailCondition, setNailCondition] = useState<string>('Unhas naturais sem nenhum produto');
   const [clientNotes, setClientNotes] = useState<string>('');
@@ -429,6 +430,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       alert('Por favor informe seu telefone WhatsApp para contato.');
       return;
     }
+    if (!clientBirthDate.trim()) {
+      setSubmissionError('Informe sua data de nascimento para continuar.');
+      return;
+    }
     if (appointmentLocation === 'home' && homeAddress.trim().length < 8) {
       setSubmissionError('Informe o endereço completo para atendimento em domicílio.');
       return;
@@ -444,7 +449,9 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       ? {
           frequencyDays: recurrenceFreqDays,
           frequencyLabel:
-            recurrenceFreqDays === 15
+            recurrenceFreqDays === 7
+              ? 'Toda semana'
+              : recurrenceFreqDays === 15
               ? 'Quinzenal (15 dias)'
               : recurrenceFreqDays === 21
               ? 'A cada 21 dias (Recomendado Fibra)'
@@ -467,6 +474,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       clientName: finalName,
       clientPhone: finalPhone,
       clientEmail: clientEmail.trim() || undefined,
+      clientBirthDate,
       clientInstagram: clientInstagram || undefined,
       nailCondition,
       notes: clientNotes || undefined,

@@ -68,17 +68,17 @@ export function buildOfficialPreBookingWhatsAppMessage(data: PreBookingTemplateD
       : `Para confirmar, faça o PIX do sinal (${depositPercent}%) de ${signalValue}:`;
   const pixDetails = data.pixKey?.trim()
     ? `Chave PIX: ${data.pixKey.trim()}\nTitular: ${data.pixBeneficiary?.trim() || 'Titular não informado'}`
-    : 'Chave PIX não cadastrada. Entre em contato com o Espaçor para confirmar os dados de pagamento.';
+    : 'Chave PIX não cadastrada. Entre em contato com o Espaço para confirmar os dados de pagamento.';
 
-  return `Olá, ${data.clientName}! Recebemos o seu pré-agendamento na Angelica do Carmo Unhas.
-Serviço: ${data.serviceTitle}${totalLine}
+  return `Olá, Angélica! Sou ${data.clientName} e gostaria de confirmar meu pré-agendamento no Espaço Angélica.
+Procedimento: ${data.serviceTitle}${totalLine}
 Data: ${data.date}
 Horário: ${data.time}
 
 ${paymentPrompt}${balanceLine}
 ${pixDetails}
 
-Depois é só enviar o comprovante por aqui. Assim que conferirmos o pagamento, enviamos a confirmação do seu agendamento. 💛
+Vou enviar o comprovante por esta conversa. Por favor, confirme meu agendamento depois de conferir o pagamento. Obrigada! 💛
 
 🤎 POLÍTICA DE AGENDAMENTO
 - Para confirmar o horário, é necessário pagar um sinal de ${depositPercent}% do valor do procedimento.

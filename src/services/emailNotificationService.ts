@@ -877,7 +877,14 @@ export async function saveRemoteClient(
 }
 
 export async function fetchRemoteServices(): Promise<Service[]> {
-  const endpoint = getNotificationWebhookUrl();
+  // The GitHub Pages preview may read the public catalogue from the existing
+  // Apps Script deployment. This is a read-only action; do not relax the URL
+  // guard used by admin or booking mutations.
+  const isGitHubPagesPreview = typeof window !== 'undefined' &&
+    (window.location.hostname === 'github.io' || window.location.hostname.endsWith('.github.io'));
+  const endpoint = isGitHubPagesPreview
+    ? DEFAULT_APPS_SCRIPT_WEBHOOK_URL
+    : getNotificationWebhookUrl();
   if (!endpoint) throw new Error('URL do Google Apps Script não configurada.');
   const data = await postAppsScriptAction(endpoint, 'getServices');
   if (!Array.isArray(data.services)) throw new Error('Resposta do Apps Script sem catálogo oficial de serviços.');

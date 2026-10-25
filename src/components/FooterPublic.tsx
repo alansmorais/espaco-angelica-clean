@@ -55,13 +55,13 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
                 <span className="material-symbols-outlined text-[#D4AF37] text-[18px] shrink-0">
                   schedule
                 </span>
-                <span className="text-[#49382E]">Terça a Sábado: 09:00 às 19:30</span>
+                <span className="text-[#49382E]">Horários atualizados no agendamento online</span>
               </li>
               <li className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#786C63] text-[18px] shrink-0">
                   block
                 </span>
-                <span>Domingos e Segundas: Fechado</span>
+                <span>Consulte os dias e horários disponíveis no agendamento</span>
               </li>
             </ul>
           </div>

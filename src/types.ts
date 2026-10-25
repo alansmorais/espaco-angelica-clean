@@ -32,6 +32,8 @@ export interface Appointment {
   clientName: string;
   clientPhone: string;
   clientEmail?: string;
+  clientBirthDate?: string;
+  paymentMethod?: 'debito' | 'credito' | 'pix' | 'permuta' | 'pacote_mensal' | 'outro';
   clientInstagram?: string;
   nailCondition?: string;
   notes?: string;

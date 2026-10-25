@@ -49,7 +49,6 @@ import { HeaderPublic } from './components/HeaderPublic';
 import { HeroSection } from './components/HeroSection';
 import { ServiceCatalog } from './components/ServiceCatalog';
 import { BookingWizard } from './components/BookingWizard';
-import { GallerySection } from './components/GallerySection';
 import { LocationSection } from './components/LocationSection';
 import { FooterPublic } from './components/FooterPublic';
 import { AboutModal } from './components/Modals/AboutModal';
@@ -891,10 +890,6 @@ export default function App() {
             onOpenAdmin={() => { setAdminLoginError(null); setAdminLoginModalOpen(true); }}
             onOpenAbout={() => setAboutModalOpen(true)}
             onOpenFAQ={() => setFaqModalOpen(true)}
-            onOpenGallery={() => {
-              const el = document.getElementById('galeria-nailart');
-              el?.scrollIntoView({ behavior: 'smooth' });
-            }}
             onOpenServices={() => {
               const el = document.getElementById('catalogo-vitrine');
               el?.scrollIntoView({ behavior: 'smooth' });
@@ -966,9 +961,6 @@ export default function App() {
                 </div>
               </div>
             )}
-
-            {/* Galeria de Criações Recentes */}
-            <GallerySection />
 
             {/* Localização Nobre no Pontal da Cruz, São Sebastião SP */}
             <LocationSection studioAddress={studioAddress} />

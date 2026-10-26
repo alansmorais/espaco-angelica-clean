@@ -51,16 +51,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const previewNotice = 'Ação desativada na pré-visualização somente leitura.';
 
   // Local fallbacks if not wired in App
-  // Fallbacks are empty/closed only; real hours and slots must come from the sheet.
-  const [internalSlots, setInternalSlots] = useState<TimeSlotConfig[]>([]);
+  // Default editable schedule: every day, 07:00–20:00. Saved official settings still take precedence.
+  const [internalSlots, setInternalSlots] = useState<TimeSlotConfig[]>(Array.from({ length: 26 }, (_, index) => {
+    const minutes = 7 * 60 + index * 30;
+    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { id: `default-${time}`, time, status: 'disponivel' as const, active: true };
+  }));
   const [internalDays, setInternalDays] = useState<DayScheduleConfig[]>([
-    { dayKey: 'seg', dayLabel: 'Segunda-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'dom', dayLabel: 'Domingo', isOpen: false, openTime: '', closeTime: '' }
+    { dayKey: 'seg', dayLabel: 'Segunda-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'dom', dayLabel: 'Domingo', isOpen: true, openTime: '07:00', closeTime: '20:00' }
   ]);
 
   const [internalBlacklist, setInternalBlacklist] = useState<BlacklistEntry[]>([]);
@@ -420,17 +424,16 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
     const updated = days.map(d => {
       if (d.dayKey !== dayKey) return d;
       const opening = !d.isOpen;
-      // Official opening hours: Tuesday through Saturday, 09:00–19:30.
-      // Monday and Sunday remain closed unless the owner explicitly opens them.
+      // Default opening hours: every day, 07:00–20:00; the owner can close any weekday.
       return {
         ...d,
         isOpen: opening,
-        openTime: opening ? (d.openTime || '09:00') : d.openTime,
-        closeTime: opening ? (d.closeTime || '19:30') : d.closeTime
+        openTime: opening ? (d.openTime || '07:00') : d.openTime,
+        closeTime: opening ? (d.closeTime || '20:00') : d.closeTime
       };
     });
     updateDays(updated);
-    notify('Dia de expediente atualizado. Horário padrão ao abrir: 09:00 às 19:30; ajuste se necessário.');
+    notify('Dia de expediente atualizado. Horário padrão ao abrir: 07:00 às 20:00; ajuste se necessário.');
   };
   return (
     <div className="flex flex-col gap-6 max-w-5xl text-[#49382E]">
@@ -682,7 +685,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
                       <input
                         type="time"
                         aria-label={`Abertura ${d.dayLabel}`}
-                        value={d.openTime || '09:00'}
+                        value={d.openTime || '07:00'}
                         onChange={event => updateDays(days.map(day => day.dayKey === d.dayKey ? { ...day, openTime: event.target.value } : day))}
                         className="mt-1 w-full min-w-0 rounded-md border border-[#E8D9B5] bg-white px-2 py-2 text-xs text-[#49382E]"
                       />
@@ -692,7 +695,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
                       <input
                         type="time"
                         aria-label={`Encerramento ${d.dayLabel}`}
-                        value={d.closeTime || '19:30'}
+                        value={d.closeTime || '20:00'}
                         onChange={event => updateDays(days.map(day => day.dayKey === d.dayKey ? { ...day, closeTime: event.target.value } : day))}
                         className="mt-1 w-full min-w-0 rounded-md border border-[#E8D9B5] bg-white px-2 py-2 text-xs text-[#49382E]"
                       />

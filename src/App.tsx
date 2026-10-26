@@ -185,18 +185,23 @@ export default function App() {
   );
 
   // 4: Operating Hours & Time Slots State (Add, Edit, Delete, Block)
-  const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>([]);
-  // Default operating hours: Tuesday–Saturday, 09:00–19:30; Monday and Sunday closed.
-  // The official saved schedule from Apps Script/Sheets replaces these defaults when available.
+  const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>(() => defaultTimeSlots);
+  // Default schedule requested by the owner: every day, 07:00–20:00.
+  // The administrator can still close individual weekdays or change their hours in Settings.
   const [daySchedules, setDaySchedules] = useState<DayScheduleConfig[]>([
-    { dayKey: 'seg', dayLabel: 'Segunda-feira', isOpen: false, openTime: '', closeTime: '' },
-    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
-    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
-    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
-    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: true, openTime: '09:00', closeTime: '19:30' },
-    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: true, openTime: '09:00', closeTime: '19:30' },
-    { dayKey: 'dom', dayLabel: 'Domingo', isOpen: false, openTime: '', closeTime: '' }
+    { dayKey: 'seg', dayLabel: 'Segunda-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'ter', dayLabel: 'Terça-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'qua', dayLabel: 'Quarta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'qui', dayLabel: 'Quinta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'sex', dayLabel: 'Sexta-feira', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'sab', dayLabel: 'Sábado', isOpen: true, openTime: '07:00', closeTime: '20:00' },
+    { dayKey: 'dom', dayLabel: 'Domingo', isOpen: true, openTime: '07:00', closeTime: '20:00' }
   ]);
+  const defaultTimeSlots: TimeSlotConfig[] = Array.from({ length: 26 }, (_, index) => {
+    const minutes = 7 * 60 + index * 30;
+    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { id: `default-${time}`, time, status: 'disponivel', active: true };
+  });
 
   // 6: Inadimplentes Blacklist State (Requires 100% Pre-payment via Pix)
   const [blacklist, setBlacklist] = useState<BlacklistEntry[]>([]);
@@ -231,7 +236,7 @@ export default function App() {
         const saved = weekly[dayMap[day.dayKey]];
         return saved && typeof saved === 'object' ? { ...day, isOpen: saved.open === true, openTime: String(saved.openTime || day.openTime), closeTime: String(saved.closeTime || day.closeTime) } : day;
       }));
-      if (Array.isArray(weekly.slots)) setTimeSlots(weekly.slots.filter((slot: any) => slot && typeof slot.id === 'string' && typeof slot.time === 'string'));
+      if (Array.isArray(weekly.slots) && weekly.slots.length > 0) setTimeSlots(weekly.slots.filter((slot: any) => slot && typeof slot.id === 'string' && typeof slot.time === 'string'));
     }).catch(error => console.error('[Schedule config] Read failed:', error));
     return () => { active = false; };
   }, [appMode]);

@@ -144,10 +144,24 @@ function getServicesSheets() {
   }
 }
 
+// Resolve the official sheet by service category so depilation services and their photos
+// are persisted back to the same catalogue tab from which they are loaded.
+function getServicesSheetForCategory(category) {
+  var sheets = getServicesSheets();
+  var normalized = String(category || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  var isDepilation = normalized === "depilacao";
+  for (var i = 0; i < sheets.length; i++) {
+    var sheetName = String(sheets[i].getName() || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+    var sheetIsDepilation = sheetName === "depilacao";
+    if (sheetIsDepilation === isDepilation) return sheets[i];
+  }
+  // Do not write a depilation service into the general services sheet (or vice versa).
+  return null;
+}
+
 // Legacy write paths continue targeting the main services tab only.
 function getServicesSheet() {
-  var sheets = getServicesSheets();
-  return sheets.length ? sheets[0] : null;
+  return getServicesSheetForCategory("alongamento") || getServicesSheets()[0] || null;
 }
 
 
@@ -1086,9 +1100,11 @@ function doPost(e) {
       }
 
       try {
-        var saveServSheet = getServicesSheet();
+        var saveServSheet = getServicesSheetForCategory(data.category);
         if (!saveServSheet) {
-          return responseJSON({ status: "error", message: "Aba 'Serviços' (ou 'Servicos') não encontrada na planilha oficial." });
+          return responseJSON({ status: "error", message: String(data.category || "").toLowerCase() === "depilacao"
+            ? "Aba oficial 'Depilação' ou 'Depilacao' não encontrada na planilha."
+            : "Aba oficial de serviços gerais ('Serviços' ou 'Servicos') não encontrada na planilha." });
         }
 
         var existingRows = saveServSheet.getDataRange().getValues();

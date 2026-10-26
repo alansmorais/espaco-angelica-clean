@@ -7,6 +7,8 @@
  */
 
 var TARGET_SPREADSHEET_ID = "1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0";
+// Use the same existing Drive folder that feeds the official portfolio gallery.
+var PHOTO_FOLDER_ID = "1JGypjL9OqGL5i2OUrjiGMKxkWD11YuAw";
 
 function uploadImageToDrive(base64Data, fileName, mimeType) {
   try {
@@ -33,7 +35,7 @@ function uploadImageToDrive(base64Data, fileName, mimeType) {
       throw new Error('Image must be 10 MB or smaller.');
     }
 
-    const folder = DriveApp.getFolderById(FOLDER_ID);
+    const folder = DriveApp.getFolderById(PHOTO_FOLDER_ID);
 
     const safeFileName = String(fileName)
       .replace(/[\\/:*?"<>|]/g, '_');
@@ -875,6 +877,15 @@ function doPost(e) {
 
     if (data.action === "createAdminSession") return responseJSON(createAdminSession(data.password));
     if (data.action === "revokeAdminSession") return responseJSON(revokeAdminSession(data.token));
+    // Image uploads are administrative writes: doPost has already validated the admin session.
+    if (data.action === "uploadImage" || data.action === "uploadServiceImage") {
+      var imageData = String(data.base64Data || data.imageBase64 || "").replace(/^data:image\\/[a-zA-Z0-9.+-]+;base64,/, "");
+      var imageName = String(data.fileName || "portfolio-" + new Date().getTime() + ".jpg").trim();
+      var imageMimeType = String(data.mimeType || "image/jpeg").trim();
+      var imageUrl = uploadImageToDrive(imageData, imageName, imageMimeType);
+      return responseJSON({ status: "success", success: true, uploaded: true, imageUrl: imageUrl, url: imageUrl, message: "Imagem enviada para a pasta oficial do Google Drive." });
+    }
+
     if (data.action === "getPublicAvailability") return responseJSON(getPublicAvailabilityData());
     if (data.action === "getPublicStudioAddress") return responseJSON(getPublicStudioAddressData());
     if (data.action === "getPublicPaymentConfig") return responseJSON(getPublicPaymentConfigData());

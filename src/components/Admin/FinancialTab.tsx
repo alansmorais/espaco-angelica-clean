@@ -761,7 +761,7 @@ export const FinancialTab: React.FC<FinancialTabProps> = ({
                     {!isLoadingDrivePhotos && !drivePhotoError && drivePhotos.length === 0 && <p className="text-sm text-[#786C63]">Não foram encontradas fotografias na pasta.</p>}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                       {drivePhotos.map(photo => (
-                        <button key={photo.id} type="button" onClick={() => { setFormImageUrl(photo.thumbnailUrl || photo.url); setIsDrivePickerOpen(false); showNotification('Foto do Google Drive selecionada. Guarde o procedimento para confirmar a alteração.', 'success'); }} className="text-left rounded-xl overflow-hidden border border-[#E8D9B5] hover:border-[#D4AF37] hover:ring-2 hover:ring-[#D4AF37]/40 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
+                        <button key={photo.id} type="button" onClick={() => { setFormImageUrl(photo.url); setIsDrivePickerOpen(false); showNotification('Foto selecionada. Agora clique em “Salvar procedimento” para gravar o link oficial na aba correta da planilha.', 'success'); }} className="text-left rounded-xl overflow-hidden border border-[#E8D9B5] hover:border-[#D4AF37] hover:ring-2 hover:ring-[#D4AF37]/40 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
                           <img src={photo.thumbnailUrl || photo.url} alt={photo.name} loading="lazy" className="w-full aspect-square object-cover bg-[#F7EFEA]" />
                           <span className="block p-2 text-[11px] text-[#49382E] truncate" title={photo.name}>{photo.name}</span>
                         </button>

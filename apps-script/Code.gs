@@ -691,7 +691,12 @@ function getPublicStudioAddressData() {
 }
 
 function normalizeClientPhoneKey(value) {
-  return String(value || "").replace(/\D/g, "");
+  var digits = String(value || "").replace(/\D/g, "");
+  // Treat Brazilian numbers with or without the +55 country prefix as the same client.
+  if (digits.indexOf("55") === 0 && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.substring(2);
+  }
+  return digits;
 }
 
 function getOrCreateClientsSheet() {

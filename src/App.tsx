@@ -185,6 +185,11 @@ export default function App() {
   );
 
   // 4: Operating Hours & Time Slots State (Add, Edit, Delete, Block)
+  const defaultTimeSlots: TimeSlotConfig[] = Array.from({ length: 26 }, (_, index) => {
+    const minutes = 7 * 60 + index * 30;
+    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { id: `default-${time}`, time, status: 'disponivel', active: true };
+  });
   const [timeSlots, setTimeSlots] = useState<TimeSlotConfig[]>(() => defaultTimeSlots);
   // Default schedule requested by the owner: every day, 07:00–20:00.
   // The administrator can still close individual weekdays or change their hours in Settings.
@@ -197,11 +202,6 @@ export default function App() {
     { dayKey: 'sab', dayLabel: 'Sábado', isOpen: true, openTime: '07:00', closeTime: '20:00' },
     { dayKey: 'dom', dayLabel: 'Domingo', isOpen: true, openTime: '07:00', closeTime: '20:00' }
   ]);
-  const defaultTimeSlots: TimeSlotConfig[] = Array.from({ length: 26 }, (_, index) => {
-    const minutes = 7 * 60 + index * 30;
-    const time = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-    return { id: `default-${time}`, time, status: 'disponivel', active: true };
-  });
 
   // 6: Inadimplentes Blacklist State (Requires 100% Pre-payment via Pix)
   const [blacklist, setBlacklist] = useState<BlacklistEntry[]>([]);

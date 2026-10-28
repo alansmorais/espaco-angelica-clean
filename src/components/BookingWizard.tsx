@@ -193,7 +193,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   })();
 
   const nextAvailableSuggestion = (() => {
-    const configuredSlots = timeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
+    const configuredSlots = generatedTimeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
     // First offer another time on the date the client already selected.
     if (!isDateBlocked(selectedDate)) {
       const sameDaySlot = configuredSlots.find(slot => !isSlotUnavailable(slot.time, selectedDate));

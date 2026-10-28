@@ -429,8 +429,10 @@ function getPublicAvailabilityData() {
 function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
   var config = getScheduleConfigData();
   var start = timeToMinutes(timeKey);
-  // Availability is controlled by manually configured slots, not service duration.
-  var end = start;
+  if (start === null) return { allowed: false, message: "Horário inválido. Escolha outro horário." };
+  // Only the actual procedure duration occupies the calendar.
+  var duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : 30;
+  var end = start + duration;
   var parts = dateKey.split("-");
   var date = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
   var dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -443,7 +445,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
     if (day.open === true) {
       var open = timeToMinutes(String(day.openTime || ""));
       var close = timeToMinutes(String(day.closeTime || ""));
-      if (open === null || close === null || start < open || start >= close) {
+      if (open === null || close === null || start < open || end > close) {
         return { allowed: false, message: "Este horário está fora do expediente configurado. Escolha outro horário." };
       }
     }
@@ -456,7 +458,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
       var slotStatus = String(slot.status || "").toLowerCase();
       if (["bloqueado", "autoclave", "almoco"].indexOf(slotStatus) === -1) continue;
       var slotStart = timeToMinutes(String(slot.time || ""));
-      if (slotStart !== null && start >= slotStart && start < slotStart + 30) {
+      if (slotStart !== null && start < slotStart + 30 && end > slotStart) {
         return { allowed: false, message: "Este horário está bloqueado na configuração semanal. Escolha outro horário." };
       }
     }
@@ -469,7 +471,7 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
     if (block.allDay === true) return { allowed: false, message: "Esta data está bloqueada para atendimentos. Escolha outro dia." };
     var blockStart = timeToMinutes(String(block.startTime || ""));
     var blockEnd = timeToMinutes(String(block.endTime || ""));
-    if (blockStart !== null && blockEnd !== null && start >= blockStart && start < blockEnd) {
+    if (blockStart !== null && blockEnd !== null && start < blockEnd && end > blockStart) {
       return { allowed: false, message: "Este intervalo está bloqueado. Escolha outro horário." };
     }
   }

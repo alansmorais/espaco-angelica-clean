@@ -171,6 +171,27 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
   const isPastDate = (date: Date) => toDateKey(date) < toDateKey(today);
 
+  const configuredActiveSlots = timeSlots.filter(slot => slot.active);
+  const generatedTimeSlots: TimeSlotConfig[] = (() => {
+    if (configuredActiveSlots.length > 0) return configuredActiveSlots;
+    const date = new Date(`${selectedDate}T12:00:00`);
+    const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+    const dayConfig = daySchedules?.find(day => day.dayKey === keys[date.getDay()]);
+    if (dayConfig && !dayConfig.isOpen) return [];
+    const opening = timeToMinutes(dayConfig?.openTime || '07:00') ?? 420;
+    const closing = timeToMinutes(dayConfig?.closeTime || '19:30') ?? 1170;
+    const duration = durationMinutes(selectedService.duration) +
+      services.filter(service => additionalServiceIds.includes(service.id))
+        .reduce((total, service) => total + durationMinutes(service.duration), 0);
+    const generated: TimeSlotConfig[] = [];
+    for (let minute = opening; minute + duration <= closing; minute += 15) {
+      const hh = String(Math.floor(minute / 60)).padStart(2, '0');
+      const mm = String(minute % 60).padStart(2, '0');
+      generated.push({ id: `generated-${selectedDate}-${hh}${mm}`, time: `${hh}:${mm}`, active: true, status: 'disponivel' });
+    }
+    return generated;
+  })();
+
   const nextAvailableSuggestion = (() => {
     const configuredSlots = timeSlots.filter(slot => slot.active && slot.status === 'disponivel').sort((a, b) => (timeToMinutes(a.time) ?? 0) - (timeToMinutes(b.time) ?? 0));
     // First offer another time on the date the client already selected.
@@ -765,11 +786,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   <span className="font-jakarta text-[10px] text-[#D4AF37] font-semibold">
                     {isDateBlocked(selectedDate)
                       ? '0 horários abertos (Data Bloqueada)'
-                      : `${timeSlots.filter(s => s.status === 'disponivel' && s.active).length} horários abertos`}
+                      : `${generatedTimeSlots.filter(s => s.status === 'disponivel' && s.active).length} horários abertos`}
                   </span>
                 </div>
 
-                {!isDateBlocked(selectedDate) && timeSlots.filter(s => s.active && s.status === 'disponivel' && !isSlotUnavailable(s.time)).length === 0 ? (
+                {!isDateBlocked(selectedDate) && generatedTimeSlots.filter(s => s.active && s.status === 'disponivel' && !isSlotUnavailable(s.time)).length === 0 ? (
                   <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 text-center space-y-2">
                     <p className="font-jakarta text-sm font-semibold text-[#49382E]">Não há horários disponíveis nesta data.</p>
                     <p className="font-jakarta text-xs text-[#786C63]">{nextAvailableSuggestion?.sameDate ? 'Este horário não está disponível. Podemos sugerir outro horário nesta mesma data:' : 'Não encontramos outro horário livre nesta data. Podemos sugerir a próxima data disponível:'}</p>
@@ -794,7 +815,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-2.5">
-                    {timeSlots.filter(s => s.active).map(slot => {
+                    {generatedTimeSlots.map(slot => {
                       const isBlocked = slot.status === 'bloqueado' || slot.status === 'autoclave' || slot.status === 'almoco' || isSlotUnavailable(slot.time);
                       const isSelected = selectedTime === slot.time && !isBlocked;
 
@@ -823,7 +844,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 )}
               </div>}
-              {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setBookingStep(3); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o procedimento</button>}
+              {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setSelectedTime(''); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o horário</button>}
               {bookingStep === 4 && <button type="button" onClick={() => { if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 

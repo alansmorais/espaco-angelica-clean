@@ -130,7 +130,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const isSlotUnavailable = (slotTime: string, dateKey: string = selectedDate): boolean => {
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
-    // Availability follows manually configured slots, not the procedure duration.
+
+    // Only reserve the actual time occupied by this procedure (plus any
+    // explicitly selected additional procedures).
+    const requestedDuration = durationMinutes(selectedService.duration) +
+      services.filter(service => additionalServiceIds.includes(service.id))
+        .reduce((total, service) => total + durationMinutes(service.duration), 0);
+    const end = start + requestedDuration;
+
     if (daySchedules && daySchedules.length > 0) {
       const date = new Date(`${dateKey}T12:00:00`);
       const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
@@ -139,9 +146,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         if (!dayConfig.isOpen) return true;
         const opening = timeToMinutes(dayConfig.openTime);
         const closing = timeToMinutes(dayConfig.closeTime);
-        if (opening === null || closing === null || start < opening || start >= closing) return true;
+        if (opening === null || closing === null || start < opening || end > closing) return true;
       }
     }
+
     return appointments.some(a => {
       if (!areDatesEqual(a.date, dateKey) || ['cancelado', 'teste_sistema'].includes(a.status)) return false;
       const raw = String(a.time || '').trim();
@@ -150,14 +158,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         const interval = /^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i.exec(raw);
         if (interval) {
           const blockStart = timeToMinutes(interval[1]), blockEnd = timeToMinutes(interval[2]);
-          return blockStart !== null && blockEnd !== null && start >= blockStart && start < blockEnd;
+          return blockStart !== null && blockEnd !== null && start < blockEnd && end > blockStart;
         }
       }
       const occupiedStart = timeToMinutes(raw);
       if (occupiedStart === null) return false;
-      // A booked slot blocks its own start time; do not infer extra unavailable
-      // slots from the duration of the booked procedure.
-      return start === occupiedStart;
+      const occupiedDuration = durationMinutes(a.serviceDuration || '');
+      const occupiedEnd = occupiedStart + occupiedDuration;
+      return start < occupiedEnd && end > occupiedStart;
     });
   };
 

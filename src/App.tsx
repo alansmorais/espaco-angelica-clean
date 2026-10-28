@@ -647,8 +647,7 @@ export default function App() {
   // Handlers for client booking
   const handleSelectService = (service: Service) => {
     setSelectedService(service);
-    const el = document.getElementById('wizard-agendamento');
-    el?.scrollIntoView({ behavior: 'smooth' });
+    setBookingModalOpen(true);
   };
 
   const handleBookingConfirmed = (newApt: Appointment) => {
@@ -966,10 +965,7 @@ export default function App() {
           <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
             <button
               type="button"
-              onClick={() => {
-                const el = document.getElementById('wizard-agendamento');
-                el?.scrollIntoView({ behavior: 'smooth' });
-              }}
+              onClick={() => setBookingModalOpen(true)}
               className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#D4AF37] hover:bg-[#E5C158] text-[#3C2F00] font-jakarta font-bold text-xs sm:text-sm shadow-[0_10px_25px_-3px_rgba(212,175,55,0.45),0_4px_12px_rgba(73,56,46,0.15)] border border-[#E8D9B5] transition-all cursor-pointer transform active:scale-95 whitespace-nowrap min-h-[46px]"
               style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
               title="Agendar Horário no Espaço"

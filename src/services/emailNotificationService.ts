@@ -857,6 +857,17 @@ export async function fetchPublicPaymentConfig(): Promise<{ success: boolean; co
   }
 }
 
+export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; clientName?: string; error?: string }> {
+  const url = getNotificationWebhookUrl();
+  if (!url) return { success: false, found: false, error: 'Consulta de cadastro indisponível neste ambiente.' };
+  try {
+    const data = await postAppsScriptAction(url, 'lookupPublicClientByPhone', { phone });
+    return { success: true, found: data.found === true, clientName: data.clientName ? String(data.clientName) : undefined };
+  } catch (error: any) {
+    return { success: false, found: false, error: error?.message || 'Não foi possível consultar o cadastro.' };
+  }
+}
+
 export async function fetchRemoteClients(authToken?: string): Promise<{ success: boolean; clients: ClientProfile[]; error?: string }> {
   try {
     const data = await callScheduleAction('getClients', {}, authToken);

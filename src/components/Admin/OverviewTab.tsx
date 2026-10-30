@@ -272,7 +272,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </button>
                 </div>
               ) : (
-                todayAppointments.map(apt => (
+                [...todayAppointments].sort((a, b) => String(a.time || '').localeCompare(String(b.time || ''))).map(apt => (
                   <div
                     key={apt.id}
                     className="p-4 rounded-xl bg-[#FDFBF9] flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[#E8D9B5] hover:border-[#D4AF37]/50 transition-all shadow-xs"

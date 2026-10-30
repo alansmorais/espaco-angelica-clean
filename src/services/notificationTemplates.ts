@@ -48,7 +48,7 @@ Nome completo: ${data.clientName}
 Procedimento: ${data.serviceTitle}
 Data: ${data.date}
 Horário: ${data.time}
-Valor: ${data.servicePrice || `R$ ${formatBRL(data.depositAmount)}`}
+Valor: R$ ${String(data.servicePrice || formatBRL(data.depositAmount)).replace(/^R\\$\\s*/i, '')}
 💰 PAGAMENTO DO SINAL VIA PIX
 🔑 Chave Pix (WhatsApp):
 *(12) 97406-2241*

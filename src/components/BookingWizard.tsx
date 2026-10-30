@@ -9,7 +9,7 @@ import {
   formatBRL,
   areDatesEqual
 } from '../services/notificationTemplates';
-import { triggerNewPreBookingEmailNotification } from '../services/emailNotificationService';
+import { triggerNewPreBookingEmailNotification, lookupPublicClientByPhone } from '../services/emailNotificationService';
 
 interface BookingWizardProps {
   selectedService: Service;
@@ -69,6 +69,9 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [homeAddress, setHomeAddress] = useState<string>('');
   const [clientName, setClientName] = useState<string>('');
   const [clientPhone, setClientPhone] = useState<string>('');
+  const [isLookingUpClient, setIsLookingUpClient] = useState<boolean>(false);
+  const [clientLookupMessage, setClientLookupMessage] = useState<string>('');
+  const [isReturningClient, setIsReturningClient] = useState<boolean>(false);
   const [clientEmail, setClientEmail] = useState<string>('');
   const [clientBirthDate, setClientBirthDate] = useState<string>('');
   const [clientInstagram, setClientInstagram] = useState<string>('');
@@ -672,13 +675,28 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
             {bookingStep === 1 && (
               <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
-                <h3 className="font-syne text-lg font-semibold text-[#49382E]">1. Como podemos contactar-te?</h3>
-                <p className="font-jakarta text-xs text-[#786C63]">O WhatsApp é obrigatório para podermos responder ao pedido. O e-mail é opcional.</p>
-                <label className="block text-xs font-semibold text-[#49382E]">Nome completo *
-                  <input required value={clientName} onChange={e => setClientName(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="O teu nome" />
-                </label>
+                <h3 className="font-syne text-lg font-semibold text-[#49382E]">1. Informe seu WhatsApp</h3>
+                <p className="font-jakarta text-xs text-[#786C63]">Vamos procurar seu cadastro pelo número. Se já for cliente, não precisará digitar o nome novamente.</p>
                 <label className="block text-xs font-semibold text-[#49382E]">WhatsApp com DDD *
-                  <input required type="tel" value={clientPhone} onChange={e => setClientPhone(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="(12) 99123-4567" />
+                  <input required type="tel" value={clientPhone} onChange={e => { setClientPhone(e.target.value); setClientLookupMessage(''); setIsReturningClient(false); }} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="(12) 99123-4567" />
+                </label>
+                <button type="button" disabled={isLookingUpClient || normalizedPhone.length < 8} onClick={async () => {
+                  setIsLookingUpClient(true); setClientLookupMessage('');
+                  const result = await lookupPublicClientByPhone(clientPhone);
+                  if (result.success && result.found && result.clientName) {
+                    setClientName(result.clientName); setIsReturningClient(true);
+                    setClientLookupMessage('Cadastro encontrado. Confirme sua data de nascimento para continuar.');
+                  } else if (result.success) {
+                    setClientName(''); setIsReturningClient(false);
+                    setClientLookupMessage('Ainda não encontramos cadastro com esse telefone. Vamos criar seu cadastro.');
+                  } else {
+                    setClientLookupMessage(result.error || 'Não foi possível consultar o cadastro. Preencha seus dados abaixo.');
+                  }
+                  setIsLookingUpClient(false);
+                }} className="w-full rounded-full border border-[#D4AF37] px-4 py-2.5 text-sm font-semibold text-[#49382E] disabled:opacity-50">{isLookingUpClient ? 'Consultando cadastro…' : 'Consultar meu cadastro'}</button>
+                {clientLookupMessage && <p className="text-xs text-[#786C63]" role="status">{clientLookupMessage}</p>}
+                <label className="block text-xs font-semibold text-[#49382E]">Nome completo *
+                  <input required value={clientName} onChange={e => setClientName(e.target.value)} readOnly={isReturningClient} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] read-only:opacity-80" placeholder="O teu nome" />
                 </label>
                 <label className="block text-xs font-semibold text-[#49382E]">E-mail (opcional)
                   <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="voce@exemplo.com" />

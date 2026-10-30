@@ -43,49 +43,17 @@ export interface PreBookingTemplateData {
  * Constrói a mensagem oficial aprovada pela Angélica com os dados reais da reserva.
  */
 export function buildOfficialPreBookingWhatsAppMessage(data: PreBookingTemplateData): string {
-  const signalValue = `R$ ${formatBRL(data.depositAmount)}`;
-  const totalLine = data.servicePrice ? `\nTotal do procedimento: ${data.servicePrice}` : '';
-
-  let balance = data.remainingBalance;
-  if (balance === undefined && data.servicePrice && data.paymentMode !== 'pre_pagamento_100') {
-    const rawDigits = data.servicePrice.replace(/[^\d,]/g, '').replace(',', '.');
-    const parsed = parseFloat(rawDigits);
-    if (!isNaN(parsed) && parsed > 0) {
-      balance = calculateRemainingBalance(parsed, data.depositAmount);
-    }
-  }
-
-  const balanceLine =
-    data.paymentMode === 'pre_pagamento_100'
-      ? ''
-      : balance !== undefined
-      ? `\nSaldo restante a pagar no atendimento: R$ ${formatBRL(balance)}`
-      : '';
-  const depositPercent = Number.isFinite(data.depositPercent) ? Math.min(100, Math.max(0, Number(data.depositPercent))) : 40;
-  const paymentPrompt =
-    data.paymentMode === 'pre_pagamento_100'
-      ? `Para confirmar, faça o PIX do pré-pagamento integral (100%) de ${signalValue}:`
-      : `Para confirmar, faça o PIX do sinal (${depositPercent}%) de ${signalValue}:`;
-  const pixDetails = data.pixKey?.trim()
-    ? `Chave PIX: ${data.pixKey.trim()}\nTitular: ${data.pixBeneficiary?.trim() || 'Titular não informado'}`
-    : 'Chave PIX não cadastrada. Entre em contato com o Espaço para confirmar os dados de pagamento.';
-
-  return `Olá, Angélica! Sou ${data.clientName} e gostaria de confirmar meu pré-agendamento no Espaço Angélica.
-Procedimento: ${data.serviceTitle}${totalLine}
+  return `Olá, Angelica! Sou ${data.clientName} e gostaria de confirmar meu pré-agendamento no Espaço Angelica
+Nome completo: ${data.clientName}
+Procedimento: ${data.serviceTitle}
 Data: ${data.date}
 Horário: ${data.time}
-
-${paymentPrompt}${balanceLine}
-${pixDetails}
-
-Vou enviar o comprovante por esta conversa. Por favor, confirme meu agendamento depois de conferir o pagamento. Obrigada! 💛
-
-🤎 POLÍTICA DE AGENDAMENTO
-- Para confirmar o horário, é necessário pagar um sinal de ${depositPercent}% do valor do procedimento.
-- O sinal garante a vaga e é descontado do valor total no dia do atendimento.
-- Em caso de desistência ou não comparecimento, o sinal não é reembolsado, pois cobre o bloqueio da vaga e os preparativos.
-- Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.
-Agradeço a compreensão e o carinho de sempre! 🤎✨`;
+Valor: ${data.servicePrice || `R$ ${formatBRL(data.depositAmount)}`}
+💰 PAGAMENTO DO SINAL VIA PIX
+🔑 Chave Pix (WhatsApp):
+*(12) 97406-2241*
+Após o pagamento, envio o comprovante por aqui para confirmação do meu agendamento.
+Aguardo a confirmação! 💖`;
 }
 
 /**

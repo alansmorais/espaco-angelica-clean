@@ -126,7 +126,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate();
   const monthCells = [...Array(monthStart).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)] as (number | null)[];
   const todayKey = formatDate(new Date());
-  const dayAppointments = appointments.filter(a => a.status !== 'cancelado' && areDatesEqual(a.date, selectedDayLabel));
+  const dayAppointments = appointments
+    .filter(a => a.status !== 'cancelado' && areDatesEqual(a.date, selectedDayLabel))
+    .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
 
   return (
     <div className="flex flex-col gap-6 text-[#49382E]">

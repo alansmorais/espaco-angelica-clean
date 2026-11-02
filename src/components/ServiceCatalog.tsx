@@ -51,7 +51,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               Vitrine de Procedimentos
             </h2>
             <p className="font-jakarta text-xs sm:text-sm text-[#786C63] max-w-xl mt-2 leading-relaxed">
-              Fotos reais dos procedimentos executados no Espaçor. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
+              Fotos reais dos procedimentos executados no Espaço. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
             </p>
           </div>
 

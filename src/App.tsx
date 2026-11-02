@@ -74,7 +74,7 @@ const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
   // Enable mutations only after Apps Script and payment flows are validated and approved.
-  // Mode: 'public' (Client) vs 'admin' (Executive Espaçor)
+  // Mode: 'public' (Client) vs 'admin' (Executive Espaço)
   const [appMode, setAppMode] = useState<'public' | 'admin'>('public');
 
   // Admin Login Modal & Session State (volatile, never stored permanently or in bundle)

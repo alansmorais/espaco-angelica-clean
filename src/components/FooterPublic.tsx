@@ -138,7 +138,7 @@ export const FooterPublic: React.FC<FooterPublicProps> = ({
           <p>© 2024 Espaço Angelica do Carmo • São Sebastião SP. Todos os direitos reservados.</p>
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             <button type="button" onClick={onOpenAbout} className="hover:text-[#D4AF37] transition-colors cursor-pointer min-h-[36px] flex items-center">
-              Sobre o Espaçor
+              Sobre o Espaço
             </button>
             <button type="button" onClick={onOpenFAQ} className="hover:text-[#D4AF37] transition-colors cursor-pointer min-h-[36px] flex items-center">
               Biossegurança &amp; Autoclave

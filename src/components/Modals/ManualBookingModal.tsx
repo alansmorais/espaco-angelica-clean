@@ -191,7 +191,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
             '',
             'Angélica do Carmo',
             'Felicidade é fazer as unhas. 💖'
-          ].join('\\n');
+          ].join('\n');
           const waRes = await sendAppointmentWhatsAppConfirmation(newApt, confirmationTemplate);
           newApt.whatsappStatus = waRes.status === 'sent' ? 'enviado' : waRes.status === 'simulated' ? 'simulado' : 'falha';
           newApt.whatsappSentAt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

@@ -32,9 +32,28 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
   // Only display active services on public catalog
   const activeServices = services.filter(s => s.active !== false);
 
+  const classifyServiceCategory = (service: Service): string => {
+    const category = normalizeCategory(service.category);
+    const title = normalizeCategory(service.title);
+    const combined = category + ' ' + title;
+
+    if (/pedicure|pes|pe$|podologia/.test(combined)) return 'pedicure';
+    if (/manicure|maos|mao|esmalta|cuticula|cutilagem/.test(combined)) return 'manicure';
+    if (category.includes('depil') || title.includes('depil')) return 'depilacao';
+    if (category.includes('spa') || title.includes('spa')) return 'spa';
+    if (/alongamento|blindagem|gel|fibra/.test(combined)) return 'blindagem';
+    if (/nailart/.test(combined)) return 'nailart';
+    return category || 'outros';
+  };
+
   const filteredServices = activeCategory === 'all'
     ? activeServices
-    : activeServices.filter(s => normalizeCategory(s.category) === normalizeCategory(activeCategory));
+    : activeServices.filter(s => {
+        const classified = classifyServiceCategory(s);
+        if (activeCategory === 'alongamento') return classified === 'blindagem';
+        if (activeCategory === 'blindagem') return classified === 'blindagem';
+        return classified === normalizeCategory(activeCategory);
+      });
 
   return (
     <section className="relative w-full px-4 sm:px-8 lg:px-12 py-12 sm:py-16 bg-[#FBF7F2]" id="catalogo-vitrine">
@@ -67,6 +86,28 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               }`}
             >
               Todos ({activeServices.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('manicure')}
+              className={`px-4 py-2 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] flex items-center shrink-0 snap-start active:scale-95 ${
+                activeCategory === 'manicure'
+                  ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
+                  : 'text-[#786C63] hover:text-[#49382E]'
+              }`}
+            >
+              Manicure
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveCategory('pedicure')}
+              className={`px-4 py-2 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] flex items-center shrink-0 snap-start active:scale-95 ${
+                activeCategory === 'pedicure'
+                  ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
+                  : 'text-[#786C63] hover:text-[#49382E]'
+              }`}
+            >
+              Pedicure
             </button>
             <button
               type="button"

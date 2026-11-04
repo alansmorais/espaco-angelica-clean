@@ -77,7 +77,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
                   : 'text-[#786C63] hover:text-[#49382E]'
               }`}
             >
-              Alongamento
+              Procedimentos em gel
             </button>
             <button
               type="button"
@@ -88,7 +88,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
                   : 'text-[#786C63] hover:text-[#49382E]'
               }`}
             >
-              Blindagem &amp; Gel
+              Unha em gel
             </button>
             <button
               type="button"

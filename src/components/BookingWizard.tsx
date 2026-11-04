@@ -729,7 +729,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       if (/alongamento|blindagem|\bgel\b|fibra/.test(combined)) return 'Unha em gel';
                       return service.category || 'Outros procedimentos';
                     };
-                    const activeServices = services.filter(service => service.active !== false);
+                    // Nail Art is an optional add-on, never a primary procedure.
+                    const activeServices = services.filter(service =>
+                      service.active !== false && !/nail\\s*art|nailart/i.test(String(service.title || ''))
+                    );
                     const preferredOrder = ['Manicure', 'Pedicure', 'Unha em gel'];
                     const groups = Array.from(new Set([...preferredOrder, ...activeServices.map(classifyService)]));
                     return groups.map(group => {

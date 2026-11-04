@@ -737,7 +737,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] flex items-start gap-3 text-xs text-[#786C63]">
           <span className="material-symbols-outlined text-[#D4AF37] text-[20px] shrink-0 mt-0.5">verified_user</span>
           <p>
-            <strong>Como funciona:</strong> Ao tentar agendar pelo site com qualquer um dos números abaixo, o sistema detecta a inadimplência e emite um alerta formal. O agendamento só é aceito mediante <strong>Pré-pagamento Integral (100% via Pix)</strong>, protegendo o Espaçor contra no-shows recorrentes.
+            <strong>Como funciona:</strong> Ao tentar agendar pelo site com qualquer um dos números abaixo, o sistema detecta a inadimplência e emite um alerta formal. O agendamento só é aceito mediante <strong>Pré-pagamento Integral (100% via Pix)</strong>, protegendo o Espaço contra no-shows recorrentes.
           </p>
         </div>
 
@@ -802,7 +802,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
         <div className="flex items-center gap-2 pb-3 border-b border-[#E8D9B5]">
           <span className="material-symbols-outlined text-[#D4AF37]">pin_drop</span>
           <h3 className="font-syne text-lg text-[#49382E] font-bold">
-            Endereço Oficial do Espaçor
+            Endereço Oficial do Espaço
           </h3>
         </div>
 
@@ -1083,7 +1083,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
               <button
                 type="button"
                 onClick={() => {
-                  setWaTemplate(`✨ *Confirmação de Agendamento • Espaço Angélica do Carmo* ✨\n\nOlá, *{cliente}*! Seu horário no nosso Espaçor privativo foi *CONFIRMADO* com sucesso na grade. 💅✨\n\n📋 *Detalhes do seu atendimento:*\n• *Procedimento:* {servico}\n• *Data:* {data}\n• *Horário:* às {horario}\n• *Valor:* {valor}\n• *Sinal:* {sinal}\n\n📍 *Endereço:* {endereco}\n\nℹ️ *Orientações importantes:*\n• Pedimos a gentileza de chegar com 5 a 10 minutos de antecedência.\n• Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.\n• Em caso de desistência ou não comparecimento, o sinal não é reembolsado.\n\nQualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`);
+                  setWaTemplate(`✨ *Confirmação de Agendamento • Espaço Angélica do Carmo* ✨\n\nOlá, *{cliente}*! Seu horário no nosso Espaço privativo foi *CONFIRMADO* com sucesso na grade. 💅✨\n\n📋 *Detalhes do seu atendimento:*\n• *Procedimento:* {servico}\n• *Data:* {data}\n• *Horário:* às {horario}\n• *Valor:* {valor}\n• *Sinal:* {sinal}\n\n📍 *Endereço:* {endereco}\n\nℹ️ *Orientações importantes:*\n• Pedimos a gentileza de chegar com 5 a 10 minutos de antecedência.\n• Mudanças de data exigem pelo menos 24 horas de antecedência, mantendo o sinal pago.\n• Em caso de desistência ou não comparecimento, o sinal não é reembolsado.\n\nQualquer dúvida, pode responder a esta mensagem. Mal podemos esperar para cuidar de você! 💕`);
                   notify('Modelo padrão restaurado!');
                 }}
                 className="px-3 py-1 rounded-full bg-[#F7EFEA] hover:bg-[#E8D3C7] text-[#786C63] hover:text-[#49382E] font-semibold cursor-pointer transition-colors"
@@ -1103,7 +1103,7 @@ Por favor, confirme a disponibilidade e as instruções para o pagamento do sina
               { tag: '{horario}', label: 'Horário' },
               { tag: '{valor}', label: 'Valor' },
               { tag: '{sinal}', label: 'Sinal Pix' },
-              { tag: '{endereco}', label: 'Endereço Espaçor' }
+              { tag: '{endereco}', label: 'Endereço Espaço' }
             ].map(item => (
               <button
                 key={item.tag}

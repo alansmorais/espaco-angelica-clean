@@ -94,6 +94,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           whatsappLastMessage: res.previewText || res.message
         });
       }
+      if (res.status !== 'sent' && res.fallbackUrl && typeof window !== 'undefined') {
+        window.open(res.fallbackUrl, '_blank');
+      }
       showNotice(res.message || `Confirmação de agendamento disparada via WhatsApp para ${apt.clientName}!`);
     } catch {
       showNotice('Erro ao disparar confirmação via WhatsApp.');
@@ -162,7 +165,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           </div>
         </div>
 
-        {/* Quick Espaçor Actions */}
+        {/* Quick Espaço Actions */}
         <div className="flex flex-wrap items-center gap-2.5 z-10">
           <button
             type="button"

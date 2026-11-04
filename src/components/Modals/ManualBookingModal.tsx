@@ -196,6 +196,9 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
           newApt.whatsappStatus = waRes.status === 'sent' ? 'enviado' : waRes.status === 'simulated' ? 'simulado' : 'falha';
           newApt.whatsappSentAt = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
           newApt.whatsappLastMessage = waRes.previewText || waRes.message;
+          if (waRes.status !== 'sent' && waRes.fallbackUrl && typeof window !== 'undefined') {
+            window.open(waRes.fallbackUrl, '_blank');
+          }
         } catch {}
       }
 

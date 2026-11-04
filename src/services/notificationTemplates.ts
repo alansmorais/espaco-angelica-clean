@@ -60,7 +60,8 @@ Aguardo a confirmação! 💖`;
  * Retorna o link oficial do WhatsApp da Angélica com a mensagem pré-preenchida.
  */
 export function buildOfficialWhatsAppUrl(data: PreBookingTemplateData, phone: string = '5512974062241'): string {
-  const cleanPhone = phone.replace(/\D/g, '');
+  const digits = phone.replace(/\D/g, '');
+  const cleanPhone = digits.startsWith('55') ? digits : (digits ? `55${digits}` : '5512974062241');
   const message = buildOfficialPreBookingWhatsAppMessage(data);
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 }

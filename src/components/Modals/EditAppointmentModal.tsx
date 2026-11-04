@@ -19,6 +19,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
+  const [selectedServiceId, setSelectedServiceId] = useState('');
   const [serviceTitle, setServiceTitle] = useState('');
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [customRequest, setCustomRequest] = useState('');
@@ -36,7 +37,19 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       setClientName(appointment.clientName || '');
       setClientPhone(appointment.clientPhone || '');
       setClientEmail(appointment.clientEmail || '');
-      setServiceTitle(appointment.serviceTitle || '');
+
+      const initialTitle = (appointment.serviceTitle || '').trim();
+      const matchedInitial = (appointment.serviceId ? services.find(s => s.id === appointment.serviceId) : undefined) ||
+        services.find(s => s.title.trim().toLowerCase() === initialTitle.toLowerCase());
+
+      if (matchedInitial) {
+        setSelectedServiceId(matchedInitial.id);
+        setServiceTitle(matchedInitial.title);
+      } else {
+        setSelectedServiceId('__custom__');
+        setServiceTitle(initialTitle);
+      }
+
       setAdditionalServiceIds(appointment.additionalServiceIds || []);
       setCustomRequest(appointment.customRequest || '');
       setAppointmentLocation(appointment.appointmentLocation || 'salon');
@@ -48,9 +61,18 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       setSubmitError(null);
       setIsSubmitting(false);
     }
-  }, [appointment, isOpen]);
+  }, [appointment, isOpen, services]);
 
   if (!isOpen || !appointment) return null;
+
+  const handleServiceSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedServiceId(val);
+    const found = services.find(s => s.id === val);
+    if (found) {
+      setServiceTitle(found.title);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,20 +100,25 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     setIsSubmitting(true);
     setSubmitError(null);
 
-    // Encontra preço/id correspondente se o serviço foi selecionado do catálogo
-    const matchedService = services.find(s => s.title.trim().toLowerCase() === serviceTitle.trim().toLowerCase()) || services.find(s => s.id === appointment.serviceId);
+    // Encontra o procedimento escolhido atualmente (sem retroceder para o ID antigo)
+    const matchedService = (selectedServiceId !== '__custom__' ? services.find(s => s.id === selectedServiceId) : undefined) ||
+      services.find(s => s.title.trim().toLowerCase() === serviceTitle.trim().toLowerCase());
+
+    const chosenTitle = matchedService ? matchedService.title : serviceTitle.trim();
     const additionalServices = services.filter(service => additionalServiceIds.includes(service.id) && service.id !== matchedService?.id);
     const combinedPrice = matchedService ? matchedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0) : undefined;
     const combinedDuration = matchedService ? [matchedService, ...additionalServices].reduce((sum, service) => { const match = String(service.duration || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:min|m))?/i); return sum + (match ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : 30); }, 0) : 0;
+
+    const fullTitle = [chosenTitle, ...additionalServices.map(service => service.title)].filter(Boolean).join(' + ');
 
     const updatedApt: Appointment = {
       ...appointment,
       clientName: clientName.trim(),
       clientPhone: clientPhone.trim(),
       clientEmail: clientEmail.trim() || undefined,
-      serviceTitle: [matchedService?.title || serviceTitle.trim(), ...additionalServices.map(service => service.title)].join(' + '),
+      serviceTitle: fullTitle,
+      serviceId: matchedService ? matchedService.id : (selectedServiceId !== '__custom__' ? selectedServiceId : undefined),
       ...(matchedService && {
-        serviceId: matchedService.id,
         servicePrice: combinedPrice === undefined ? matchedService.priceFormatted : `R$ ${combinedPrice.toFixed(2).replace('.', ',')}`,
         serviceDuration: `${Math.floor(combinedDuration / 60) > 0 ? `${Math.floor(combinedDuration / 60)} h ` : ''}${combinedDuration % 60 > 0 ? `${combinedDuration % 60} min` : ''}`.trim() || matchedService.duration
       }),
@@ -192,17 +219,17 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
             <label className="block text-[#49382E] font-bold mb-1">Procedimento *</label>
             <div className="space-y-1.5">
               <select
-                value={serviceTitle}
-                onChange={e => setServiceTitle(e.target.value)}
+                value={selectedServiceId}
+                onChange={handleServiceSelectChange}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#FFFFFF] border border-[#E8D9B5] text-[#49382E] outline-none focus:border-[#D4AF37] font-semibold"
               >
                 {services.map(s => (
-                  <option key={s.id} value={s.title}>
+                  <option key={s.id} value={s.id}>
                     {s.title} ({s.priceFormatted})
                   </option>
                 ))}
-                {!services.some(s => s.title === serviceTitle) && (
-                  <option value={serviceTitle}>{serviceTitle}</option>
+                {selectedServiceId === '__custom__' && (
+                  <option value="__custom__">{serviceTitle || 'Personalizado'}</option>
                 )}
               </select>
             </div>
@@ -250,7 +277,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
 
           <div className="rounded-xl border border-[#E8D9B5] p-3 space-y-3">
             <label className="block text-[#49382E] font-bold mb-1">Serviços adicionais</label>
-            {services.filter(service => service.active !== false && service.id !== appointment?.serviceId).map(service => (
+            {services.filter(service => service.active !== false && service.id !== selectedServiceId).map(service => (
               <label key={service.id} className="flex items-center gap-2">
                 <input type="checkbox" checked={additionalServiceIds.includes(service.id)}
                   onChange={e => setAdditionalServiceIds(current => e.target.checked ? [...current, service.id] : current.filter(id => id !== service.id))} />

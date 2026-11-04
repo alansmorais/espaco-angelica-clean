@@ -303,11 +303,13 @@ function timeToMinutes(value) {
 }
 
 function parseDurationMinutes(value) {
-  var text = String(value || "").toLowerCase();
-  var hours = text.match(/(\d+)\s*h/);
-  var minutes = text.match(/(\d+)\s*(?:min|m\b)/);
-  var total = (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
-  return total > 0 ? total : 30;
+  var text = String(value || "").toLowerCase().trim();
+  var hoursMatch = text.match(/(\d+)\s*h(?:ou?rs?)?/);
+  var minutesMatch = text.match(/(?:h\s*)?(\d+)\s*(?:min|m\b)/) || text.match(/h\s*(\d{1,2})\b/);
+  var pureMinutes = !hoursMatch ? text.match(/^(\d+)$/) : null;
+  var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
+    (minutesMatch ? Number(minutesMatch[1]) : (pureMinutes ? Number(pureMinutes[1]) : 0));
+  return total > 0 && Number.isFinite(total) ? total : 30;
 }
 
 function getServiceDurationMinutes(serviceId, serviceTitle) {
@@ -340,11 +342,12 @@ function getConfiguredServiceDurationMinutes(serviceId, serviceTitle) {
         var titleMatches = serviceTitle && rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase();
         if (!idMatches && !titleMatches) continue;
         if (rows[i][11] === false || String(rows[i][11]).toLowerCase() === "false") return null;
-        var durationText = String(rows[i][5] || "").toLowerCase();
-        var hoursMatch = durationText.match(/(\d+)\s*h/);
-        var minutesMatch = durationText.match(/(\d+)\s*(?:min|m\b)/);
+        var durationText = String(rows[i][5] || "").toLowerCase().trim();
+        var hoursMatch = durationText.match(/(\d+)\s*h(?:ou?rs?)?/);
+        var minutesMatch = durationText.match(/(?:h\s*)?(\d+)\s*(?:min|m\b)/) || durationText.match(/h\s*(\d{1,2})\b/);
+        var pureMinutes = !hoursMatch ? durationText.match(/^(\d+)$/) : null;
         var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
-          (minutesMatch ? Number(minutesMatch[1]) : 0);
+          (minutesMatch ? Number(minutesMatch[1]) : (pureMinutes ? Number(pureMinutes[1]) : 0));
         return total > 0 && Number.isFinite(total) ? total : null;
       }
     }
@@ -358,10 +361,18 @@ function intervalsOverlap(startA, endA, startB, endB) {
 }
 
 function parseBlockInterval(value) {
-  var match = String(value || "").trim().match(/^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i);
-  if (!match) return null;
-  var start = timeToMinutes(match[1]), end = timeToMinutes(match[2]);
-  return start !== null && end !== null && end > start ? { start: start, end: end } : null;
+  var raw = String(value || "").trim();
+  var match = raw.match(/^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i);
+  if (match) {
+    var start = timeToMinutes(match[1]), end = timeToMinutes(match[2]);
+    return start !== null && end !== null && end > start ? { start: start, end: end } : null;
+  }
+  var singleMatch = raw.match(/^(\d{1,2}:\d{2})$/);
+  if (singleMatch) {
+    var singleStart = timeToMinutes(singleMatch[1]);
+    return singleStart !== null ? { start: singleStart, end: singleStart + 30 } : null;
+  }
+  return null;
 }
 
 function getPublicScheduleData() {
@@ -1545,7 +1556,7 @@ function doPost(e) {
       // Enforce persisted weekly hours and date/time blocks on the authoritative
       // booking endpoint, not only in the public calendar UI.
       var savedScheduleValidation = validateAgainstSavedSchedule(
-        requestedDateKey, requestedTimeKey, 0
+        requestedDateKey, requestedTimeKey, requestedServiceDuration
       );
       if (!savedScheduleValidation.allowed) {
         return responseJSON({

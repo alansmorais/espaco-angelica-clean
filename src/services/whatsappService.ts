@@ -1,5 +1,6 @@
 import { Appointment } from '../types';
 import { getNotificationWebhookUrl } from './emailNotificationService';
+import { formatBRL } from './notificationTemplates';
 
 export interface SendConfirmationResult {
   success: boolean;
@@ -103,8 +104,36 @@ export async function sendAppointmentWhatsAppConfirmation(
   studioAddress?: string,
   authToken?: string
 ): Promise<SendConfirmationResult> {
+  const phoneDigits = (apt.clientPhone || '').replace(/\D/g, '');
+  const cleanPhone = phoneDigits.startsWith('55') ? phoneDigits : (phoneDigits ? `55${phoneDigits}` : '');
+  const template = customTemplate || [
+    'Olá, {cliente}! 💕',
+    '',
+    'Seu agendamento está confirmado!',
+    '',
+    '📅 Data: {data}',
+    '⏰ Horário: {horario}',
+    '💅 Procedimento: {servico}',
+    '',
+    'Até breve! ✨',
+    '',
+    'Angélica do Carmo',
+    'Felicidade é fazer as unhas. 💖'
+  ].join('\n');
+
+  const filledText = template
+    .replace(/{cliente}/g, apt.clientName || '')
+    .replace(/{servico}/g, apt.serviceTitle || 'Procedimento')
+    .replace(/{data}/g, apt.date || '')
+    .replace(/{horario}/g, apt.time || '')
+    .replace(/{valor}/g, apt.servicePrice || '')
+    .replace(/{sinal}/g, apt.depositAmount ? `R$ ${formatBRL(apt.depositAmount)}` : '')
+    .replace(/{endereco}/g, studioAddress || '');
+
+  const localFallbackUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(filledText)}` : undefined;
+
   try {
-    return await callAppsScript('sendWhatsAppConfirmation', {
+    const res = await callAppsScript('sendWhatsAppConfirmation', {
       appointmentId: apt.id,
       clientName: apt.clientName,
       clientPhone: apt.clientPhone,
@@ -116,14 +145,24 @@ export async function sendAppointmentWhatsAppConfirmation(
       depositAmount: apt.depositAmount,
       paymentMode: apt.paymentMode,
       depositStatus: apt.depositStatus,
-      customTemplate
+      customTemplate: template
     }, authToken) as SendConfirmationResult;
+
+    if (!res.fallbackUrl && localFallbackUrl) {
+      res.fallbackUrl = localFallbackUrl;
+    }
+    if (!res.previewText) {
+      res.previewText = filledText;
+    }
+    return res;
   } catch (err: any) {
     return {
       success: false,
       status: 'failed',
       message: 'Não foi possível confirmar o envio pelo Google Apps Script.',
-      error: err?.message || 'Erro de conexão.'
+      error: err?.message || 'Erro de conexão.',
+      previewText: filledText,
+      fallbackUrl: localFallbackUrl
     };
   }
 }

@@ -715,15 +715,32 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
                 <h3 className="font-syne text-lg font-semibold text-[#49382E]">3. Escolhe o procedimento</h3>
                 <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
-                <div className="space-y-2">
-                  {services.filter(service => service.active !== false).map(service => (
-                    <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
-                      className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
-                      <span className="block font-semibold text-[#49382E]">{service.title}</span>
-                      <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
-                      {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
-                    </button>
-                  ))}
+                <div className="space-y-5">
+                  {Array.from(new Set(services.filter(service => service.active !== false).map(service => {
+                    const category = String(service.category || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+                    if (category.includes('manicure')) return 'Manicure';
+                    if (category.includes('pedicure')) return 'Pedicure';
+                    if (category.includes('depil')) return 'Depilação';
+                    if (category.includes('spa')) return 'Spa & Cuidados';
+                    if (category.includes('alongamento') || category.includes('blindagem') || category.includes('gel') || /gel|fibra|alongamento|blindagem/i.test(service.title)) return 'Unha em gel';
+                    return service.category || 'Outros procedimentos';
+                  }))).map(group => {
+                    const groupServices = services.filter(service => {
+                      if (service.active === false) return false;
+                      const category = String(service.category || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+                      const label = category.includes('manicure') ? 'Manicure' : category.includes('pedicure') ? 'Pedicure' : category.includes('depil') ? 'Depilação' : category.includes('spa') ? 'Spa & Cuidados' : (category.includes('alongamento') || category.includes('blindagem') || category.includes('gel') || /gel|fibra|alongamento|blindagem/i.test(service.title)) ? 'Unha em gel' : (service.category || 'Outros procedimentos');
+                      return label === group;
+                    });
+                    return <section key={group} className="space-y-2">
+                      <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
+                      {groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
+                        className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
+                        <span className="block font-semibold text-[#49382E]">{service.title}</span>
+                        <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
+                        {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
+                      </button>)}
+                    </section>;
+                  })}
                 </div>
                 <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
                   <div className="flex items-center justify-between gap-3">
@@ -1251,8 +1268,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
                     <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
-                    <p className="text-xs text-[#786C63] mb-3">Selecione os serviços adicionais desejados. Os valores e descrições vêm do cadastro oficial; pedidos personalizados sem preço cadastrado não alteram o total automaticamente.</p>
-                    {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="accent-[#D4AF37]" /><span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span></span><span className="font-semibold whitespace-nowrap">{service.priceFormatted}</span></label>)}
+                    <p className="text-xs text-[#786C63] mb-3">Adicionais opcionais: escolha Nail Art, francesinha em gel ou outro serviço, se desejar. Os valores oficiais vêm do catálogo; Nail Art e francesinha são cobradas à parte.</p>
+                    {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="accent-[#D4AF37]" /><span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span><span className="block text-[10px] text-[#9A7A28]">Opcional · adicional ao procedimento principal</span></span><span className="font-semibold whitespace-nowrap">{/nail\s*art|francesinha/i.test(service.title) ? `A partir de ${service.priceFormatted}` : service.priceFormatted}</span></label>)}
                     {eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há outros serviços ativos cadastrados.</p>}
                     <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
                   </div>

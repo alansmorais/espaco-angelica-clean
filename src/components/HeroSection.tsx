@@ -77,13 +77,13 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="flex items-center gap-2 p-2 sm:p-3 rounded-xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-xs">
             <span className="material-symbols-outlined text-[#D4AF37] text-[18px] sm:text-[20px] shrink-0">health_and_safety</span>
             <span className="font-jakarta text-[10px] sm:text-xs text-[#49382E] font-semibold tracking-wide leading-tight">
-              Géis Hipoalergênicos Vòlia
+              Géis Hipoalergênicos
             </span>
           </div>
           <div className="flex items-center gap-2 p-2 sm:p-3 rounded-xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-xs">
             <span className="material-symbols-outlined text-[#D4AF37] text-[18px] sm:text-[20px] shrink-0">local_bar</span>
             <span className="font-jakarta text-[10px] sm:text-xs text-[#49382E] font-semibold tracking-wide leading-tight">
-              Café Gourmet &amp; Espumante
+              Café Gourmet
             </span>
           </div>
         </div>

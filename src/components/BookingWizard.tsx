@@ -716,31 +716,35 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <h3 className="font-syne text-lg font-semibold text-[#49382E]">3. Escolhe o procedimento</h3>
                 <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
                 <div className="space-y-5">
-                  {Array.from(new Set(services.filter(service => service.active !== false).map(service => {
-                    const category = String(service.category || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-                    if (category.includes('manicure')) return 'Manicure';
-                    if (category.includes('pedicure')) return 'Pedicure';
-                    if (category.includes('depil')) return 'Depilação';
-                    if (category.includes('spa')) return 'Spa & Cuidados';
-                    if (category.includes('alongamento') || category.includes('blindagem') || category.includes('gel') || /gel|fibra|alongamento|blindagem/i.test(service.title)) return 'Unha em gel';
-                    return service.category || 'Outros procedimentos';
-                  }))).map(group => {
-                    const groupServices = services.filter(service => {
-                      if (service.active === false) return false;
-                      const category = String(service.category || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-                      const label = category.includes('manicure') ? 'Manicure' : category.includes('pedicure') ? 'Pedicure' : category.includes('depil') ? 'Depilação' : category.includes('spa') ? 'Spa & Cuidados' : (category.includes('alongamento') || category.includes('blindagem') || category.includes('gel') || /gel|fibra|alongamento|blindagem/i.test(service.title)) ? 'Unha em gel' : (service.category || 'Outros procedimentos');
-                      return label === group;
+                  {(() => {
+                    const classifyService = (service: any) => {
+                      const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+                      const category = normalize(service.category);
+                      const title = normalize(service.title);
+                      const combined = category + ' ' + title;
+                      if (/pedicure|\bpes\b|\bpe\b|podologia/.test(combined)) return 'Pedicure';
+                      if (/manicure|\bmaos\b|\bmao\b|esmalta|cuticula|cutilagem/.test(combined)) return 'Manicure';
+                      if (category.includes('depil')) return 'Depilação';
+                      if (category.includes('spa')) return 'Spa & Cuidados';
+                      if (/alongamento|blindagem|\bgel\b|fibra/.test(combined)) return 'Unha em gel';
+                      return service.category || 'Outros procedimentos';
+                    };
+                    const activeServices = services.filter(service => service.active !== false);
+                    const preferredOrder = ['Manicure', 'Pedicure', 'Unha em gel'];
+                    const groups = Array.from(new Set([...preferredOrder, ...activeServices.map(classifyService)]));
+                    return groups.map(group => {
+                      const groupServices = activeServices.filter(service => classifyService(service) === group);
+                      return <section key={group} className="space-y-2">
+                        <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
+                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
+                          className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
+                          <span className="block font-semibold text-[#49382E]">{service.title}</span>
+                          <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
+                          {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
+                        </button>)}
+                      </section>;
                     });
-                    return <section key={group} className="space-y-2">
-                      <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
-                      {groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
-                        className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
-                        <span className="block font-semibold text-[#49382E]">{service.title}</span>
-                        <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
-                        {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
-                      </button>)}
-                    </section>;
-                  })}
+                  })()}
                 </div>
                 <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
                   <div className="flex items-center justify-between gap-3">

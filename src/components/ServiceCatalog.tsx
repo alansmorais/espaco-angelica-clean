@@ -30,7 +30,9 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
       .replace(/[^a-z0-9]+/g, '');
 
   // Only display active services on public catalog
-  const activeServices = services.filter(s => s.active !== false);
+  const activeServices = services.filter(s =>
+    s.active !== false && !/nail\s*art|nailart/i.test(String(s.title || ''))
+  );
 
   const classifyServiceCategory = (service: Service): string => {
     const category = normalizeCategory(service.category);
@@ -130,17 +132,6 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
               }`}
             >
               Unha em gel
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveCategory('nailart')}
-              className={`px-4 py-2 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] flex items-center shrink-0 snap-start active:scale-95 ${
-                activeCategory === 'nailart'
-                  ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
-                  : 'text-[#786C63] hover:text-[#49382E]'
-              }`}
-            >
-              Nail Art Autoral
             </button>
             <button
               type="button"

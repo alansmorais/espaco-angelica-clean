@@ -154,7 +154,7 @@ export const PixReconciliationTab: React.FC<PixReconciliationTabProps> = ({
   const handleRequestNewReceipt = (apt: Appointment) => {
     const phoneDigits = apt.clientPhone.replace(/\D/g, '');
     const msg = encodeURIComponent(
-      `Olá, ${apt.clientName}! Aqui é a Angélica do Carmo do Espaçor. Identificamos sua solicitação de agendamento para ${apt.date} às ${apt.time}, mas precisamos da confirmação do comprovante da chave Pix +5512974062241 para liberar sua vaga. Você poderia nos enviar o comprovante por aqui? Obrigada!`
+      `Olá, ${apt.clientName}! Aqui é a Angélica do Carmo do Espaço. Identificamos sua solicitação de agendamento para ${apt.date} às ${apt.time}, mas precisamos da confirmação do comprovante da chave Pix (12) 97406-2241 para liberar sua vaga. Você poderia nos enviar o comprovante por aqui? Obrigada!`
     );
     window.open(`https://wa.me/${phoneDigits || '5512974062241'}?text=${msg}`, '_blank');
     showToast(`WhatsApp aberto para solicitar comprovante de ${apt.clientName}.`);
@@ -193,7 +193,7 @@ export const PixReconciliationTab: React.FC<PixReconciliationTabProps> = ({
             Conciliação de Sinais Pix
           </h1>
           <p className="font-jakarta text-xs sm:text-sm text-[#786C63] mt-1">
-            Conferência manual de pagamentos de sinais Pix (Chave +5512974062241) para confirmação de agendamentos na grade.
+            Conferência manual de pagamentos de sinais Pix (Chave (12) 97406-2241) para confirmação de agendamentos na grade.
           </p>
         </div>
 
@@ -233,7 +233,7 @@ export const PixReconciliationTab: React.FC<PixReconciliationTabProps> = ({
             </span>
             <div className="flex items-baseline gap-1 mt-1">
               <span className="font-mono text-sm text-[#D4AF37] font-bold">
-                +5512974062241
+                (12) 97406-2241
               </span>
             </div>
           </div>
@@ -416,7 +416,7 @@ export const PixReconciliationTab: React.FC<PixReconciliationTabProps> = ({
                     R$ {formatBRL(selectedItem.depositAmount)}
                   </span>
                   <span className="text-[#786C63]">
-                    Chave Celular: +5512974062241
+                    Chave Celular: (12) 97406-2241
                   </span>
                 </div>
               </div>

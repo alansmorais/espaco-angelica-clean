@@ -1520,8 +1520,18 @@ function doPost(e) {
 
       var requestedDateKey = normalizeBookingDate(bookingDate);
       var requestedTimeKey = normalizeBookingTime(bookingTime);
-      // Duration is stored for reference, but it does not determine slot availability.
-      var requestedServiceDuration = getConfiguredServiceDurationMinutes(data.serviceId, serviceTitle) || 0;
+      // The occupied interval includes the main service and every additional service.
+      var requestedServiceDuration = getConfiguredServiceDurationMinutes(data.serviceId, canonical.title);
+      if (!requestedServiceDuration) {
+        return responseJSON({ status: "error", persisted: false, message: "A duração oficial do procedimento não está configurada. Nenhum agendamento foi gravado." });
+      }
+      for (var durationIndex = 0; durationIndex < additionalIds.length; durationIndex++) {
+        var additionalDuration = getConfiguredServiceDurationMinutes(additionalIds[durationIndex], additionalTitles[durationIndex]);
+        if (!additionalDuration) {
+          return responseJSON({ status: "error", persisted: false, message: "A duração oficial de um serviço adicional não está configurada. Nenhum agendamento foi gravado." });
+        }
+        requestedServiceDuration += additionalDuration;
+      }
       if (!isValidBookingDateKey(requestedDateKey)) {
         return responseJSON({ status: "error", message: "Data inválida. Use uma data real no formato AAAA-MM-DD." });
       }
@@ -1592,17 +1602,38 @@ function doPost(e) {
         var existingTimeKey = normalizeBookingTime(existingTimeRaw);
         var sameDate = requestedDateKey === existingDateKey;
         var requestedStart = timeToMinutes(requestedTimeKey);
-        var requestedEnd = requestedStart;
+        var requestedEnd = requestedStart + requestedServiceDuration;
         var allDayBlocked = existingStatus === 'bloqueado' && sameDate &&
           ['dia inteiro', 'dia todo', 'all day'].indexOf(existingTimeRaw.toLowerCase()) !== -1;
         var blockInterval = existingStatus === 'bloqueado' && sameDate ? parseBlockInterval(existingTimeRaw) : null;
-        var slotBlocked = Boolean(blockInterval && requestedStart >= blockInterval.start && requestedStart < blockInterval.end);
+        var slotBlocked = Boolean(blockInterval && intervalsOverlap(
+          requestedStart, requestedEnd, blockInterval.start, blockInterval.end
+        ));
         var activeBookingConflict = false;
         if (sameDate && ['cancelado', 'teste_sistema', 'bloqueado'].indexOf(existingStatus) === -1) {
           var existingStart = timeToMinutes(existingTimeKey);
           if (existingStart !== null) {
-            // Prevent duplicate bookings at the same configured start time only.
-            activeBookingConflict = requestedStart === existingStart;
+            var existingServiceId = String(existing[i][15] || '').trim();
+            var existingServiceTitle = String(existing[i][4] || '').trim();
+            var existingDuration = existingServiceId
+              ? getConfiguredServiceDurationMinutes(existingServiceId, '')
+              : getConfiguredServiceDurationMinutes('', existingServiceTitle);
+            var existingAdditionalIds = [];
+            try {
+              existingAdditionalIds = existing[i][13] ? JSON.parse(String(existing[i][13])) : [];
+            } catch (durationParseError) {
+              existingAdditionalIds = [];
+            }
+            if (!Array.isArray(existingAdditionalIds)) existingAdditionalIds = [];
+            for (var existingAdditionalIndex = 0; existingAdditionalIndex < existingAdditionalIds.length; existingAdditionalIndex++) {
+              var existingAdditionalDuration = getConfiguredServiceDurationMinutes(existingAdditionalIds[existingAdditionalIndex], '');
+              if (existingAdditionalDuration) existingDuration = (existingDuration || 0) + existingAdditionalDuration;
+            }
+            // Legacy rows without a resolvable duration retain a conservative 30-minute block.
+            if (!existingDuration) existingDuration = 30;
+            activeBookingConflict = intervalsOverlap(
+              requestedStart, requestedEnd, existingStart, existingStart + existingDuration
+            );
           }
         }
         if (allDayBlocked || slotBlocked || activeBookingConflict) {

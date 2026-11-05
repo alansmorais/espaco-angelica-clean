@@ -745,6 +745,17 @@ function getPublicStudioAddressData() {
   return { status: "success", address: data.settings && data.settings.STUDIO_ADDRESS ? data.settings.STUDIO_ADDRESS : null };
 }
 
+function phonesMatch(phoneA, phoneB) {
+  var a = normalizeClientPhoneKey(phoneA);
+  var b = normalizeClientPhoneKey(phoneB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= 10 && b.length >= 10 && a.substring(0, 2) === b.substring(0, 2) && a.slice(-8) === b.slice(-8)) {
+    return true;
+  }
+  return false;
+}
+
 function lookupPublicClientByPhone(phoneValue) {
   var phoneKey = normalizeClientPhoneKey(phoneValue);
   if (phoneKey.length < 8 || phoneKey.length > 15) {
@@ -755,10 +766,18 @@ function lookupPublicClientByPhone(phoneValue) {
   if (clientSheet) {
     var cRows = clientSheet.getDataRange().getValues();
     for (var c = 1; c < cRows.length; c++) {
-      if (normalizeClientPhoneKey(cRows[c][1]) === phoneKey) {
+      if (phonesMatch(cRows[c][1], phoneKey)) {
         try {
           var prof = JSON.parse(cRows[c][2]);
-          if (prof && prof.name) return { status: "success", found: true, clientName: prof.name };
+          if (prof && prof.name) {
+            return {
+              status: "success",
+              found: true,
+              clientName: prof.name,
+              clientEmail: prof.email || "",
+              clientBirthDate: prof.birthDate || ""
+            };
+          }
         } catch (e) {}
       }
     }
@@ -768,10 +787,18 @@ function lookupPublicClientByPhone(phoneValue) {
   var rows = sheet.getDataRange().getValues();
   for (var i = rows.length - 1; i >= 1; i--) {
     var row = rows[i];
-    if (normalizeClientPhoneKey(row[2]) !== phoneKey) continue;
+    if (!phonesMatch(row[2], phoneKey)) continue;
     if (String(row[8] || "").toLowerCase() === "bloqueado") continue;
     var name = String(row[1] || "").trim();
-    if (name) return { status: "success", found: true, clientName: name };
+    if (name) {
+      return {
+        status: "success",
+        found: true,
+        clientName: name,
+        clientEmail: String(row[3] || "").trim(),
+        clientBirthDate: String(row[16] || "").trim()
+      };
+    }
   }
   return { status: "success", found: false };
 }

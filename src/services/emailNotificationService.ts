@@ -877,12 +877,18 @@ export async function fetchPublicPaymentConfig(): Promise<{ success: boolean; co
   }
 }
 
-export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; clientName?: string; error?: string }> {
+export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; clientName?: string; clientEmail?: string; clientBirthDate?: string; error?: string }> {
   const url = getNotificationWebhookUrl();
   if (!url) return { success: false, found: false, error: 'Consulta de cadastro indisponível neste ambiente.' };
   try {
     const data = await postAppsScriptAction(url, 'lookupPublicClientByPhone', { phone });
-    return { success: true, found: data.found === true, clientName: data.clientName ? String(data.clientName) : undefined };
+    return {
+      success: true,
+      found: data.found === true,
+      clientName: data.clientName ? String(data.clientName) : undefined,
+      clientEmail: data.clientEmail ? String(data.clientEmail) : undefined,
+      clientBirthDate: data.clientBirthDate ? String(data.clientBirthDate) : undefined
+    };
   } catch (error: any) {
     return { success: false, found: false, error: error?.message || 'Não foi possível consultar o cadastro.' };
   }

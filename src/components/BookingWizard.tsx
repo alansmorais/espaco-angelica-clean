@@ -613,8 +613,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   setIsLookingUpClient(true); setClientLookupMessage('');
                   const result = await lookupPublicClientByPhone(clientPhone);
                   if (result.success && result.found && result.clientName) {
-                    setClientName(result.clientName); setIsReturningClient(true);
-                    setClientLookupMessage('Cadastro encontrado. Confirme sua data de nascimento para continuar.');
+                    setClientName(result.clientName);
+                    if (result.clientEmail && !clientEmail) setClientEmail(result.clientEmail);
+                    if (result.clientBirthDate && !clientBirthDate) setClientBirthDate(result.clientBirthDate);
+                    setIsReturningClient(true);
+                    setClientLookupMessage('Cadastro encontrado. Confirme seus dados para continuar.');
                   } else if (result.success) {
                     setClientName(''); setIsReturningClient(false);
                     setClientLookupMessage('Ainda não encontramos cadastro com esse telefone. Vamos criar seu cadastro.');

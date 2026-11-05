@@ -406,17 +406,31 @@ function getPublicAvailabilityData() {
     var timeKey = normalizeBookingTime(row[6]);
     var status = String(row[8] || "pendente_pix").trim();
     if (!dateKey) continue;
+    if (status.toLowerCase() === "cancelado") continue;
     if (status.toLowerCase() === "bloqueado" && (!timeKey || timeKey.toLowerCase() === "dia inteiro")) {
       blockedDates.push(dateKey);
       continue;
     }
     if (!row[9] && !row[1]) continue;
+
+    var mainDuration = getServiceDurationMinutes(String(row[15] || ""), String(row[4] || ""));
+    var totalDuration = mainDuration;
+    try {
+      var additionalIds = row[13] ? JSON.parse(String(row[13])) : [];
+      if (Array.isArray(additionalIds)) {
+        for (var aIdx = 0; aIdx < additionalIds.length; aIdx++) {
+          var addDur = getServiceDurationMinutes(String(additionalIds[aIdx] || ""), "");
+          if (addDur) totalDuration += addDur;
+        }
+      }
+    } catch (e) {}
+
     slots.push({
       id: String(row[9] || ("apt-sheet-" + i)),
       date: dateKey,
       time: timeKey,
       status: status,
-      serviceDuration: getServiceDurationMinutes(String(row[15] || ""), String(row[4] || "")) + " min"
+      serviceDuration: totalDuration + " min"
     });
   }
 
@@ -426,7 +440,19 @@ function getPublicAvailabilityData() {
   }
   var scheduleBlocks = schedule.blocks || [];
   scheduleBlocks.forEach(function(block) {
-    if (block && block.active !== false && block.allDay === true && block.date) blockedDates.push(String(block.date));
+    if (block && block.active !== false && block.date) {
+      if (block.allDay === true) {
+        blockedDates.push(String(block.date));
+      } else if (block.startTime && block.endTime) {
+        slots.push({
+          id: String(block.id || ("block-" + block.date + "-" + block.startTime)),
+          date: String(block.date),
+          time: String(block.startTime) + " às " + String(block.endTime),
+          status: "bloqueado",
+          serviceDuration: "30 min"
+        });
+      }
+    }
   });
   return {
     status: "success",
@@ -1100,6 +1126,87 @@ function doPost(e) {
           });
         }
 
+        var existingRowData = updateRows[foundRowIndex - 1];
+        var finalStatus = data.status !== undefined ? String(data.status).trim().toLowerCase() : String(existingRowData[8] || "").trim().toLowerCase();
+        var finalDate = data.date !== undefined ? normalizeBookingDate(data.date) : normalizeBookingDate(existingRowData[5]);
+        var finalTimeRaw = data.time !== undefined ? String(data.time).trim() : String(existingRowData[6] || "").trim();
+        var finalTimeKey = normalizeBookingTime(finalTimeRaw);
+
+        if (finalStatus !== "cancelado" && finalStatus !== "bloqueado" && finalDate && finalTimeKey) {
+          var targetServiceId = data.serviceId !== undefined ? String(data.serviceId).trim() : String(existingRowData[15] || "").trim();
+          var targetServiceTitle = data.serviceTitle !== undefined ? String(data.serviceTitle).trim() : String(existingRowData[4] || "").trim();
+          var targetDuration = getServiceDurationMinutes(targetServiceId, targetServiceTitle);
+          var targetAdditionalIds = [];
+          try {
+            targetAdditionalIds = data.additionalServiceIds !== undefined
+              ? (Array.isArray(data.additionalServiceIds) ? data.additionalServiceIds : [])
+              : (existingRowData[13] ? JSON.parse(String(existingRowData[13])) : []);
+          } catch (e) {}
+          if (Array.isArray(targetAdditionalIds)) {
+            for (var td = 0; td < targetAdditionalIds.length; td++) {
+              var addDur = getServiceDurationMinutes(String(targetAdditionalIds[td] || ""), "");
+              if (addDur) targetDuration += addDur;
+            }
+          }
+          if (!targetDuration) targetDuration = 30;
+
+          var targetStart = timeToMinutes(finalTimeKey);
+          var targetEnd = targetStart !== null ? targetStart + targetDuration : null;
+
+          if (targetStart !== null && targetEnd !== null) {
+            for (var chk = 1; chk < updateRows.length; chk++) {
+              if (chk === foundRowIndex - 1) continue;
+              var otherRow = updateRows[chk];
+              var otherId = String(otherRow[9] || "").trim();
+              if (otherId.toLowerCase() === rawUpdateId.toLowerCase()) continue;
+              var otherStatus = String(otherRow[8] || "").trim().toLowerCase();
+              if (otherStatus === "cancelado" || otherStatus === "teste_sistema") continue;
+              var otherDate = normalizeBookingDate(otherRow[5]);
+              if (otherDate !== finalDate) continue;
+
+              var otherTimeRaw = String(otherRow[6] || "").trim();
+              if (otherStatus === "bloqueado") {
+                if (['dia inteiro', 'dia todo', 'all day'].indexOf(otherTimeRaw.toLowerCase()) !== -1) {
+                  return responseJSON({ status: "error", success: false, persisted: false, conflict: true, code: "SLOT_UNAVAILABLE", message: "Esta data está bloqueada para atendimentos. Escolha outro dia." });
+                }
+                var blkInt = parseBlockInterval(otherTimeRaw);
+                if (blkInt && intervalsOverlap(targetStart, targetEnd, blkInt.start, blkInt.end)) {
+                  return responseJSON({ status: "error", success: false, persisted: false, conflict: true, code: "SLOT_UNAVAILABLE", message: "Este intervalo está bloqueado. Escolha outro horário." });
+                }
+                continue;
+              }
+
+              var otherTimeKey = normalizeBookingTime(otherTimeRaw);
+              var otherStart = timeToMinutes(otherTimeKey);
+              if (otherStart === null) continue;
+              var otherServiceId = String(otherRow[15] || "").trim();
+              var otherServiceTitle = String(otherRow[4] || "").trim();
+              var otherDuration = getServiceDurationMinutes(otherServiceId, otherServiceTitle);
+              try {
+                var otherAdds = otherRow[13] ? JSON.parse(String(otherRow[13])) : [];
+                if (Array.isArray(otherAdds)) {
+                  for (var oai = 0; oai < otherAdds.length; oai++) {
+                    var oAddDur = getServiceDurationMinutes(String(otherAdds[oai] || ""), "");
+                    if (oAddDur) otherDuration += oAddDur;
+                  }
+                }
+              } catch (e) {}
+              if (!otherDuration) otherDuration = 30;
+
+              if (intervalsOverlap(targetStart, targetEnd, otherStart, otherStart + otherDuration)) {
+                return responseJSON({
+                  status: "error",
+                  success: false,
+                  persisted: false,
+                  conflict: true,
+                  code: "SLOT_UNAVAILABLE",
+                  message: "Este horário acabou de ser reservado ou se sobrepõe a outro agendamento. Escolha outro horário."
+                });
+              }
+            }
+          }
+        }
+
         if (data.clientName !== undefined) updateSheet.getRange(foundRowIndex, 2).setValue(String(data.clientName).trim());
         if (data.clientPhone !== undefined) updateSheet.getRange(foundRowIndex, 3).setValue(String(data.clientPhone).trim());
         if (data.clientEmail !== undefined) updateSheet.getRange(foundRowIndex, 4).setValue(String(data.clientEmail).trim());
@@ -1117,6 +1224,8 @@ function doPost(e) {
         if (data.clientBirthDate !== undefined) updateSheet.getRange(foundRowIndex, 17).setValue(String(data.clientBirthDate || "").trim());
         if (data.paymentMethod !== undefined) updateSheet.getRange(foundRowIndex, 18).setValue(String(data.paymentMethod || "").trim());
         if (data.recurrence !== undefined) updateSheet.getRange(foundRowIndex, 19).setValue(data.recurrence ? JSON.stringify(data.recurrence) : "");
+
+        SpreadsheetApp.flush();
 
         return responseJSON({
           status: "success",
@@ -1413,7 +1522,13 @@ function doPost(e) {
     try {
       lock.waitLock(15000);
     } catch (lockErr) {
-      return responseJSON({ status: "error", message: "Tempo limite esgotado ao aguardar bloqueio de concorrência." });
+      return responseJSON({
+        status: "error",
+        success: false,
+        persisted: false,
+        code: "LOCK_TIMEOUT",
+        message: "Tempo limite esgotado ao aguardar confirmação segura do agendamento. Por favor, tente novamente."
+      });
     }
 
     try {
@@ -1587,8 +1702,10 @@ function doPost(e) {
       if (!savedScheduleValidation.allowed) {
         return responseJSON({
           status: "error",
+          success: false,
           persisted: false,
           conflict: true,
+          code: "SLOT_UNAVAILABLE",
           message: savedScheduleValidation.message
         });
       }
@@ -1676,12 +1793,15 @@ function doPost(e) {
         if (allDayBlocked || slotBlocked || activeBookingConflict) {
           return responseJSON({
             status: "error",
+            success: false,
+            persisted: false,
             conflict: true,
+            code: "SLOT_UNAVAILABLE",
             message: allDayBlocked
               ? "Esta data está bloqueada para atendimentos. Escolha outro dia."
               : slotBlocked
                 ? "Este intervalo está bloqueado. Escolha outro horário."
-                : "Este horário se sobrepõe a outro atendimento. Escolha outro horário."
+                : "Este horário acabou de ser reservado. Por favor, escolha outro horário."
           });
         }
       }
@@ -1710,6 +1830,8 @@ function doPost(e) {
         data.paymentMethod ? String(data.paymentMethod).trim() : '',
         data.recurrence ? JSON.stringify(data.recurrence) : ''
       ]);
+
+      SpreadsheetApp.flush();
 
       // 11. Disparo de e-mails para reserva real
       // Reservas E2E autorizadas gravam na planilha oficial mas suprimem estritamente e-mails e notificações

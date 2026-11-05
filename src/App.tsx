@@ -770,7 +770,14 @@ export default function App() {
   const handleBookingConfirmed = (newApt: Appointment) => {
     if (READ_ONLY_PREVIEW) return;
     setAppointments(prev => expandRecurringAppointments([newApt, ...prev.filter(a => a.id !== newApt.id)]));
+    setPublicAvailability(prev => [newApt, ...prev.filter(a => a.id !== newApt.id)]);
     notifyNewPreBooking(newApt);
+    fetchPublicAvailability().then(res => {
+      if (res.success) {
+        if (Array.isArray(res.appointments)) setPublicAvailability(res.appointments);
+        if (Array.isArray(res.blockedDates)) setPublicBlockedDates(res.blockedDates);
+      }
+    }).catch(() => {});
   };
 
   const handleUpdateAppointment = async (updated: Appointment) => {
@@ -1407,6 +1414,8 @@ export default function App() {
         adminSessionToken={adminSessionToken}
         paymentConfig={paymentConfig}
         clients={clients}
+        appointments={appointments}
+        blockedDates={publicBlockedDates}
       />
 
       <BlockScheduleModal

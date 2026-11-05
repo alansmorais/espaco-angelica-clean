@@ -14,6 +14,8 @@ interface ManualBookingModalProps {
   adminSessionToken?: string;
   paymentConfig?: PaymentConfig;
   clients?: ClientProfile[];
+  appointments?: Appointment[];
+  blockedDates?: string[];
 }
 
 export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
@@ -24,7 +26,9 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   blacklist = [],
   adminSessionToken,
   paymentConfig = { pixKey: '', pixBeneficiary: '', depositAmount: 40 },
-  clients = []
+  clients = [],
+  appointments = [],
+  blockedDates = []
 }) => {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -128,6 +132,60 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
     if (appointmentLocation === 'home' && homeAddress.trim().length < 8) {
       setSubmitError('Informe o endereço completo para atendimento em domicílio.');
       return;
+    }
+
+    // Check overlap with existing appointments or blocked dates
+    const timeToMinutes = (val: string): number | null => {
+      const match = /^(\d{1,2}):(\d{2})$/.exec(String(val || '').trim());
+      if (!match) return null;
+      const h = Number(match[1]), m = Number(match[2]);
+      return h <= 23 && m <= 59 ? h * 60 + m : null;
+    };
+    const durMinutes = (val: string): number => {
+      const text = String(val || '').toLowerCase();
+      const h = text.match(/(\d+)\s*h/);
+      const m = text.match(/(\d+)\s*(?:min|m\b)/);
+      const total = (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
+      return total > 0 ? total : 30;
+    };
+    const reqStart = timeToMinutes(time.trim());
+    const reqDuration = durMinutes(serv.duration) + additionalServices.reduce((sum, s) => sum + durMinutes(s.duration), 0);
+    const reqEnd = reqStart !== null ? reqStart + reqDuration : null;
+
+    if (reqStart !== null && reqEnd !== null) {
+      const targetDateKey = date.trim();
+      const isDateBlk = (blockedDates || []).some(bd => bd === targetDateKey);
+      if (isDateBlk) {
+        setSubmitError('Esta data está bloqueada para atendimentos. Escolha outro dia.');
+        return;
+      }
+
+      if (appointments && appointments.length > 0) {
+        const conflict = appointments.find(a => {
+          if (a.status === 'cancelado' || a.status === 'teste_sistema') return false;
+          if (String(a.date || '').trim() !== targetDateKey) return false;
+          const raw = String(a.time || '').trim();
+          if (a.status === 'bloqueado') {
+            if (['dia inteiro', 'dia todo', 'all day'].includes(raw.toLowerCase())) return true;
+            const interval = /^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i.exec(raw);
+            if (interval) {
+              const bs = timeToMinutes(interval[1]), be = timeToMinutes(interval[2]);
+              return bs !== null && be !== null && reqStart < be && reqEnd > bs;
+            }
+            return false;
+          }
+          const oStart = timeToMinutes(raw);
+          if (oStart === null) return false;
+          const oDur = durMinutes(a.serviceDuration || '');
+          const oEnd = oStart + oDur;
+          return reqStart < oEnd && reqEnd > oStart;
+        });
+
+        if (conflict) {
+          setSubmitError('Este horário acabou de ser reservado ou se sobrepõe a outro agendamento. Por favor, escolha outro horário.');
+          return;
+        }
+      }
     }
 
     setIsSubmitting(true);

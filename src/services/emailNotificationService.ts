@@ -45,6 +45,8 @@ export interface EmailDispatchResult {
   success: boolean;
   persisted?: boolean;
   duplicate?: boolean;
+  conflict?: boolean;
+  code?: string;
   delivered?: boolean;
   emailSent?: boolean;
   emailSuppressed?: boolean;
@@ -410,6 +412,8 @@ export async function triggerNewPreBookingEmailNotification(
         success: false,
         persisted: false,
         duplicate: Boolean(data?.duplicate),
+        conflict: Boolean(data?.conflict),
+        code: data?.code || (data?.conflict ? 'SLOT_UNAVAILABLE' : undefined),
         appointmentId: apt.id,
         mode: 'webhook_rejected',
         message: data?.message || `Google Apps Script não confirmou a gravação (HTTP ${response.status}).`,
@@ -531,7 +535,19 @@ export async function fetchPublicAvailability(): Promise<PublicAvailabilityResul
     const blockedDates = new Set<string>((Array.isArray(data.blockedDates) ? data.blockedDates : []).map(String));
     if (Array.isArray(data.scheduleBlocks)) {
       data.scheduleBlocks.forEach((block: any) => {
-        if (block?.active !== false && block?.allDay === true && block?.date) blockedDates.add(String(block.date));
+        if (block?.active !== false && block?.date) {
+          if (block.allDay === true) {
+            blockedDates.add(String(block.date));
+          } else if (block.startTime && block.endTime) {
+            appointments.push({
+              id: `block-${block.id || block.date + '-' + block.startTime}`,
+              date: String(block.date),
+              time: `${block.startTime} às ${block.endTime}`,
+              serviceDuration: '30 min',
+              status: 'bloqueado'
+            } as Appointment);
+          }
+        }
       });
     }
     return {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Service, Appointment, TimeSlotConfig, BlacklistEntry, StudioAddressConfig, PaymentConfig, RecurrenceConfig, DayScheduleConfig } from '../types';
 import {
@@ -9,7 +9,7 @@ import {
   formatBRL,
   areDatesEqual
 } from '../services/notificationTemplates';
-import { triggerNewPreBookingEmailNotification, lookupPublicClientByPhone } from '../services/emailNotificationService';
+import { triggerNewPreBookingEmailNotification, lookupPublicClientByPhone, fetchPublicAvailability } from '../services/emailNotificationService';
 
 interface BookingWizardProps {
   selectedService: Service;
@@ -59,8 +59,28 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const studioToday = getStudioToday();
     return new Date(studioToday.getFullYear(), studioToday.getMonth(), 1);
   });
-  const [selectedTime, setSelectedTime] = useState<string>('11:30');
+  const [selectedTime, setSelectedTime] = useState<string>('');
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [activeAppointments, setActiveAppointments] = useState<Appointment[]>(appointments);
+  const [activeBlockedDates, setActiveBlockedDates] = useState<string[]>(blockedDates);
+
+  useEffect(() => {
+    setActiveAppointments(appointments);
+  }, [appointments]);
+
+  useEffect(() => {
+    setActiveBlockedDates(blockedDates);
+  }, [blockedDates]);
+
+  const refreshAvailability = useCallback(async () => {
+    try {
+      const res = await fetchPublicAvailability();
+      if (res.success) {
+        if (Array.isArray(res.appointments)) setActiveAppointments(res.appointments);
+        if (Array.isArray(res.blockedDates)) setActiveBlockedDates(res.blockedDates);
+      }
+    } catch {}
+  }, []);
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
   const [showAdditionalServices, setShowAdditionalServices] = useState(false);
   const [showAddAnotherPrompt, setShowAddAnotherPrompt] = useState(false);
@@ -107,14 +127,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
   const isAllDayBlock = (value: string) => ['dia inteiro', 'dia todo', 'all day'].includes(String(value || '').trim().toLowerCase());
   const isDateBlocked = (dateStr: string): boolean => {
-    if (blockedDates.some(bd => areDatesEqual(bd, dateStr))) return true;
+    if (activeBlockedDates.some(bd => areDatesEqual(bd, dateStr))) return true;
     if (daySchedules && daySchedules.length > 0) {
       const date = new Date(`${dateStr}T12:00:00`);
       const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
       const dayConfig = daySchedules.find(day => day.dayKey === keys[date.getDay()]);
       if (dayConfig && !dayConfig.isOpen) return true;
     }
-    return appointments.some(a => a.status === 'bloqueado' && areDatesEqual(a.date, dateStr) && isAllDayBlock(a.time));
+    return activeAppointments.some(a => a.status === 'bloqueado' && areDatesEqual(a.date, dateStr) && isAllDayBlock(a.time));
   };
   const timeToMinutes = (value: string): number | null => {
     const match = /^(\d{1,2}):(\d{2})$/.exec(String(value || '').trim());
@@ -152,7 +172,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       }
     }
 
-    return appointments.some(a => {
+    return activeAppointments.some(a => {
       if (!areDatesEqual(a.date, dateKey) || ['cancelado', 'teste_sistema'].includes(a.status)) return false;
       const raw = String(a.time || '').trim();
       if (a.status === 'bloqueado') {
@@ -322,10 +342,17 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     // Success is shown only after the server confirms persistence.
     if (isSubmittingBooking) return;
 
+    if (!selectedTime) {
+      setSubmissionError('Por favor, selecione um horário para o agendamento.');
+      setBookingStep(4);
+      return;
+    }
+
     if (isDateBlocked(selectedDate)) {
       setSubmissionError(
         'A data selecionada está temporariamente bloqueada para novos agendamentos pela administração. Por favor, escolha outra data.'
       );
+      setBookingStep(2);
       return;
     }
 
@@ -348,6 +375,52 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
 
     setIsSubmittingBooking(true);
     setSubmissionError(null);
+
+    // Pre-submission refresh: verify slot availability in real time before sending
+    try {
+      const freshAvail = await fetchPublicAvailability();
+      let currentAppts = activeAppointments;
+      let currentBlocked = activeBlockedDates;
+      if (freshAvail.success) {
+        if (Array.isArray(freshAvail.appointments)) {
+          currentAppts = freshAvail.appointments;
+          setActiveAppointments(freshAvail.appointments);
+        }
+        if (Array.isArray(freshAvail.blockedDates)) {
+          currentBlocked = freshAvail.blockedDates;
+          setActiveBlockedDates(freshAvail.blockedDates);
+        }
+      }
+
+      const slotIsBusy = currentAppts.some(a => {
+        if (!areDatesEqual(a.date, selectedDate) || ['cancelado', 'teste_sistema'].includes(a.status)) return false;
+        const raw = String(a.time || '').trim();
+        if (a.status === 'bloqueado') {
+          if (isAllDayBlock(raw)) return true;
+          const interval = /^(\d{1,2}:\d{2})\s*(?:às|as|-)\s*(\d{1,2}:\d{2})$/i.exec(raw);
+          if (interval) {
+            const blockStart = timeToMinutes(interval[1]), blockEnd = timeToMinutes(interval[2]);
+            const startMin = timeToMinutes(selectedTime);
+            return blockStart !== null && blockEnd !== null && startMin !== null && startMin < blockEnd && (startMin + combinedDurationMinutes) > blockStart;
+          }
+        }
+        const occupiedStart = timeToMinutes(raw);
+        if (occupiedStart === null) return false;
+        const occupiedDuration = durationMinutes(a.serviceDuration || '');
+        const occupiedEnd = occupiedStart + occupiedDuration;
+        const startMin = timeToMinutes(selectedTime);
+        return startMin !== null && startMin < occupiedEnd && (startMin + combinedDurationMinutes) > occupiedStart;
+      }) || currentBlocked.some(bd => areDatesEqual(bd, selectedDate));
+
+      if (slotIsBusy) {
+        setSelectedTime('');
+        setPersistedAppointmentId(null);
+        setBookingStep(4);
+        setSubmissionError('Este horário acabou de ser reservado. Por favor, escolha outro horário.');
+        setIsSubmittingBooking(false);
+        return;
+      }
+    } catch {}
 
     const finalName = clientName.trim();
     const finalPhone = clientPhone.trim();
@@ -405,9 +478,19 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         setSubmissionError(null);
         setBookingWhatsAppModal(true);
       } else {
-        setSubmissionError(
-          dispatchResult.message || 'Não foi possível confirmar e persistir a reserva na planilha oficial do Espaço. Por favor, tente novamente.'
-        );
+        if (dispatchResult.conflict || dispatchResult.code === 'SLOT_UNAVAILABLE') {
+          setSelectedTime('');
+          setPersistedAppointmentId(null);
+          setBookingStep(4);
+          setSubmissionError(
+            dispatchResult.message || 'Este horário acabou de ser reservado. Por favor, escolha outro horário.'
+          );
+          void refreshAvailability();
+        } else {
+          setSubmissionError(
+            dispatchResult.message || 'Não foi possível confirmar e persistir a reserva na planilha oficial do Espaço. Por favor, tente novamente.'
+          );
+        }
       }
     } catch (err: any) {
       setSubmissionError(
@@ -654,7 +737,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     return (
                       <button key={key} type="button" disabled={disabled}
                         aria-label={dateLabel(date)} aria-pressed={selected}
-                        onClick={() => setSelectedDate(key)}
+                        onClick={() => { setSelectedDate(key); setSelectedTime(''); void refreshAvailability(); }}
                         className={`min-h-10 rounded-lg border text-xs font-semibold transition-colors ${disabled ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : selected ? 'bg-[#D4AF37] text-[#3C2F00] border-[#D4AF37]' : 'bg-[#FDFBF9] text-[#49382E] border-[#E8D9B5] hover:border-[#D4AF37]'}`}>
                         {day}
                       </button>
@@ -674,7 +757,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   <span className="font-jakarta text-[10px] text-[#D4AF37] font-semibold">
                     {isDateBlocked(selectedDate)
                       ? '0 horários abertos (Data Bloqueada)'
-                      : `${generatedTimeSlots.filter(s => s.status === 'disponivel' && s.active).length} horários abertos`}
+                      : `${generatedTimeSlots.filter(s => s.status === 'disponivel' && s.active && !isSlotUnavailable(s.time)).length} horários abertos`}
                   </span>
                 </div>
 
@@ -720,11 +803,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                               ? 'bg-[#D4AF37] text-[#3C2F00] border-[#D4AF37] font-bold shadow-xs cursor-pointer'
                               : 'bg-[#FDFBF9] border-[#E8D9B5] text-[#49382E] hover:border-[#D4AF37]/50 cursor-pointer'
                           }`}
-                          title={slot.note || (isBlocked ? 'Horário Bloqueado' : 'Horário Disponível')}
+                          title={slot.note || (isBlocked ? (isSlotUnavailable(slot.time) ? 'Horário Ocupado' : 'Horário Bloqueado') : 'Horário Disponível')}
                         >
                           <span className="font-syne text-sm font-bold block">{slot.time}</span>
                           <span className="text-[10px] block font-jakarta truncate max-w-full px-1">
-                            {isBlocked ? (slot.note?.slice(0, 10) || 'Bloqueado') : 'Disponível'}
+                            {isBlocked ? (slot.note?.slice(0, 10) || (isSlotUnavailable(slot.time) ? 'Ocupado' : 'Bloqueado')) : 'Disponível'}
                           </span>
                         </button>
                       );
@@ -732,7 +815,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 )}
               </div>}
-              {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setSelectedTime(''); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o horário</button>}
+              {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setSelectedTime(''); void refreshAvailability(); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o horário</button>}
               {bookingStep === 4 && <button type="button" onClick={() => { if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 

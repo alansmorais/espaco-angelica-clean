@@ -352,23 +352,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const finalName = clientName.trim();
     const finalPhone = clientPhone.trim();
 
-    const recurrenceConfig: RecurrenceConfig | undefined = isRecurring
-      ? {
-          frequencyDays: recurrenceFreqDays,
-          frequencyLabel:
-            recurrenceFreqDays === 7
-              ? 'Toda semana'
-              : recurrenceFreqDays === 15
-              ? 'Quinzenal (15 dias)'
-              : recurrenceFreqDays === 21
-              ? 'A cada 21 dias (Recomendado Fibra)'
-              : 'Mensal (30 dias)',
-          totalSessions: recurrenceTotalSessions,
-          seriesId: `series-${Date.now()}`,
-          currentSession: 1,
-          upcomingDates: calculateUpcomingDates()
-        }
-      : undefined;
+    // In public booking, recurrence is admin-only. Customers always book a single session.
+    const recurrenceConfig: RecurrenceConfig | undefined = undefined;
 
     // Reutiliza o mesmo ID em tentativas de reenvio para evitar duplicatas
     const appointmentId = persistedAppointmentId || `apt-${Date.now()}`;
@@ -442,19 +427,19 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="font-jakarta text-[11px] uppercase tracking-widest text-[#D4AF37] font-bold">
-            Reserva em 4 Etapas • Haute Protocol
+            Reserva em 3 Etapas • Haute Protocol
           </span>
           <h2 className="font-syne text-2xl sm:text-3xl md:text-4xl text-[#49382E] font-bold mt-1">
             Agendamento &amp; Escolha de Horário
           </h2>
           <p className="font-jakarta text-sm text-[#786C63] mt-2 leading-relaxed">
-            Selecione seu horário, defina a recorrência de manutenção e envie sua solicitação para atendimento privativo no Pontal da Cruz, São Sebastião - SP.
+            Selecione seu horário e envie sua solicitação para atendimento privativo no Pontal da Cruz, São Sebastião - SP.
           </p>
         </div>
 
-        {/* 4-Step Progress Ribbon - Compact & Responsive on Mobile */}
+        {/* 3-Step Progress Ribbon - Compact & Responsive on Mobile */}
         <div className="mb-8 sm:mb-10 p-3 sm:p-5 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-xs">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-3 p-1.5 rounded-xl bg-[#FDFBF9] sm:bg-transparent border sm:border-0 border-[#E8D9B5]/40">
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#D4AF37] text-[#3C2F00] flex items-center justify-center font-bold font-jakarta text-xs shadow-xs shrink-0">
                 1
@@ -486,20 +471,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             <div className="flex items-center gap-2 sm:gap-3 p-1.5 rounded-xl bg-[#FDFBF9] sm:bg-transparent border sm:border-0 border-[#E8D9B5]/40">
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#F7EFEA] text-[#786C63] flex items-center justify-center font-bold font-jakarta text-xs shrink-0 border border-[#E8D9B5]">
                 3
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-[9px] sm:text-[10px] font-jakarta text-[#786C63] uppercase tracking-wider font-bold">
-                  Recorrência
-                </span>
-                <span className="text-[11px] sm:text-sm font-jakarta text-[#49382E] truncate font-semibold">
-                  {isRecurring ? `${recurrenceFreqDays} em ${recurrenceFreqDays} dias` : 'Sessão Única'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 p-1.5 rounded-xl bg-[#FDFBF9] sm:bg-transparent border sm:border-0 border-[#E8D9B5]/40">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#F7EFEA] text-[#786C63] flex items-center justify-center font-bold font-jakarta text-xs shrink-0 border border-[#E8D9B5]">
-                4
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-[9px] sm:text-[10px] font-jakarta text-[#786C63] uppercase tracking-wider font-bold">
@@ -765,104 +736,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               {bookingStep === 4 && <button type="button" onClick={() => { if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 
-            {/* Panel 2: Agendamento Recorrente */}
-            <div className={`p-5 sm:p-7 rounded-2xl bg-[#FFFFFF] border border-[#E8D9B5] shadow-md space-y-4 ${bookingStep === 5 ? '' : 'hidden'}`}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-[#D4AF37] text-[24px]">
-                    event_repeat
-                  </span>
-                  <div>
-                    <h3 className="font-syne text-lg text-[#49382E] font-semibold">
-                      Agendamento Recorrente
-                    </h3>
-                    <p className="font-jakarta text-xs text-[#786C63]">
-                      Garanta antecipadamente seus horários de manutenção preventiva de fibra/gel
-                    </p>
-                  </div>
-                </div>
-
-                {/* Toggle Switch */}
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isRecurring}
-                    onChange={e => setIsRecurring(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-[#E8D9B5] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D4AF37]"></div>
-                </label>
-              </div>
-
-              {isRecurring && (
-                <div className="p-4 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-4 font-jakarta text-xs animate-fadeIn">
-                  <div>
-                    <label className="block text-[11px] text-[#49382E] uppercase tracking-wider font-bold mb-2">
-                      Intervalo entre Sessões:
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                      {[
-                        { days: 7, label: 'Toda semana (7 dias)', note: 'Manutenção semanal' },
-                        { days: 15, label: 'Quinzenal (15 dias)', note: 'Esmaltação & Spa' },
-                        { days: 21, label: 'A cada 21 dias', note: 'Ideal Fibra Slim' },
-                        { days: 30, label: 'Mensal (30 dias)', note: 'Blindagem Diamante' }
-                      ].map(freq => (
-                        <button
-                          key={freq.days}
-                          type="button"
-                          onClick={() => setRecurrenceFreqDays(freq.days)}
-                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                            recurrenceFreqDays === freq.days
-                              ? 'bg-[#FFFFFF] border-[#D4AF37] text-[#49382E] font-bold shadow-xs ring-1 ring-[#D4AF37]'
-                              : 'bg-[#F7EFEA] border-[#E8D9B5] text-[#786C63] hover:border-[#D4AF37]/40'
-                          }`}
-                        >
-                          <span className="block text-[#49382E] font-semibold">{freq.label}</span>
-                          <span className="text-[10px] text-[#786C63] block">{freq.note}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-[#49382E] uppercase tracking-wider font-bold mb-2">
-                      Quantidade de Manutenções no Ciclo:
-                    </label>
-                    <div className="flex gap-2">
-                      {[2, 3, 4, 6].map(num => (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setRecurrenceTotalSessions(num)}
-                          className={`flex-1 py-2 rounded-lg border text-center font-bold cursor-pointer transition-all ${
-                            recurrenceTotalSessions === num
-                              ? 'bg-[#D4AF37] text-[#3C2F00] border-[#D4AF37]'
-                              : 'bg-[#F7EFEA] border-[#E8D9B5] text-[#49382E] hover:border-[#D4AF37]/40'
-                          }`}
-                        >
-                          {num} Sessões
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Calculated Upcoming Dates Preview */}
-                  <div className="p-3 rounded-lg bg-[#F7EFEA] border border-[#E8D9B5] space-y-1">
-                    <span className="text-[10px] uppercase tracking-wider text-[#49382E] font-bold block">
-                      Previsão de Datas do seu Ciclo:
-                    </span>
-                    <ul className="space-y-1 text-[#786C63] text-[11px]">
-                      <li className="text-[#49382E] font-semibold">
-                        • 1ª Sessão: {selectedDate} às {selectedTime} (Agendamento Imediato)
-                      </li>
-                      {calculateUpcomingDates().map((dt, i) => (
-                        <li key={i}>• {i + 2}ª Sessão prevista: {dt}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* Panel 3: Dados da Cliente */}
             <div className="hidden">

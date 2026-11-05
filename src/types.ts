@@ -129,6 +129,8 @@ export interface ClientProfile {
   };
   isBlacklisted?: boolean;
   blacklistReason?: string;
+  email?: string;
+  birthDate?: string;
 }
 
 export interface PixPendingVerification {

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig } from '../../types';
+import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig, ClientProfile } from '../../types';
 import { sendAppointmentWhatsAppConfirmation } from '../../services/whatsappService';
 import { calculateDeposit40, calculateFullPrepayment, formatBRL } from '../../services/notificationTemplates';
 import { submitManualBooking } from '../../services/emailNotificationService';
+import { calculateRecurrenceDates } from '../../services/recurrenceService';
 
 interface ManualBookingModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ManualBookingModalProps {
   blacklist?: BlacklistEntry[];
   adminSessionToken?: string;
   paymentConfig?: PaymentConfig;
+  clients?: ClientProfile[];
 }
 
 export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
@@ -21,7 +23,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   services = [],
   blacklist = [],
   adminSessionToken,
-  paymentConfig = { pixKey: '', pixBeneficiary: '', depositAmount: 40 }
+  paymentConfig = { pixKey: '', pixBeneficiary: '', depositAmount: 40 },
+  clients = []
 }) => {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -46,6 +49,27 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [persistedAppointmentId, setPersistedAppointmentId] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isNameFocused, setIsNameFocused] = useState(false);
+
+  const trimmedInput = clientName.trim();
+  const searchDigits = trimmedInput.replace(/\D/g, '');
+  const searchLower = trimmedInput.toLowerCase();
+  const matchingClients = searchLower.length >= 1
+    ? (clients || []).filter(c => {
+        const nameMatch = c.name.toLowerCase().includes(searchLower);
+        const phoneMatch = searchDigits.length >= 2 && c.phone.replace(/\D/g, '').includes(searchDigits);
+        return nameMatch || phoneMatch;
+      })
+    : [];
+
+  const handleSelectClient = (c: ClientProfile) => {
+    setClientName(c.name);
+    setClientPhone(c.phone);
+    if (c.email) setClientEmail(c.email);
+    if (c.birthDate) setClientBirthDate(c.birthDate);
+    setShowSuggestions(false);
+  };
 
   if (!isOpen) return null;
 
@@ -114,13 +138,22 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       setPersistedAppointmentId(appointmentId);
     }
 
+    const finalServiceTitle = [serv.title, ...additionalServices.map(service => service.title)].join(' + ');
+    const recurrenceUpcomingDates = isRecurring
+      ? calculateRecurrenceDates(date.trim(), recurrenceFreq, totalSessions, {
+          clientName: trimmedName,
+          serviceTitle: finalServiceTitle
+        })
+      : undefined;
+
     const recurrenceConfig: RecurrenceConfig | undefined = isRecurring
       ? {
           frequencyDays: recurrenceFreq,
           frequencyLabel: recurrenceFreq === 7 ? 'Toda semana' : `A cada ${recurrenceFreq} dias`,
           totalSessions,
           seriesId: `series-${Date.now()}`,
-          currentSession: 1
+          currentSession: 1,
+          upcomingDates: recurrenceUpcomingDates
         }
       : undefined;
 
@@ -263,16 +296,51 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4 font-jakarta text-xs">
-          <div>
+          <div className="relative">
             <label className="block text-[#49382E] font-semibold mb-1">Nome Completo da Cliente *</label>
             <input
               type="text"
               value={clientName}
-              onChange={e => setClientName(e.target.value)}
-              placeholder="Ex: Amanda Rezende"
+              onChange={e => {
+                setClientName(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => {
+                setIsNameFocused(true);
+                setShowSuggestions(true);
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  setShowSuggestions(false);
+                  setIsNameFocused(false);
+                }, 200);
+              }}
+              placeholder="Ex: Amanda Rezende (ou digite uma letra como 'K')"
               disabled={isSubmitting}
               className="w-full px-4 py-2.5 rounded-xl bg-[#FDFBF9] text-[#49382E] border border-[#E8D9B5] focus:outline-none focus:border-[#D4AF37] text-base sm:text-sm min-h-[44px] disabled:opacity-60"
             />
+            {showSuggestions && isNameFocused && matchingClients.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-48 overflow-y-auto rounded-xl bg-white border border-[#E8D9B5] shadow-lg divide-y divide-[#E8D9B5]/40">
+                {matchingClients.map(c => (
+                  <button
+                    key={c.id || c.phone}
+                    type="button"
+                    onMouseDown={() => handleSelectClient(c)}
+                    className="w-full text-left px-3.5 py-2.5 hover:bg-[#FDFBF9] transition-colors flex items-center justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-semibold text-xs text-[#49382E] block">{c.name}</span>
+                      <span className="text-[11px] text-[#786C63]">{c.phone}</span>
+                    </div>
+                    {c.tier && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#F7EFEA] text-[#D4AF37] font-bold border border-[#E8D9B5]/60">
+                        {c.tier}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

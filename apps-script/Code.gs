@@ -120,7 +120,7 @@ function getOfficialSheet() {
 // Called only on explicit write paths after validation, never during reads.
 function ensureOptionalBookingHeaders(sheet) {
   if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
-  var extensionHeaders = ["Local do Atendimento", "Endereço Domiciliar", "IDs Serviços Adicionais", "Pedido Personalizado", "ID Serviço Principal", "Data de Nascimento", "Forma de Pagamento"];
+  var extensionHeaders = ["Local do Atendimento", "Endereço Domiciliar", "IDs Serviços Adicionais", "Pedido Personalizado", "ID Serviço Principal", "Data de Nascimento", "Forma de Pagamento", "Configuração de Recorrência"];
   for (var h = 0; h < extensionHeaders.length; h++) {
     var cell = sheet.getRange(1, 12 + h);
     if (!String(cell.getValue() || "").trim()) cell.setValue(extensionHeaders[h]);
@@ -318,8 +318,10 @@ function getServiceDurationMinutes(serviceId, serviceTitle) {
     for (var sh = 0; sh < sheets.length; sh++) {
       var rows = sheets[sh].getDataRange().getValues();
       for (var i = 1; i < rows.length; i++) {
-        var idMatches = serviceId && String(rows[i][0] || "").trim() === String(serviceId).trim();
-        var titleMatches = serviceTitle && String(rows[i][1] || "").trim().toLowerCase() === String(serviceTitle).trim().toLowerCase();
+        var rowId = String(rows[i][0] || "").trim();
+        var rowTitle = String(rows[i][1] || "").trim();
+        var idMatches = serviceId && (rowId === String(serviceId).trim() || (String(serviceId).trim().toLowerCase() === "blindagem" && rowId === "blindagem-homens-incolor"));
+        var titleMatches = serviceTitle && (rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase() || (String(serviceTitle).trim().toLowerCase() === "blindagem" && (rowId === "blindagem-homens-incolor" || rowTitle.toLowerCase().indexOf("blindagem") >= 0)));
         if (idMatches || titleMatches) return parseDurationMinutes(rows[i][5]);
       }
     }
@@ -338,8 +340,8 @@ function getConfiguredServiceDurationMinutes(serviceId, serviceTitle) {
       for (var i = 1; i < rows.length; i++) {
         var rowId = String(rows[i][0] || "").trim();
         var rowTitle = String(rows[i][1] || "").trim();
-        var idMatches = serviceId && rowId === String(serviceId).trim();
-        var titleMatches = serviceTitle && rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase();
+        var idMatches = serviceId && (rowId === String(serviceId).trim() || (String(serviceId).trim().toLowerCase() === "blindagem" && rowId === "blindagem-homens-incolor"));
+        var titleMatches = serviceTitle && (rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase() || (String(serviceTitle).trim().toLowerCase() === "blindagem" && (rowId === "blindagem-homens-incolor" || rowTitle.toLowerCase().indexOf("blindagem") >= 0)));
         if (!idMatches && !titleMatches) continue;
         if (rows[i][11] === false || String(rows[i][11]).toLowerCase() === "false") return null;
         var durationText = String(rows[i][5] || "").toLowerCase().trim();
@@ -722,6 +724,19 @@ function lookupPublicClientByPhone(phoneValue) {
   if (phoneKey.length < 8 || phoneKey.length > 15) {
     return { status: "error", message: "Informe um telefone válido com DDD." };
   }
+  var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+  var clientSheet = ss ? ss.getSheetByName("Perfis de Clientes") : null;
+  if (clientSheet) {
+    var cRows = clientSheet.getDataRange().getValues();
+    for (var c = 1; c < cRows.length; c++) {
+      if (normalizeClientPhoneKey(cRows[c][1]) === phoneKey) {
+        try {
+          var prof = JSON.parse(cRows[c][2]);
+          if (prof && prof.name) return { status: "success", found: true, clientName: prof.name };
+        } catch (e) {}
+      }
+    }
+  }
   var sheet = getOfficialSheet();
   if (!sheet) return { status: "success", found: false };
   var rows = sheet.getDataRange().getValues();
@@ -1101,6 +1116,7 @@ function doPost(e) {
         if (data.serviceId !== undefined) updateSheet.getRange(foundRowIndex, 16).setValue(String(data.serviceId).trim());
         if (data.clientBirthDate !== undefined) updateSheet.getRange(foundRowIndex, 17).setValue(String(data.clientBirthDate || "").trim());
         if (data.paymentMethod !== undefined) updateSheet.getRange(foundRowIndex, 18).setValue(String(data.paymentMethod || "").trim());
+        if (data.recurrence !== undefined) updateSheet.getRange(foundRowIndex, 19).setValue(data.recurrence ? JSON.stringify(data.recurrence) : "");
 
         return responseJSON({
           status: "success",
@@ -1459,11 +1475,20 @@ function doPost(e) {
             if (!rowId) continue;
             var isActive = serviceRow[11] !== false && String(serviceRow[11]).toLowerCase() !== "false";
             if (!isActive) continue;
-            if (idToFind && rowId.toLowerCase() === idToFind) {
-              return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
+            var rowTitle = String(serviceRow[1] || "").trim();
+            var matchesId = idToFind && (
+              rowId.toLowerCase() === idToFind ||
+              (idToFind === "blindagem" && rowId.toLowerCase() === "blindagem-homens-incolor")
+            );
+            var matchesTitle = titleToFind && (
+              rowTitle.toLowerCase() === titleToFind ||
+              (titleToFind === "blindagem" && (rowId.toLowerCase() === "blindagem-homens-incolor" || rowTitle.toLowerCase().indexOf("blindagem") >= 0))
+            );
+            if (matchesId) {
+              return { id: rowId, title: rowTitle, price: Number(serviceRow[3]), active: true };
             }
-            if (!idToFind && titleToFind && String(serviceRow[1] || "").trim().toLowerCase() === titleToFind) {
-              return { id: rowId, title: String(serviceRow[1] || "").trim(), price: Number(serviceRow[3]), active: true };
+            if (!idToFind && matchesTitle) {
+              return { id: rowId, title: rowTitle, price: Number(serviceRow[3]), active: true };
             }
           }
         }
@@ -1502,7 +1527,8 @@ function doPost(e) {
         return responseJSON({ status: "error", persisted: false, configurationError: true, message: "Os dados oficiais de Pix ainda não estão configurados. Nenhum agendamento foi gravado." });
       }
       var expectedServiceTitle = [canonical.title].concat(additionalTitles).join(" + ");
-      if (String(data.serviceTitle || "").trim().toLowerCase() !== expectedServiceTitle.toLowerCase()) {
+      var isBlindagemTitleMatch = (String(data.serviceTitle || "").trim().toLowerCase() === "blindagem" && canonical.id === "blindagem-homens-incolor");
+      if (!isBlindagemTitleMatch && String(data.serviceTitle || "").trim().toLowerCase() !== expectedServiceTitle.toLowerCase()) {
         return responseJSON({ status: "error", message: "Os serviços informados não correspondem ao catálogo oficial." });
       }
       var expected40 = Math.round(referencePrice * 0.4 * 100) / 100;
@@ -1516,7 +1542,7 @@ function doPost(e) {
       // O sinal é uma orientação de pagamento; não rejeitar a reserva por divergência percentual.
       var matches100 = data.paymentMode === "pre_pagamento_100";
       var resolvedMode = data.paymentMode || "sinal_40";
-      var serviceTitle = expectedServiceTitle;
+      var serviceTitle = isBlindagemTitleMatch ? "Blindagem" : expectedServiceTitle;
       var balanceNum = resolvedMode === "pre_pagamento_100" ? 0 : Math.max(0, referencePrice - depositNum);
       var amountFormatted = depositNum.toFixed(2).replace(".", ",");
       var balanceFormatted = balanceNum.toFixed(2).replace(".", ",");
@@ -1681,7 +1707,8 @@ function doPost(e) {
         data.customRequest ? String(data.customRequest).trim() : '',
         data.serviceId ? String(data.serviceId).trim() : '',
         data.clientBirthDate ? String(data.clientBirthDate).trim() : '',
-        data.paymentMethod ? String(data.paymentMethod).trim() : ''
+        data.paymentMethod ? String(data.paymentMethod).trim() : '',
+        data.recurrence ? JSON.stringify(data.recurrence) : ''
       ]);
 
       // 11. Disparo de e-mails para reserva real
@@ -1907,7 +1934,17 @@ function fetchAppointmentsFromSheet() {
       customRequest: String(row[14] || '') || undefined,
       serviceId: String(row[15] || '') || undefined,
       clientBirthDate: String(row[16] || '') || undefined,
-      paymentMethod: String(row[17] || '') || undefined
+      paymentMethod: String(row[17] || '') || undefined,
+      recurrence: (function() {
+        try {
+          var recRaw = String(row[18] || '');
+          if (!recRaw) return undefined;
+          var parsed = JSON.parse(recRaw);
+          return parsed && typeof parsed === 'object' ? parsed : undefined;
+        } catch (e) {
+          return undefined;
+        }
+      })()
     });
   }
   return responseJSON({ status: "success", appointments: appointments, total: appointments.length });

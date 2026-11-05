@@ -1,4 +1,5 @@
-import { Appointment, Service, ClientProfile, StudioAddressConfig, BlacklistEntry, WhatsAppConfig, PaymentConfig } from '../types';
+import { Appointment, Service, ClientProfile, StudioAddressConfig, BlacklistEntry, WhatsAppConfig, PaymentConfig, RecurrenceConfig } from '../types';
+import { expandRecurringAppointments } from './recurrenceService';
 import {
   AUTHORIZED_SENDER_EMAIL,
   TARGET_NOTIFICATION_EMAIL
@@ -35,6 +36,7 @@ export interface EmailNotificationPayload {
   appointmentId: string;
   nailCondition?: string;
   notes?: string;
+  recurrence?: RecurrenceConfig;
   timestamp: string;
   isTest?: boolean;
 }
@@ -147,6 +149,7 @@ export function buildPreBookingEmailPayload(apt: Appointment): EmailNotification
       apt.additionalServiceIds?.length ? `Serviços adicionais (IDs): ${apt.additionalServiceIds.join(', ')}` : '',
       apt.customRequest ? `Pedido personalizado (confirmar preço): ${apt.customRequest}` : ''
     ].filter(Boolean).join('\n') || undefined,
+    recurrence: apt.recurrence,
     timestamp: new Date().toISOString(),
     isTest
   };
@@ -564,7 +567,8 @@ export async function fetchRemoteAppointmentsDetailed(authToken?: string): Promi
     if (!token) return { success: false, appointments: [], error: 'Sessão administrativa ausente. Entre novamente no painel.', statusCode: 401 };
     const data = await postAppsScriptAction(endpoint, 'getAppointments', { token });
     if (Array.isArray(data.appointments)) {
-      return { success: true, appointments: data.appointments as Appointment[], source: 'google_sheets', total: data.total ?? data.appointments.length };
+      const expanded = expandRecurringAppointments(data.appointments as Appointment[]);
+      return { success: true, appointments: expanded, source: 'google_sheets', total: data.total ?? expanded.length };
     }
     return { success: false, appointments: [], error: 'Resposta do Apps Script sem lista de agendamentos.', statusCode: 502 };
   } catch (err: any) {

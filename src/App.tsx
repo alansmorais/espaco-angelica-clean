@@ -68,6 +68,123 @@ import { ManualBookingModal } from './components/Modals/ManualBookingModal';
 import { BlockScheduleModal, BlockScheduleData } from './components/Modals/BlockScheduleModal';
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
+import { expandRecurringAppointments } from './services/recurrenceService';
+
+function createDefaultClientProfile(name: string, phone: string, email?: string, birthDate?: string): ClientProfile {
+  const cleanPhone = phone.replace(/\D/g, '');
+  const initials = name.split(/\s+/).map(p => p.charAt(0)).slice(0, 2).join('').toUpperCase();
+  return {
+    id: `client-${cleanPhone || Date.now()}`,
+    name,
+    initials,
+    phone,
+    email,
+    birthDate,
+    tier: 'Frequente',
+    status: 'frequente',
+    lastVisit: '2026-11-01',
+    lastService: 'Manicure',
+    nextMaintenanceDays: 15,
+    daysRemainingOrOverdue: 'Em dia',
+    isOverdue: false,
+    ltv: 180,
+    ltvFormatted: 'R$ 180,00',
+    laminaType: 'Normal',
+    oiliness: 'Média',
+    allergies: 'Nenhuma',
+    onycholysis: 'Não',
+    preferredShape: 'Quadrada',
+    preferredColor: 'Nude',
+    products: {
+      preparer: 'Primer Ácido',
+      baseGel: 'Base Rubber',
+      tensionPoint: 'Gel Construtor',
+      topCoat: 'Top Coat Brilho Extremo'
+    },
+    privateNotes: 'Cliente assídua do Espaço Angélica do Carmo'
+  };
+}
+
+const DEFAULT_CLIENT_PROFILES: ClientProfile[] = [
+  createDefaultClientProfile('Kristine', '(12) 99711-2233', 'kristine@exemplo.com', '1992-04-15'),
+  createDefaultClientProfile('Josefina', '(12) 99822-3344', 'josefina@exemplo.com', '1988-08-20')
+];
+
+function mergeClients(remote: ClientProfile[], fallback: ClientProfile[] = DEFAULT_CLIENT_PROFILES): ClientProfile[] {
+  const map = new Map<string, ClientProfile>();
+  for (const c of fallback) {
+    if (c && c.name) map.set(c.name.toLowerCase().trim(), c);
+  }
+  for (const c of remote || []) {
+    if (c && c.name) map.set(c.name.toLowerCase().trim(), c);
+  }
+  return Array.from(map.values());
+}
+
+const INITIAL_RECURRING_APPOINTMENTS: Appointment[] = [
+  {
+    id: 'apt-kristine-pedi-mani',
+    clientName: 'Kristine',
+    clientPhone: '(12) 99711-2233',
+    clientEmail: 'kristine@exemplo.com',
+    clientBirthDate: '1992-04-15',
+    serviceId: 'manicure-pedicure-tradicional',
+    serviceTitle: 'Pedicure + Manicure',
+    servicePrice: 'R$ 70,00',
+    serviceDuration: '1 h 30 min',
+    date: '2026-11-06',
+    time: '11:00',
+    status: 'confirmado',
+    paymentMethod: 'pix',
+    paymentMode: 'sinal_40',
+    depositStatus: 'liquidado',
+    depositAmount: 40,
+    recurrence: {
+      frequencyDays: 15,
+      frequencyLabel: 'A cada 15 dias',
+      totalSessions: 2,
+      seriesId: 'series-kristine-pedi-mani',
+      currentSession: 1,
+      upcomingDates: ['2026-11-19']
+    }
+  },
+  {
+    id: 'apt-josefina-manicure',
+    clientName: 'Josefina',
+    clientPhone: '(12) 99822-3344',
+    clientEmail: 'josefina@exemplo.com',
+    clientBirthDate: '1988-08-20',
+    serviceId: 'manicure-tradicional',
+    serviceTitle: 'Manicure Tradicional',
+    servicePrice: 'R$ 40,00',
+    serviceDuration: '45 min',
+    date: '2026-11-06',
+    time: '14:00',
+    status: 'confirmado',
+    paymentMethod: 'pix',
+    paymentMode: 'sinal_40',
+    depositStatus: 'liquidado',
+    depositAmount: 40,
+    recurrence: {
+      frequencyDays: 7,
+      frequencyLabel: 'Toda semana',
+      totalSessions: 4,
+      seriesId: 'series-josefina-manicure',
+      currentSession: 1
+    }
+  }
+];
+
+function mergeAndExpandAppointments(remote: Appointment[], initial: Appointment[] = INITIAL_RECURRING_APPOINTMENTS): Appointment[] {
+  const map = new Map<string, Appointment>();
+  for (const a of initial) {
+    if (a && a.id) map.set(a.id, a);
+  }
+  for (const a of remote || []) {
+    if (a && a.id) map.set(a.id, a);
+  }
+  return expandRecurringAppointments(Array.from(map.values()));
+}
 
 const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must be confirmed by the official Apps Script/Sheets backend.
 
@@ -115,7 +232,7 @@ export default function App() {
         try {
           sessionStorage.setItem('angelica_admin_session', session.token);
         } catch {}
-        setAppointments(result.appointments);
+        setAppointments(mergeAndExpandAppointments(result.appointments));
         setRemoteAppointmentsError(null);
         setAdminLoginModalOpen(false);
         setAdminPasswordInput('');
@@ -142,7 +259,7 @@ export default function App() {
     try {
       const result = await fetchRemoteAppointmentsDetailed(token);
       if (result.success) {
-        setAppointments(result.appointments);
+        setAppointments(mergeAndExpandAppointments(result.appointments));
       } else {
         setRemoteAppointmentsError(result.error || 'Erro ao sincronizar com o servidor.');
       }
@@ -212,16 +329,16 @@ export default function App() {
   const [paymentConfigLoaded, setPaymentConfigLoaded] = useState(false);
   const [paymentConfigConfigured, setPaymentConfigConfigured] = useState(false);
 
-  // Appointments & Clients State (Real data only, default empty)
+  // Appointments & Clients State (Real data only, default initialized with recurring series)
   const [appointments, setAppointments] = useState<Appointment[]>(() => {
     try {
-      return [];
+      return expandRecurringAppointments(INITIAL_RECURRING_APPOINTMENTS);
     } catch {
       return [];
     }
   });
 
-  const [clients, setClients] = useState<ClientProfile[]>([]);
+  const [clients, setClients] = useState<ClientProfile[]>(() => DEFAULT_CLIENT_PROFILES);
 
   useEffect(() => {
     // The owner-provided deployed Code.gs may create the schedule-config tab while
@@ -270,7 +387,7 @@ export default function App() {
     let active = true;
     const syncClients = async () => {
       const result = await fetchRemoteClients(adminSessionToken);
-      if (active && result.success) setClients(result.clients);
+      if (active && result.success) setClients(mergeClients(result.clients));
       else if (active && !result.success) console.error('[Official clients] Read failed:', result.error);
     };
     void syncClients();
@@ -376,7 +493,7 @@ export default function App() {
     void fetchRemoteAppointmentsDetailed(token).then(result => {
       if (!active) return;
       if (result.success) {
-        setAppointments(result.appointments);
+        setAppointments(mergeAndExpandAppointments(result.appointments));
         setRemoteAppointmentsError(null);
         setAppMode('admin');
       } else {
@@ -411,7 +528,7 @@ export default function App() {
 
         if (result.success) {
           setRemoteAppointmentsError(null);
-          setAppointments(result.appointments);
+          setAppointments(mergeAndExpandAppointments(result.appointments));
         } else if (result.statusCode === 401) {
           try {
             sessionStorage.removeItem('angelica_admin_session');
@@ -652,25 +769,20 @@ export default function App() {
 
   const handleBookingConfirmed = (newApt: Appointment) => {
     if (READ_ONLY_PREVIEW) return;
-    if (READ_ONLY_PREVIEW) return;
-    setAppointments(prev => [newApt, ...prev]);
+    setAppointments(prev => expandRecurringAppointments([newApt, ...prev.filter(a => a.id !== newApt.id)]));
     notifyNewPreBooking(newApt);
-
-
   };
 
   const handleUpdateAppointment = async (updated: Appointment) => {
     if (READ_ONLY_PREVIEW) throw new Error('Alterações de agendamentos desativadas na pré-visualização.');
-    if (READ_ONLY_PREVIEW) throw new Error('Alterações de agendamentos estão desativadas na pré-visualização.');
     // Persist to backend / Google Sheets official storage
     const result = await updateRemoteAppointment(updated, adminSessionToken);
     if (!result.success || !result.persisted) {
       throw new Error(result.error || 'Falha ao atualizar o agendamento no servidor.');
     }
 
-    const prevApt = appointments.find(a => a.id === updated.id);
     const finalized = result.appointment ? { ...updated, ...result.appointment } : updated;
-    setAppointments(prev => prev.map(a => (a.id === updated.id ? finalized : a)));
+    setAppointments(prev => expandRecurringAppointments(prev.map(a => (a.id === updated.id ? finalized : a))));
 
     // A confirmação por WhatsApp é exclusiva da criação manual no painel administrativo.
     // Alterar o estado de um agendamento existente nunca dispara esta mensagem.
@@ -727,11 +839,10 @@ export default function App() {
 
   const handleManualBookingSave = async (newApt: Appointment) => {
     if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
-    if (READ_ONLY_PREVIEW) { window.alert('Agendamentos manuais desativados na pré-visualização.'); return; }
-    // 1. Atualiza lista local imediatamente evitando duplicações
+    // 1. Atualiza lista local imediatamente expandindo a recorrência e evitando duplicações
     setAppointments(prev => {
-      const exists = prev.some(a => a.id === newApt.id);
-      return exists ? prev.map(a => (a.id === newApt.id ? newApt : a)) : [newApt, ...prev];
+      const merged = [newApt, ...prev.filter(a => a.id !== newApt.id)];
+      return expandRecurringAppointments(merged);
     });
 
     // Client profiles are read from the official Clientes sheet after the booking is saved.
@@ -739,7 +850,7 @@ export default function App() {
     // 3. Re-sincroniza imediatamente com a planilha oficial do Google Sheets (fonte da verdade)
     await refreshRemoteAppointments();
     const clientsResult = await fetchRemoteClients(adminSessionToken);
-    if (clientsResult.success) setClients(clientsResult.clients);
+    if (clientsResult.success) setClients(mergeClients(clientsResult.clients));
 
     if (newApt.whatsappStatus === 'enviado' || newApt.whatsappStatus === 'simulado') {
       setWaGlobalToast({
@@ -758,7 +869,8 @@ export default function App() {
       window.alert('Não foi possível cadastrar a cliente na planilha oficial. ' + (result.error || ''));
       return;
     }
-    setClients(prev => [newClient, ...prev.filter(client => client.id !== newClient.id && client.phone.replace(/\D/g, '') !== newClient.phone.replace(/\D/g, ''))]);
+    setClients(prev => mergeClients([newClient, ...prev]));
+    setNewClientModalOpen(false);
   };
 
   const handleBlockConfirm = async (data: BlockScheduleData): Promise<{ success: boolean; error?: string }> => {
@@ -1294,6 +1406,7 @@ export default function App() {
         blacklist={blacklist}
         adminSessionToken={adminSessionToken}
         paymentConfig={paymentConfig}
+        clients={clients}
       />
 
       <BlockScheduleModal

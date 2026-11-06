@@ -840,7 +840,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
               {isSubmitting ? (
                 <>
                   <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
-                  <span>Gravando no Google Sheets...</span>
+                  <span aria-live="polite">Salvando agendamento... Não toque novamente.</span>
                 </>
               ) : (
                 <span>Inserir na Grade</span>

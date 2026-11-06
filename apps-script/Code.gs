@@ -2252,7 +2252,7 @@ function fetchAppointmentsFromSheet() {
     var resolvedClientName = rawClientName;
     if (rawClientName.toLowerCase() === 'kristine') resolvedClientName = 'Kristine Sorensen';
     if (rawClientName.toLowerCase() === 'josefina') resolvedClientName = 'Josefina Calderón';
-    var durationFormatted = (totalDur && totalDur > 0 ? totalDur + ' min' : (row[19] ? String(row[19]) : '45 min'));
+    var durationFormatted = (totalDur && totalDur > 0 ? totalDur + ' min' : (row[19] ? String(row[19]) : ''));
 
     appointments.push({
       id: String(row[9] || ('apt-sheet-' + i)),

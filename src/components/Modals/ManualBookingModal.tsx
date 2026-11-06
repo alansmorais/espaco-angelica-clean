@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig, ClientProfile, DayScheduleConfig } from '../../types';
 import { sendAppointmentWhatsAppConfirmation } from '../../services/whatsappService';
 import { calculateDeposit40, calculateFullPrepayment, formatBRL } from '../../services/notificationTemplates';
@@ -110,25 +110,22 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   const standardDeposit = calculateDeposit40(totalPrice, paymentConfig.depositAmount);
   const fullPrepayment = calculateFullPrepayment(totalPrice);
 
-  const recurrenceValidation = useMemo(() => {
-    if (!isRecurring) return null;
-    const durationMinutes = procedureDuration?.totalMinutes || 45;
-
-    return validateRecurringOccurrences({
-      baseDate: date.trim(),
-      time: time.trim(),
-      durationMinutes,
-      frequencyOrType: recurrenceInterval,
-      totalSessions,
-      daySchedules,
-      blockedDates,
-      appointments,
-      options: {
-        clientName: clientName.trim(),
-        serviceTitle: serv?.title
-      }
-    });
-  }, [isRecurring, date, time, procedureDuration, recurrenceInterval, totalSessions, daySchedules, blockedDates, appointments, clientName, serv]);
+  const recurrenceValidation = !isRecurring
+    ? null
+    : validateRecurringOccurrences({
+        baseDate: date.trim(),
+        time: time.trim(),
+        durationMinutes: procedureDuration?.totalMinutes || 45,
+        frequencyOrType: recurrenceInterval,
+        totalSessions,
+        daySchedules,
+        blockedDates,
+        appointments,
+        options: {
+          clientName: clientName.trim(),
+          serviceTitle: serv.title
+        }
+      });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

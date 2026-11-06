@@ -223,7 +223,7 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
                           {client.name}
                         </span>
                         <span className="font-jakarta text-[11px] text-[#786C63]">
-                          {client.phone}
+                          WhatsApp: {client.phone || 'Telefone não cadastrado na planilha'}
                         </span>
                         <span className="font-jakarta text-[10px] text-[#D4AF37] font-semibold truncate mt-0.5">
                           {client.lastService || 'Novo cadastro'}

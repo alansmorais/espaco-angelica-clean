@@ -296,6 +296,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         <span className="font-jakarta text-xs text-[#786C63]">
                           {apt.serviceTitle} • {apt.serviceDuration}
                         </span>
+                        <span className="font-jakarta text-[11px] text-[#786C63] flex items-center gap-1 mt-0.5">
+                          <span className="material-symbols-outlined text-[13px]">call</span>
+                          WhatsApp: {apt.clientPhone || 'Telefone não cadastrado na coluna C'}
+                        </span>
                         <div className="flex items-center gap-2 mt-1 font-jakarta text-xs">
                           <span className="text-[#D4AF37] font-semibold">
                             {apt.paymentMode === 'pre_pagamento_100'

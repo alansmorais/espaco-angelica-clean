@@ -121,8 +121,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       frequencyOrType: recurrenceInterval,
       totalSessions,
       daySchedules,
-      blockedDates: currentBlockedDates,
-      appointments: currentAppointments,
+      blockedDates,
+      appointments,
       options: {
         clientName: clientName.trim(),
         serviceTitle: serv?.title
@@ -186,9 +186,23 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       console.warn('[ManualBooking] Não foi possível atualizar a disponibilidade; usando dados já carregados.', error);
     }
 
-    // Validação estrita de conflitos em toda a série recorrente
-    if (isRecurring && recurrenceValidation && !recurrenceValidation.valid) {
-      setSubmitError(recurrenceValidation.error || 'Conflito detectado na série recorrente. Por favor, escolha outro dia ou horário.');
+    // Revalida toda a série com os dados mais recentes da mesma disponibilidade pública.
+    const currentRecurrenceValidation = isRecurring
+      ? validateRecurringOccurrences({
+          baseDate: date.trim(),
+          time: time.trim(),
+          durationMinutes: procedureDuration.totalMinutes,
+          frequencyOrType: recurrenceInterval,
+          totalSessions,
+          daySchedules,
+          blockedDates: currentBlockedDates,
+          appointments: currentAppointments,
+          options: { clientName: clientName.trim(), serviceTitle: serv.title }
+        })
+      : null;
+
+    if (currentRecurrenceValidation && !currentRecurrenceValidation.valid) {
+      setSubmitError(currentRecurrenceValidation.error || 'Conflito detectado na série recorrente. Por favor, escolha outro dia ou horário.');
       return;
     }
 

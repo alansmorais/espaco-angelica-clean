@@ -72,7 +72,6 @@ import { NewClientModal } from './components/Modals/NewClientModal';
 import { expandRecurringAppointments, updateRecurringSeries, cancelRecurringSeries } from './services/recurrenceService';
 
 import {
-  DEFAULT_CLIENT_PROFILES,
   mergeClients,
   mergeAndExpandAppointments,
   resolveClientFullName,
@@ -80,7 +79,6 @@ import {
 } from './services/clientReconciliationService';
 
 export {
-  DEFAULT_CLIENT_PROFILES,
   mergeClients,
   mergeAndExpandAppointments,
   resolveClientFullName,
@@ -234,7 +232,7 @@ export default function App() {
   // Appointments & Clients State (Real data strictly loaded from official Google Sheets backend)
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  const [clients, setClients] = useState<ClientProfile[]>(() => DEFAULT_CLIENT_PROFILES);
+  const [clients, setClients] = useState<ClientProfile[]>([]);
 
   useEffect(() => {
     // The owner-provided deployed Code.gs may create the schedule-config tab while

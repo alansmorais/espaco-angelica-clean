@@ -34,65 +34,14 @@ export function resolveClientFullName(rawName: string, context: string = 'geral'
   return resolved;
 }
 
-export function createDefaultClientProfile(
-  name: string,
-  phone: string,
-  email: string,
-  birthDate: string
-): ClientProfile {
-  const resolvedName = resolveClientFullName(name);
-  const initials = resolvedName
-    .split(/\s+/)
-    .map(part => part.charAt(0))
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
-  return {
-    id: 'client-' + normalizeClientPhoneKey(phone),
-    name: resolvedName,
-    initials: initials || 'EC',
-    phone,
-    email,
-    birthDate,
-    tier: 'VIP Club',
-    status: 'vip',
-    lastVisit: '24/10/2026 às 14:00',
-    lastService: 'Manutenção Fibra de Vidro',
-    nextMaintenanceDays: 21,
-    daysRemainingOrOverdue: 'Em dia (restam 12 dias)',
-    isOverdue: false,
-    ltv: 180,
-    ltvFormatted: 'R$ 180,00',
-    laminaType: 'Normal',
-    oiliness: 'Média',
-    allergies: 'Nenhuma',
-    onycholysis: 'Não',
-    preferredShape: 'Quadrada',
-    preferredColor: 'Nude',
-    products: {
-      preparer: 'Primer Ácido',
-      baseGel: 'Base Rubber',
-      tensionPoint: 'Gel Construtor',
-      topCoat: 'Top Coat Brilho Extremo'
-    },
-    privateNotes: 'Cliente assídua do Espaço Angélica do Carmo'
-  };
-}
-
-export const DEFAULT_CLIENT_PROFILES: ClientProfile[] = [
-  createDefaultClientProfile('Kristine Sorensen', '(12) 99711-2233', 'kristine@exemplo.com', '1992-04-15'),
-  createDefaultClientProfile('Josefina Calderón', '(12) 99822-3344', 'josefina@exemplo.com', '1988-08-20')
-];
-
 export function mergeClients(
-  remote: ClientProfile[],
-  fallback: ClientProfile[] = DEFAULT_CLIENT_PROFILES
+  remote: ClientProfile[]
 ): ClientProfile[] {
   const list: ClientProfile[] = [];
-  const all = [...(remote || []), ...(fallback || [])];
 
-  for (const raw of all) {
+  // Only profiles returned by the official spreadsheet/backend are accepted.
+  // Never inject fabricated client names, phone numbers, or contact details.
+  for (const raw of (remote || [])) {
     if (!raw) continue;
     const resolvedName = resolveClientFullName(raw.name);
     if (!resolvedName) continue;
@@ -111,7 +60,7 @@ export function mergeClients(
         nomeOriginal: raw.name,
         nomeResolvido: resolvedName,
         telefone: raw.phone,
-        origem: raw.id?.startsWith('client-') ? 'DEFAULT_CLIENT_PROFILES / Cadastro' : 'Planilha Oficial Google Sheets (Perfis de Clientes / getClients)'
+        origem: raw.id?.startsWith('client-') ? 'Dados recebidos do backend oficial' : 'Planilha Oficial Google Sheets (Perfis de Clientes / getClients)'
       });
     }
 

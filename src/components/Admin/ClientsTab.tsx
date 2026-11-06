@@ -196,6 +196,14 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
             ) : (
               filteredClients.map(client => {
                 const isSelected = selectedClient?.id === client.id;
+                if (client.name.toLowerCase().includes('kristine') || client.name.toLowerCase().includes('josefina')) {
+                  console.log('[DIAGNOSTICO_PAINEL:PAINEL_CLIENTE_EXIBIDO]', {
+                    id: client.id,
+                    nomeExibido: client.name,
+                    telefone: client.phone,
+                    origem: client.id.startsWith('client-') ? 'DEFAULT_CLIENT_PROFILES / Cadastro' : 'Google Sheets / Backend'
+                  });
+                }
                 return (
                   <div
                     key={client.id}

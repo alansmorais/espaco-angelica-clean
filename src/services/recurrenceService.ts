@@ -488,6 +488,20 @@ export function expandRecurringAppointments(appointments: Appointment[]): Appoin
         }
       };
 
+      if (apt.clientName?.toLowerCase().includes('kristine') || apt.clientName?.toLowerCase().includes('josefina')) {
+        console.log('[DIAGNOSTICO_PAINEL:AGENDAMENTO_RECORRENTE_EXPANDIDO]', {
+          id: subId,
+          nomeFinal: apt.clientName,
+          telefone: apt.clientPhone,
+          data: futureDate,
+          horario: apt.time,
+          procedimento: apt.serviceTitle,
+          sessao: sessionNumber,
+          seriesId: seriesId || `series-${apt.id}`,
+          origem: 'Série Recorrente Gerada (recurrenceService.ts:expandRecurringAppointments)'
+        });
+      }
+
       result.push(recurringInstance);
     });
   }

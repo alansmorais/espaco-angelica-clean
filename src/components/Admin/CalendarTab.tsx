@@ -377,6 +377,20 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                     </div>
 
                     <div className="flex flex-col min-w-0">
+                      {(() => {
+                        if (matchingApt && (matchingApt.clientName?.toLowerCase().includes('kristine') || matchingApt.clientName?.toLowerCase().includes('josefina'))) {
+                          console.log('[DIAGNOSTICO_PAINEL:CALENDAR_TAB_RENDER]', {
+                            id: matchingApt.id,
+                            nomeExibido: matchingApt.clientName,
+                            telefone: matchingApt.clientPhone,
+                            data: matchingApt.date,
+                            horario: matchingApt.time,
+                            procedimento: matchingApt.serviceTitle,
+                            origem: matchingApt.id.includes('-rec-') ? 'Série Recorrente Gerada' : 'Planilha Oficial Google Sheets (Agendamentos)'
+                          });
+                        }
+                        return null;
+                      })()}
                       {matchingApt ? (
                         matchingApt.status === 'bloqueado' ? (
                           <>

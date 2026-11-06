@@ -17,12 +17,21 @@ export function normalizeClientPhoneKey(value: string): string {
   return digits;
 }
 
-export function resolveClientFullName(rawName: string): string {
+export function resolveClientFullName(rawName: string, context: string = 'geral'): string {
   const trimmed = String(rawName || '').trim();
   const lower = trimmed.toLowerCase();
-  if (lower === 'kristine') return 'Kristine Sorensen';
-  if (lower === 'josefina') return 'Josefina Calderón';
-  return trimmed;
+  let resolved = trimmed;
+  if (lower === 'kristine') resolved = 'Kristine Sorensen';
+  else if (lower === 'josefina') resolved = 'Josefina Calderón';
+
+  if (lower.includes('kristine') || lower.includes('josefina')) {
+    console.log('[DIAGNOSTICO_PAINEL:RESOLVE_NOME]', {
+      nomeEntradaOriginal: rawName,
+      nomeFinalResolvido: resolved,
+      contexto: context
+    });
+  }
+  return resolved;
 }
 
 export function createDefaultClientProfile(
@@ -96,6 +105,16 @@ export function mergeClients(
     const phoneKey = normalizeClientPhoneKey(raw.phone);
     const lowerName = resolvedName.toLowerCase();
 
+    if (lowerName.includes('kristine') || lowerName.includes('josefina')) {
+      console.log('[DIAGNOSTICO_PAINEL:CLIENTE_PROCESSADO]', {
+        id: raw.id,
+        nomeOriginal: raw.name,
+        nomeResolvido: resolvedName,
+        telefone: raw.phone,
+        origem: raw.id?.startsWith('client-') ? 'DEFAULT_CLIENT_PROFILES / Cadastro' : 'Planilha Oficial Google Sheets (Perfis de Clientes / getClients)'
+      });
+    }
+
     // Identifica se já existe cliente correspondente por telefone ou nome completo
     const existingIndex = list.findIndex(c => {
       const cPhone = normalizeClientPhoneKey(c.phone);
@@ -158,7 +177,7 @@ export function mergeAndExpandAppointments(remote: Appointment[]): Appointment[]
 
   for (const raw of remote) {
     if (!raw || !raw.id) continue;
-    const resolvedName = resolveClientFullName(raw.clientName);
+    const resolvedName = resolveClientFullName(raw.clientName, 'agendamentos_planilha');
     const apt: Appointment = {
       ...raw,
       clientName: resolvedName,
@@ -171,6 +190,19 @@ export function mergeAndExpandAppointments(remote: Appointment[]): Appointment[]
             .toUpperCase()
         : raw.clientInitials
     };
+
+    if (resolvedName.toLowerCase().includes('kristine') || resolvedName.toLowerCase().includes('josefina')) {
+      console.log('[DIAGNOSTICO_PAINEL:AGENDAMENTO_RECEBIDO_PLANILHA]', {
+        id: raw.id,
+        nomePlanilhaOriginal: raw.clientName,
+        nomeFinal: resolvedName,
+        telefone: raw.clientPhone,
+        data: raw.date,
+        horario: raw.time,
+        servico: raw.serviceTitle,
+        origem: raw.id?.startsWith('apt-sheet-') || raw.id?.startsWith('apt-1') ? 'Planilha Oficial Google Sheets (Aba Agendamentos)' : 'Memória / Outra Origem'
+      });
+    }
 
     if (map.has(apt.id)) {
       const existing = map.get(apt.id)!;

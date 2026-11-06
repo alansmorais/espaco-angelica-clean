@@ -304,12 +304,13 @@ function timeToMinutes(value) {
 
 function parseDurationMinutes(value) {
   var text = String(value || "").toLowerCase().trim();
-  var hoursMatch = text.match(/(\d+)\s*h(?:ou?rs?)?/);
-  var minutesMatch = text.match(/(?:h\s*)?(\d+)\s*(?:min|m\b)/) || text.match(/h\s*(\d{1,2})\b/);
-  var pureMinutes = !hoursMatch ? text.match(/^(\d+)$/) : null;
+  if (!text) return null;
+  var hoursMatch = text.match(/(\d+)\s*h(?:oras?|ou?rs?)?/i);
+  var minutesMatch = text.match(/(?:h\s*|\b)?(\d+)\s*(?:minutos?|min|m\b)/i) || text.match(/h\s*(\d{1,2})\b/i);
+  var pureMinutes = !hoursMatch && !minutesMatch ? text.match(/^(\d+)$/) : null;
   var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
     (minutesMatch ? Number(minutesMatch[1]) : (pureMinutes ? Number(pureMinutes[1]) : 0));
-  return total > 0 && Number.isFinite(total) ? total : 30;
+  return total > 0 && Number.isFinite(total) ? total : null;
 }
 
 function getServiceDurationMinutes(serviceId, serviceTitle) {
@@ -328,7 +329,7 @@ function getServiceDurationMinutes(serviceId, serviceTitle) {
   } catch (e) {
     console.error("Unable to read service duration: " + e);
   }
-  return 30;
+  return null;
 }
 
 // Strict duration lookup resolves services across the official services and depilation tabs.
@@ -344,13 +345,7 @@ function getConfiguredServiceDurationMinutes(serviceId, serviceTitle) {
         var titleMatches = serviceTitle && (rowTitle.toLowerCase() === String(serviceTitle).trim().toLowerCase() || (String(serviceTitle).trim().toLowerCase() === "blindagem" && (rowId === "blindagem-homens-incolor" || rowTitle.toLowerCase().indexOf("blindagem") >= 0)));
         if (!idMatches && !titleMatches) continue;
         if (rows[i][11] === false || String(rows[i][11]).toLowerCase() === "false") return null;
-        var durationText = String(rows[i][5] || "").toLowerCase().trim();
-        var hoursMatch = durationText.match(/(\d+)\s*h(?:ou?rs?)?/);
-        var minutesMatch = durationText.match(/(?:h\s*)?(\d+)\s*(?:min|m\b)/) || durationText.match(/h\s*(\d{1,2})\b/);
-        var pureMinutes = !hoursMatch ? durationText.match(/^(\d+)$/) : null;
-        var total = (hoursMatch ? Number(hoursMatch[1]) * 60 : 0) +
-          (minutesMatch ? Number(minutesMatch[1]) : (pureMinutes ? Number(pureMinutes[1]) : 0));
-        return total > 0 && Number.isFinite(total) ? total : null;
+        return parseDurationMinutes(rows[i][5]);
       }
     }
   } catch (e) {
@@ -470,7 +465,10 @@ function validateAgainstSavedSchedule(dateKey, timeKey, durationMinutes) {
   var start = timeToMinutes(timeKey);
   if (start === null) return { allowed: false, message: "Horário inválido. Escolha outro horário." };
   // Only the actual procedure duration occupies the calendar.
-  var duration = Number(durationMinutes) > 0 ? Number(durationMinutes) : 30;
+  var duration = Number(durationMinutes);
+  if (!duration || duration <= 0) {
+    return { allowed: false, message: "A duração oficial do procedimento não está configurada na planilha oficial. Entre em contato com o atelier." };
+  }
   var end = start + duration;
   var parts = dateKey.split("-");
   var date = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])));
@@ -745,12 +743,63 @@ function getPublicStudioAddressData() {
   return { status: "success", address: data.settings && data.settings.STUDIO_ADDRESS ? data.settings.STUDIO_ADDRESS : null };
 }
 
+function normalizeBirthDateToISO(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return "";
+    try {
+      if (typeof Utilities !== "undefined" && Utilities.formatDate) {
+        return Utilities.formatDate(val, Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd");
+      }
+    } catch (e) {}
+    var y = val.getFullYear();
+    var m = val.getMonth() + 1;
+    var d = val.getDate();
+    return y + "-" + (m < 10 ? "0" + m : m) + "-" + (d < 10 ? "0" + d : d);
+  }
+  var str = String(val).trim();
+  if (!str) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  var isoMatch = str.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (isoMatch) {
+    return isoMatch[1];
+  }
+  var brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (brMatch) {
+    var d = parseInt(brMatch[1], 10);
+    var m = parseInt(brMatch[2], 10);
+    var y = brMatch[3];
+    return y + "-" + (m < 10 ? "0" + m : m) + "-" + (d < 10 ? "0" + d : d);
+  }
+  var parsed = new Date(str);
+  if (parsed instanceof Date && !isNaN(parsed.getTime())) {
+    try {
+      if (typeof Utilities !== "undefined" && Utilities.formatDate) {
+        return Utilities.formatDate(parsed, Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd");
+      }
+    } catch (e) {}
+    var y = parsed.getFullYear();
+    var m = parsed.getMonth() + 1;
+    var d = parsed.getDate();
+    return y + "-" + (m < 10 ? "0" + m : m) + "-" + (d < 10 ? "0" + d : d);
+  }
+  return "";
+}
+
 function phonesMatch(phoneA, phoneB) {
   var a = normalizeClientPhoneKey(phoneA);
   var b = normalizeClientPhoneKey(phoneB);
   if (!a || !b) return false;
   if (a === b) return true;
   if (a.length >= 10 && b.length >= 10 && a.substring(0, 2) === b.substring(0, 2) && a.slice(-8) === b.slice(-8)) {
+    return true;
+  }
+  if ((a.length === 8 || a.length === 9) && (b.length === 10 || b.length === 11) && b.slice(-8) === a.slice(-8)) {
+    return true;
+  }
+  if ((b.length === 8 || b.length === 9) && (a.length === 10 || a.length === 11) && a.slice(-8) === b.slice(-8)) {
     return true;
   }
   return false;
@@ -761,53 +810,101 @@ function lookupPublicClientByPhone(phoneValue) {
   if (phoneKey.length < 8 || phoneKey.length > 15) {
     return { status: "error", message: "Informe um telefone válido com DDD." };
   }
-  var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
-  var clientSheet = ss ? ss.getSheetByName("Perfis de Clientes") : null;
-  if (clientSheet) {
-    var cRows = clientSheet.getDataRange().getValues();
-    for (var c = 1; c < cRows.length; c++) {
-      if (phonesMatch(cRows[c][1], phoneKey)) {
-        try {
-          var prof = JSON.parse(cRows[c][2]);
-          if (prof && prof.name) {
-            return {
-              status: "success",
-              found: true,
-              clientName: prof.name,
-              clientEmail: prof.email || "",
-              clientBirthDate: prof.birthDate || ""
-            };
-          }
-        } catch (e) {}
+
+  var foundName = "";
+  var foundEmail = "";
+  var foundBirthDate = "";
+
+  // 1. Fonte oficial da data de nascimento: aba 'Agendamentos', Coluna Q (índice 16)
+  var sheet = getOfficialSheet();
+  if (sheet) {
+    var rows = sheet.getDataRange().getValues();
+    // Percorrer da reserva mais recente para a mais antiga para obter dados mais recentes
+    for (var i = rows.length - 1; i >= 1; i--) {
+      var row = rows[i];
+      if (!phonesMatch(row[2], phoneKey)) continue;
+      if (String(row[8] || "").toLowerCase() === "bloqueado") continue;
+
+      var rowName = String(row[1] || "").trim();
+      var rowEmail = String(row[3] || "").trim();
+      var rawBirth = row[16];
+      var rowBirthDate = normalizeBirthDateToISO(rawBirth);
+
+      if (!foundName && rowName) {
+        foundName = rowName;
+      }
+      if (!foundEmail && rowEmail && isValidEmail(rowEmail)) {
+        foundEmail = rowEmail;
+      }
+      if (!foundBirthDate && rowBirthDate) {
+        foundBirthDate = rowBirthDate;
+      }
+
+      // Se já localizou todos os dados (nome, email e data de nascimento na Coluna Q), encerra busca
+      if (foundName && foundEmail && foundBirthDate) {
+        break;
       }
     }
   }
-  var sheet = getOfficialSheet();
-  if (!sheet) return { status: "success", found: false };
-  var rows = sheet.getDataRange().getValues();
-  for (var i = rows.length - 1; i >= 1; i--) {
-    var row = rows[i];
-    if (!phonesMatch(row[2], phoneKey)) continue;
-    if (String(row[8] || "").toLowerCase() === "bloqueado") continue;
-    var name = String(row[1] || "").trim();
-    if (name) {
-      return {
-        status: "success",
-        found: true,
-        clientName: name,
-        clientEmail: String(row[3] || "").trim(),
-        clientBirthDate: String(row[16] || "").trim()
-      };
-    }
+
+  // 2. Consulta complementar na aba 'Perfis de Clientes' se algum campo ainda estiver ausente
+  if (!foundName || !foundBirthDate || !foundEmail) {
+    try {
+      var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+      var clientSheet = ss ? ss.getSheetByName("Perfis de Clientes") : null;
+      if (clientSheet) {
+        var cRows = clientSheet.getDataRange().getValues();
+        for (var c = 1; c < cRows.length; c++) {
+          if (phonesMatch(cRows[c][1], phoneKey)) {
+            try {
+              var prof = JSON.parse(cRows[c][2]);
+              if (prof && typeof prof === "object") {
+                if (!foundName && prof.name) foundName = String(prof.name).trim();
+                if (!foundEmail && prof.email && isValidEmail(prof.email)) foundEmail = String(prof.email).trim();
+                if (!foundBirthDate && prof.birthDate) {
+                  var profBirth = normalizeBirthDateToISO(prof.birthDate);
+                  if (profBirth) foundBirthDate = profBirth;
+                }
+              }
+            } catch (jsonErr) {}
+            if (foundName && foundBirthDate && foundEmail) break;
+          }
+        }
+      }
+    } catch (e) {}
   }
-  return { status: "success", found: false };
+
+  if (foundName || foundBirthDate) {
+    var isComplete = Boolean(foundName && foundBirthDate);
+    return {
+      status: "success",
+      found: true,
+      isComplete: isComplete,
+      clientName: foundName,
+      clientEmail: foundEmail,
+      clientBirthDate: foundBirthDate
+    };
+  }
+
+  return {
+    status: "success",
+    found: false,
+    isComplete: false,
+    clientName: "",
+    clientEmail: "",
+    clientBirthDate: ""
+  };
 }
 
 function normalizeClientPhoneKey(value) {
   var digits = String(value || "").replace(/\D/g, "");
-  // Treat Brazilian numbers with or without the +55 country prefix as the same client.
+  // Trata prefixo internacional brasileiro +55
   if (digits.indexOf("55") === 0 && (digits.length === 12 || digits.length === 13)) {
     digits = digits.substring(2);
+  }
+  // Trata prefixo de discagem com zero inicial (ex: 011...)
+  if (digits.indexOf("0") === 0 && (digits.length === 11 || digits.length === 12)) {
+    digits = digits.substring(1);
   }
   return digits;
 }
@@ -846,6 +943,8 @@ function getClientsData() {
       var phone = String(row[2] || "");
       var phoneKey = normalizeClientPhoneKey(phone);
       var name = String(row[1] || "").trim();
+      if (name.toLowerCase() === "kristine") name = "Kristine Sorensen";
+      if (name.toLowerCase() === "josefina") name = "Josefina Calderón";
       if (!phoneKey || !name || String(row[8] || "").toLowerCase() === "bloqueado") continue;
       var profile = derived[phoneKey];
       if (!profile) {
@@ -856,6 +955,8 @@ function getClientsData() {
           name: name,
           initials: initials,
           phone: phone,
+          email: saved.email || "",
+          birthDate: saved.birthDate ? normalizeBirthDateToISO(saved.birthDate) : "",
           tier: saved.tier || "1ª Sessão",
           status: saved.status || "nova",
           lastVisit: saved.lastVisit || "",
@@ -878,12 +979,21 @@ function getClientsData() {
         };
         derived[phoneKey] = profile;
       }
-      profile.name = name;
+      if (!profile.name || name.length >= profile.name.length) {
+        profile.name = name;
+        profile.initials = name.split(/\s+/).map(function(part) { return part.charAt(0); }).slice(0, 2).join("").toUpperCase();
+      }
       profile.phone = phone;
-      profile.initials = name.split(/\s+/).map(function(part) { return part.charAt(0); }).slice(0, 2).join("").toUpperCase();
       profile.lastService = String(row[4] || profile.lastService || "");
       if (String(row[8] || "").toLowerCase() === "concluido") {
         profile.lastVisit = String(row[5] || "") + (row[6] ? " às " + String(row[6]) : "");
+      }
+      if (!profile.email && row[3]) {
+        profile.email = String(row[3]).trim();
+      }
+      if (!profile.birthDate && row[16]) {
+        var bd = normalizeBirthDateToISO(row[16]);
+        if (bd) profile.birthDate = bd;
       }
       profile._bookingCount = Number(profile._bookingCount || 0) + 1;
       if (profile._bookingCount > 1 && !profilesByPhone[phoneKey]?.tier) {
@@ -894,11 +1004,30 @@ function getClientsData() {
     Object.keys(derived).forEach(function(key) { profilesByPhone[key] = derived[key]; });
   }
 
-  return { status: "success", clients: Object.keys(profilesByPhone).map(function(key) {
-    var profile = profilesByPhone[key];
-    delete profile._bookingCount;
-    return profile;
-  }) };
+  var rawClientList = Object.keys(profilesByPhone).map(function(key) {
+    var p = profilesByPhone[key];
+    delete p._bookingCount;
+    var resolved = String(p.name || "").trim();
+    if (resolved.toLowerCase() === "kristine") resolved = "Kristine Sorensen";
+    if (resolved.toLowerCase() === "josefina") resolved = "Josefina Calderón";
+    p.name = resolved;
+    p.initials = resolved.split(/\s+/).map(function(part) { return part.charAt(0); }).slice(0, 2).join("").toUpperCase();
+    if (p.birthDate) p.birthDate = normalizeBirthDateToISO(p.birthDate);
+    return p;
+  });
+
+  var deduplicated = [];
+  var seenKeys = {};
+  for (var cIdx = 0; cIdx < rawClientList.length; cIdx++) {
+    var cObj = rawClientList[cIdx];
+    var nName = cObj.name.toLowerCase().trim();
+    if (nName === "kristine" || nName === "josefina") continue; // elimina fantasmas sem sobrenome
+    if (seenKeys[nName]) continue;
+    seenKeys[nName] = true;
+    deduplicated.push(cObj);
+  }
+
+  return { status: "success", clients: deduplicated };
 }
 
 function saveClientProfile(profile) {
@@ -928,6 +1057,28 @@ function saveClientProfile(profile) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function deleteClientProfile(clientIdOrPhone) {
+  var key = String(clientIdOrPhone || "").trim();
+  if (!key) return { status: "error", message: "Identificador ou telefone da cliente obrigatório." };
+  var phoneKey = normalizeClientPhoneKey(key);
+
+  var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+  var clientSheet = ss.getSheetByName("Perfis de Clientes");
+  if (!clientSheet) return { status: "success", deleted: false, notFound: true, message: "Aba 'Perfis de Clientes' não encontrada." };
+
+  var rows = clientSheet.getDataRange().getValues();
+  var deleted = 0;
+  for (var i = rows.length - 1; i >= 1; i--) {
+    var rowPhone = normalizeClientPhoneKey(rows[i][1]);
+    var rowKey = String(rows[i][0] || "").trim();
+    if ((phoneKey && rowPhone === phoneKey) || rowKey === key) {
+      clientSheet.deleteRow(i + 1);
+      deleted++;
+    }
+  }
+  return { status: "success", deleted: deleted > 0, notFound: deleted === 0, deletedCount: deleted };
 }
 
 function getPublicPaymentConfigData() {
@@ -1064,6 +1215,9 @@ function doPost(e) {
     if (data.action === "saveClient") {
       return responseJSON(saveClientProfile(data.client));
     }
+    if (data.action === "deleteClient") {
+      return responseJSON(deleteClientProfile(data.clientId || data.phone || data.id));
+    }
 
     // 2. Leitura administrativa segura via POST (token no corpo)
     if (data.action === "getAppointments") {
@@ -1072,7 +1226,7 @@ function doPost(e) {
 
     if (data.action === "deleteAppointment") {
       var appointmentIdToDelete = data.appointmentId ? String(data.appointmentId).trim() : "";
-      if (!/^(apt|test|e2e)-[a-zA-Z0-9_-]{1,64}$/.test(appointmentIdToDelete)) {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/.test(appointmentIdToDelete)) {
         return responseJSON({ status: "error", message: "ID do agendamento inválido." });
       }
 
@@ -1093,10 +1247,16 @@ function doPost(e) {
         var deletedCount = 0;
         for (var rowIndex = appointmentRows.length - 1; rowIndex >= 1; rowIndex--) {
           var rowAppointmentId = appointmentRows[rowIndex][9] ? String(appointmentRows[rowIndex][9]).trim() : "";
-          if (rowAppointmentId === appointmentIdToDelete) {
+          var generatedSheetId = "apt-sheet-" + rowIndex;
+          if (rowAppointmentId === appointmentIdToDelete || generatedSheetId === appointmentIdToDelete) {
             deleteSheet.deleteRow(rowIndex + 1);
             deletedCount++;
           }
+        }
+
+        // Se for um ID de bloqueio de agenda, tenta remover da aba ScheduleConfig também
+        if (appointmentIdToDelete.indexOf("block") >= 0) {
+          try { deleteScheduleBlock(appointmentIdToDelete); } catch (e) {}
         }
 
         return responseJSON({
@@ -1163,6 +1323,14 @@ function doPost(e) {
           var targetServiceId = data.serviceId !== undefined ? String(data.serviceId).trim() : String(existingRowData[15] || "").trim();
           var targetServiceTitle = data.serviceTitle !== undefined ? String(data.serviceTitle).trim() : String(existingRowData[4] || "").trim();
           var targetDuration = getServiceDurationMinutes(targetServiceId, targetServiceTitle);
+          if (!targetDuration || targetDuration <= 0) {
+            return responseJSON({
+              status: "error",
+              success: false,
+              persisted: false,
+              message: "A duração oficial do procedimento não está configurada na planilha oficial. Entre em contato com o atelier."
+            });
+          }
           var targetAdditionalIds = [];
           try {
             targetAdditionalIds = data.additionalServiceIds !== undefined
@@ -1172,10 +1340,17 @@ function doPost(e) {
           if (Array.isArray(targetAdditionalIds)) {
             for (var td = 0; td < targetAdditionalIds.length; td++) {
               var addDur = getServiceDurationMinutes(String(targetAdditionalIds[td] || ""), "");
-              if (addDur) targetDuration += addDur;
+              if (!addDur || addDur <= 0) {
+                return responseJSON({
+                  status: "error",
+                  success: false,
+                  persisted: false,
+                  message: "A duração oficial do procedimento não está configurada na planilha oficial. Entre em contato com o atelier."
+                });
+              }
+              targetDuration += addDur;
             }
           }
-          if (!targetDuration) targetDuration = 30;
 
           var targetStart = timeToMinutes(finalTimeKey);
           var targetEnd = targetStart !== null ? targetStart + targetDuration : null;
@@ -1214,13 +1389,12 @@ function doPost(e) {
                 if (Array.isArray(otherAdds)) {
                   for (var oai = 0; oai < otherAdds.length; oai++) {
                     var oAddDur = getServiceDurationMinutes(String(otherAdds[oai] || ""), "");
-                    if (oAddDur) otherDuration += oAddDur;
+                    if (oAddDur) otherDuration = (otherDuration || 0) + oAddDur;
                   }
                 }
               } catch (e) {}
-              if (!otherDuration) otherDuration = 30;
 
-              if (intervalsOverlap(targetStart, targetEnd, otherStart, otherStart + otherDuration)) {
+              if (otherDuration && otherDuration > 0 && intervalsOverlap(targetStart, targetEnd, otherStart, otherStart + otherDuration)) {
                 return responseJSON({
                   status: "error",
                   success: false,
@@ -1701,13 +1875,13 @@ function doPost(e) {
       var requestedTimeKey = normalizeBookingTime(bookingTime);
       // The occupied interval includes the main service and every additional service.
       var requestedServiceDuration = getConfiguredServiceDurationMinutes(data.serviceId, canonical.title);
-      if (!requestedServiceDuration) {
-        return responseJSON({ status: "error", persisted: false, message: "A duração oficial do procedimento não está configurada. Nenhum agendamento foi gravado." });
+      if (!requestedServiceDuration || requestedServiceDuration <= 0) {
+        return responseJSON({ status: "error", success: false, persisted: false, message: "A duração oficial do procedimento não está configurada na planilha oficial. Entre em contato com o atelier." });
       }
       for (var durationIndex = 0; durationIndex < additionalIds.length; durationIndex++) {
         var additionalDuration = getConfiguredServiceDurationMinutes(additionalIds[durationIndex], additionalTitles[durationIndex]);
-        if (!additionalDuration) {
-          return responseJSON({ status: "error", persisted: false, message: "A duração oficial de um serviço adicional não está configurada. Nenhum agendamento foi gravado." });
+        if (!additionalDuration || additionalDuration <= 0) {
+          return responseJSON({ status: "error", success: false, persisted: false, message: "A duração oficial do procedimento não está configurada na planilha oficial. Entre em contato com o atelier." });
         }
         requestedServiceDuration += additionalDuration;
       }
@@ -1797,8 +1971,8 @@ function doPost(e) {
             var existingServiceId = String(existing[i][15] || '').trim();
             var existingServiceTitle = String(existing[i][4] || '').trim();
             var existingDuration = existingServiceId
-              ? getConfiguredServiceDurationMinutes(existingServiceId, '')
-              : getConfiguredServiceDurationMinutes('', existingServiceTitle);
+              ? getServiceDurationMinutes(existingServiceId, '')
+              : getServiceDurationMinutes('', existingServiceTitle);
             var existingAdditionalIds = [];
             try {
               existingAdditionalIds = existing[i][13] ? JSON.parse(String(existing[i][13])) : [];
@@ -1807,14 +1981,14 @@ function doPost(e) {
             }
             if (!Array.isArray(existingAdditionalIds)) existingAdditionalIds = [];
             for (var existingAdditionalIndex = 0; existingAdditionalIndex < existingAdditionalIds.length; existingAdditionalIndex++) {
-              var existingAdditionalDuration = getConfiguredServiceDurationMinutes(existingAdditionalIds[existingAdditionalIndex], '');
+              var existingAdditionalDuration = getServiceDurationMinutes(existingAdditionalIds[existingAdditionalIndex], '');
               if (existingAdditionalDuration) existingDuration = (existingDuration || 0) + existingAdditionalDuration;
             }
-            // Legacy rows without a resolvable duration retain a conservative 30-minute block.
-            if (!existingDuration) existingDuration = 30;
-            activeBookingConflict = intervalsOverlap(
-              requestedStart, requestedEnd, existingStart, existingStart + existingDuration
-            );
+            if (existingDuration && existingDuration > 0) {
+              activeBookingConflict = intervalsOverlap(
+                requestedStart, requestedEnd, existingStart, existingStart + existingDuration
+              );
+            }
           }
         }
         if (allDayBlocked || slotBlocked || activeBookingConflict) {
@@ -2065,13 +2239,27 @@ function fetchAppointmentsFromSheet() {
     var dateStr = row[5] instanceof Date ? Utilities.formatDate(row[5], tz, "dd/MM/yyyy") : String(row[5] || "");
     var timeStr = row[6] instanceof Date ? Utilities.formatDate(row[6], tz, "HH:mm") : String(row[6] || "");
 
+    var mainDur = getServiceDurationMinutes(String(row[15] || ''), String(row[4] || ''));
+    var totalDur = mainDur;
+    var addServiceIds = (function() { try { var parsed = JSON.parse(String(row[13] || '[]')); return Array.isArray(parsed) ? parsed : []; } catch (e) { return []; } })();
+    if (totalDur && Array.isArray(addServiceIds)) {
+      for (var a = 0; a < addServiceIds.length; a++) {
+        var aDur = getServiceDurationMinutes(String(addServiceIds[a] || ''), '');
+        if (aDur) totalDur += aDur;
+      }
+    }
+    var rawClientName = String(row[1] || '').trim();
+    var resolvedClientName = rawClientName;
+    if (rawClientName.toLowerCase() === 'kristine') resolvedClientName = 'Kristine Sorensen';
+    if (rawClientName.toLowerCase() === 'josefina') resolvedClientName = 'Josefina Calderón';
+
     appointments.push({
       id: String(row[9] || ('apt-sheet-' + i)),
-      clientName: String(row[1] || ''),
+      clientName: resolvedClientName,
       clientPhone: String(row[2] || ''),
       clientEmail: String(row[3] || ''),
       serviceTitle: String(row[4] || ''),
-      serviceDuration: getServiceDurationMinutes(String(row[15] || ''), String(row[4] || '')) + ' min',
+      serviceDuration: durationFormatted,
       date: dateStr,
       time: timeStr,
       depositAmount: Number(row[7] || 0),
@@ -2079,7 +2267,7 @@ function fetchAppointmentsFromSheet() {
       notes: String(row[10] || ''),
       appointmentLocation: String(row[11] || 'salon') === 'home' ? 'home' : 'salon',
       homeAddress: String(row[12] || '') || undefined,
-      additionalServiceIds: (function() { try { var parsed = JSON.parse(String(row[13] || '[]')); return Array.isArray(parsed) ? parsed : []; } catch (e) { return []; } })(),
+      additionalServiceIds: addServiceIds,
       customRequest: String(row[14] || '') || undefined,
       serviceId: String(row[15] || '') || undefined,
       clientBirthDate: String(row[16] || '') || undefined,

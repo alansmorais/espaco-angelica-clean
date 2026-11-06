@@ -607,6 +607,14 @@ export async function deleteRemoteAppointment(
     const endpoint = getNotificationWebhookUrl();
     const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '')).trim();
     if (!endpoint || !token) return { success: false, error: 'URL do Apps Script ou sessão administrativa ausente.' };
+
+    // Se o identificador for de bloqueio da agenda, tenta também remoção no ScheduleConfig
+    if (appointmentId.startsWith('block-') || appointmentId.startsWith('apt-block-')) {
+      try {
+        await deleteRemoteScheduleBlock(appointmentId, token);
+      } catch {}
+    }
+
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8', Accept: 'application/json' },
@@ -877,7 +885,7 @@ export async function fetchPublicPaymentConfig(): Promise<{ success: boolean; co
   }
 }
 
-export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; clientName?: string; clientEmail?: string; clientBirthDate?: string; error?: string }> {
+export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; isComplete?: boolean; clientName?: string; clientEmail?: string; clientBirthDate?: string; error?: string }> {
   const url = getNotificationWebhookUrl();
   if (!url) return { success: false, found: false, error: 'Consulta de cadastro indisponível neste ambiente.' };
   try {
@@ -885,6 +893,7 @@ export async function lookupPublicClientByPhone(phone: string): Promise<{ succes
     return {
       success: true,
       found: data.found === true,
+      isComplete: Boolean(data.isComplete),
       clientName: data.clientName ? String(data.clientName) : undefined,
       clientEmail: data.clientEmail ? String(data.clientEmail) : undefined,
       clientBirthDate: data.clientBirthDate ? String(data.clientBirthDate) : undefined
@@ -914,6 +923,21 @@ export async function saveRemoteClient(
       : { success: false, error: data.message || 'Apps Script não confirmou a gravação da cliente.' };
   } catch (error: any) {
     return { success: false, error: error?.message || 'Falha ao salvar perfil na planilha oficial.' };
+  }
+}
+
+export async function deleteRemoteClient(
+  clientId: string,
+  authToken?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const data = await callScheduleAction('deleteClient', { clientId }, authToken);
+    return {
+      success: data?.status === 'success' || data?.deleted === true,
+      error: data?.status === 'error' ? data?.message : undefined
+    };
+  } catch (error: any) {
+    return { success: false, error: error?.message || 'Falha ao excluir cliente na planilha oficial.' };
   }
 }
 

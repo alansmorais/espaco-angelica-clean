@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Service, Appointment, TimeSlotConfig, BlacklistEntry, StudioAddressConfig, PaymentConfig, RecurrenceConfig, DayScheduleConfig } from '../types';
 import {
@@ -9,6 +9,12 @@ import {
   formatBRL,
   areDatesEqual
 } from '../services/notificationTemplates';
+import {
+  parseDurationMinutes,
+  calculateProcedureDuration,
+  calculateEndTime,
+  OFFICIAL_DURATION_MISSING_ERROR
+} from '../services/durationService';
 import { triggerNewPreBookingEmailNotification, lookupPublicClientByPhone, fetchPublicAvailability } from '../services/emailNotificationService';
 
 interface BookingWizardProps {
@@ -92,8 +98,76 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [isLookingUpClient, setIsLookingUpClient] = useState<boolean>(false);
   const [clientLookupMessage, setClientLookupMessage] = useState<string>('');
   const [isReturningClient, setIsReturningClient] = useState<boolean>(false);
+  const [isManualEdit, setIsManualEdit] = useState<boolean>(false);
+  const lastQueriedPhoneRef = useRef<string>('');
   const [clientEmail, setClientEmail] = useState<string>('');
   const [clientBirthDate, setClientBirthDate] = useState<string>('');
+
+  const formatBirthDateBR = (dateStr: string) => {
+    if (!dateStr) return '';
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+    return dateStr;
+  };
+
+  const performClientLookup = useCallback(async (phoneToQuery: string) => {
+    const digits = phoneToQuery.replace(/\D/g, '');
+    if (digits.length < 8) return;
+    if (lastQueriedPhoneRef.current === digits) return;
+    lastQueriedPhoneRef.current = digits;
+    setIsLookingUpClient(true);
+    setClientLookupMessage('');
+    try {
+      const result = await lookupPublicClientByPhone(phoneToQuery);
+      if (result.success && result.found && result.clientName) {
+        setClientName(result.clientName);
+        if (result.clientEmail && !clientEmail) setClientEmail(result.clientEmail);
+        if (result.clientBirthDate) setClientBirthDate(result.clientBirthDate);
+        setIsReturningClient(true);
+        setIsManualEdit(false);
+        if (result.isComplete || (result.clientName && result.clientBirthDate)) {
+          setClientLookupMessage('');
+        } else {
+          setClientLookupMessage('Cadastro localizado. Para concluir, informe sua data de nascimento.');
+        }
+      } else if (result.success) {
+        setIsReturningClient(false);
+        setIsManualEdit(true);
+        setClientLookupMessage('Novo cadastro: preencha seus dados para seu agendamento.');
+      } else {
+        setIsReturningClient(false);
+        setIsManualEdit(true);
+        setClientLookupMessage(result.error || 'Não foi possível consultar o cadastro. Preencha seus dados abaixo.');
+      }
+    } catch {
+      setIsReturningClient(false);
+      setIsManualEdit(true);
+    } finally {
+      setIsLookingUpClient(false);
+    }
+  }, [clientEmail]);
+
+  useEffect(() => {
+    const digits = clientPhone.replace(/\D/g, '');
+    if (digits.length === 10 || digits.length === 11) {
+      const timer = setTimeout(() => {
+        performClientLookup(clientPhone);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [clientPhone, performClientLookup]);
+
+  const handlePhoneChange = (val: string) => {
+    setClientPhone(val);
+    const digits = val.replace(/\D/g, '');
+    if (digits !== lastQueriedPhoneRef.current) {
+      lastQueriedPhoneRef.current = '';
+      setIsReturningClient(false);
+      setIsManualEdit(false);
+      setClientLookupMessage('');
+    }
+  };
+
   const [clientInstagram, setClientInstagram] = useState<string>('');
   const [nailCondition, setNailCondition] = useState<string>('Unhas naturais sem nenhum produto');
   const [clientNotes, setClientNotes] = useState<string>('');
@@ -106,10 +180,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [persistedAppointmentId, setPersistedAppointmentId] = useState<string | null>(null);
 
-  // Requirement 5: Agendamento Recorrente
-  const [isRecurring, setIsRecurring] = useState<boolean>(false);
-  const [recurrenceFreqDays, setRecurrenceFreqDays] = useState<number>(21);
-  const [recurrenceTotalSessions, setRecurrenceTotalSessions] = useState<number>(3);
 
   // Requirement 7: Opção de Pré-pagamento via Pix (Sinal de 40% ou 100%)
   const [paymentMode, setPaymentMode] = useState<'sinal_40' | 'pre_pagamento_100'>('sinal_40');
@@ -142,22 +212,20 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const hours = Number(match[1]), minutes = Number(match[2]);
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
-  const durationMinutes = (value: string): number => {
-    const text = String(value || '').toLowerCase();
-    const hours = text.match(/(\d+)\s*h/);
-    const minutes = text.match(/(\d+)\s*(?:min|m\b)/);
-    const total = (hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0);
-    return total > 0 ? total : 30;
-  };
+  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id);
+  const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
+  const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
+  const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
+  const isDurationValid = procedureDuration.isValid && combinedDurationMinutes > 0;
+
   const isSlotUnavailable = (slotTime: string, dateKey: string = selectedDate): boolean => {
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
+    if (!isDurationValid || !procedureDuration.totalMinutes) return true;
 
     // Only reserve the actual time occupied by this procedure (plus any
     // explicitly selected additional procedures).
-    const requestedDuration = durationMinutes(selectedService.duration) +
-      services.filter(service => additionalServiceIds.includes(service.id))
-        .reduce((total, service) => total + durationMinutes(service.duration), 0);
+    const requestedDuration = procedureDuration.totalMinutes;
     const end = start + requestedDuration;
 
     if (daySchedules && daySchedules.length > 0) {
@@ -185,7 +253,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       }
       const occupiedStart = timeToMinutes(raw);
       if (occupiedStart === null) return false;
-      const occupiedDuration = durationMinutes(a.serviceDuration || '');
+      const occupiedDuration = parseDurationMinutes(a.serviceDuration);
+      if (!occupiedDuration || occupiedDuration <= 0) return false;
       const occupiedEnd = occupiedStart + occupiedDuration;
       return start < occupiedEnd && end > occupiedStart;
     });
@@ -196,15 +265,14 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const configuredActiveSlots = timeSlots.filter(slot => slot.active);
   const generatedTimeSlots: TimeSlotConfig[] = (() => {
     if (configuredActiveSlots.length > 0) return configuredActiveSlots;
+    if (!isDurationValid || !procedureDuration.totalMinutes) return [];
     const date = new Date(`${selectedDate}T12:00:00`);
     const keys = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
     const dayConfig = daySchedules?.find(day => day.dayKey === keys[date.getDay()]);
     if (dayConfig && !dayConfig.isOpen) return [];
     const opening = timeToMinutes(dayConfig?.openTime || '07:00') ?? 420;
     const closing = timeToMinutes(dayConfig?.closeTime || '19:30') ?? 1170;
-    const duration = durationMinutes(selectedService.duration) +
-      services.filter(service => additionalServiceIds.includes(service.id))
-        .reduce((total, service) => total + durationMinutes(service.duration), 0);
+    const duration = procedureDuration.totalMinutes;
     const generated: TimeSlotConfig[] = [];
     for (let minute = opening; minute + duration <= closing; minute += 15) {
       const hh = String(Math.floor(minute / 60)).padStart(2, '0');
@@ -250,10 +318,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   // Price calculations (40% deposit or 100% full prepayment of selected procedure's official price)
-  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id);
-  const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const servicePrice = selectedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0);
-  const combinedDurationMinutes = durationMinutes(selectedService.duration) + additionalServices.reduce((sum, service) => sum + durationMinutes(service.duration), 0);
   const fullPrepayment = calculateFullPrepayment(servicePrice);
   const standardDeposit = calculateDeposit40(servicePrice, paymentConfig.depositAmount);
   const standardBalance = calculateRemainingBalance(servicePrice, standardDeposit);
@@ -266,22 +331,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     ? 0
     : calculateRemainingBalance(servicePrice, depositValue);
 
-  // Recurrence calculated preview dates
-  const calculateUpcomingDates = () => {
-    const list: string[] = [];
-    const baseDay = 14;
-    for (let i = 1; i < recurrenceTotalSessions; i++) {
-      const addedDays = i * recurrenceFreqDays;
-      const futureDateNum = baseDay + addedDays;
-      if (futureDateNum <= 30) {
-        list.push(`${futureDateNum} de Novembro às ${selectedTime}`);
-      } else {
-        const decDay = futureDateNum - 30;
-        list.push(`${decDay} de Dezembro às ${selectedTime}`);
-      }
-    }
-    return list;
-  };
 
   const pixKeyToCopy = (paymentConfig.pixKey || '+5512974062241').trim();
 
@@ -373,6 +422,11 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       return;
     }
 
+    if (!isDurationValid || !procedureDuration.totalMinutes) {
+      setSubmissionError(procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR);
+      return;
+    }
+
     setIsSubmittingBooking(true);
     setSubmissionError(null);
 
@@ -406,7 +460,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         }
         const occupiedStart = timeToMinutes(raw);
         if (occupiedStart === null) return false;
-        const occupiedDuration = durationMinutes(a.serviceDuration || '');
+        const occupiedDuration = parseDurationMinutes(a.serviceDuration);
+        if (!occupiedDuration || occupiedDuration <= 0) return false;
         const occupiedEnd = occupiedStart + occupiedDuration;
         const startMin = timeToMinutes(selectedTime);
         return startMin !== null && startMin < occupiedEnd && (startMin + combinedDurationMinutes) > occupiedStart;
@@ -450,7 +505,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       homeAddress: appointmentLocation === 'home' ? homeAddress.trim() : undefined,
       serviceTitle: [selectedService.title, ...additionalServices.map(service => service.title)].join(' + '),
       servicePrice: `R$ ${formatBRL(servicePrice)}`,
-      serviceDuration: `${Math.floor(combinedDurationMinutes / 60) > 0 ? `${Math.floor(combinedDurationMinutes / 60)} h ` : ''}${combinedDurationMinutes % 60 > 0 ? `${combinedDurationMinutes % 60} min` : ''}`.trim(),
+      serviceDuration: procedureDuration.formatted,
       date: selectedDate,
       time: selectedTime,
       status: 'pendente_pix',
@@ -605,41 +660,231 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             {bookingStep === 1 && (
               <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
                 <h3 className="font-syne text-lg font-semibold text-[#49382E]">1. Informe seu WhatsApp</h3>
-                <p className="font-jakarta text-xs text-[#786C63]">Vamos procurar seu cadastro pelo número. Se já for cliente, não precisará digitar o nome novamente.</p>
-                <label className="block text-xs font-semibold text-[#49382E]">WhatsApp com DDD *
-                  <input required type="tel" value={clientPhone} onChange={e => { setClientPhone(e.target.value); setClientLookupMessage(''); setIsReturningClient(false); }} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="(12) 99123-4567" />
-                </label>
-                <button type="button" disabled={isLookingUpClient || normalizedPhone.length < 8} onClick={async () => {
-                  setIsLookingUpClient(true); setClientLookupMessage('');
-                  const result = await lookupPublicClientByPhone(clientPhone);
-                  if (result.success && result.found && result.clientName) {
-                    setClientName(result.clientName);
-                    if (result.clientEmail && !clientEmail) setClientEmail(result.clientEmail);
-                    if (result.clientBirthDate && !clientBirthDate) setClientBirthDate(result.clientBirthDate);
-                    setIsReturningClient(true);
-                    setClientLookupMessage('Cadastro encontrado. Confirme seus dados para continuar.');
-                  } else if (result.success) {
-                    setClientName(''); setIsReturningClient(false);
-                    setClientLookupMessage('Ainda não encontramos cadastro com esse telefone. Vamos criar seu cadastro.');
-                  } else {
-                    setClientLookupMessage(result.error || 'Não foi possível consultar o cadastro. Preencha seus dados abaixo.');
-                  }
-                  setIsLookingUpClient(false);
-                }} className="w-full rounded-full border border-[#D4AF37] px-4 py-2.5 text-sm font-semibold text-[#49382E] disabled:opacity-50">{isLookingUpClient ? 'Consultando cadastro…' : 'Consultar meu cadastro'}</button>
-                {clientLookupMessage && <p className="text-xs text-[#786C63]" role="status">{clientLookupMessage}</p>}
-                <label className="block text-xs font-semibold text-[#49382E]">Nome completo *
-                  <input required value={clientName} onChange={e => setClientName(e.target.value)} readOnly={isReturningClient} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] read-only:opacity-80" placeholder="O teu nome" />
-                </label>
-                <label className="block text-xs font-semibold text-[#49382E]">E-mail (opcional)
-                  <input type="email" value={clientEmail} onChange={e => setClientEmail(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" placeholder="voce@exemplo.com" />
-                </label>
-                <label className="block text-xs font-semibold text-[#49382E]">Data de nascimento *
-                  <input required type="date" max={toDateKey(today)} value={clientBirthDate} onChange={e => setClientBirthDate(e.target.value)} className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]" />
-                </label>
-                <button type="button" onClick={() => {
-                  if (!clientName.trim() || !clientPhone.trim() || !clientBirthDate.trim()) { setSubmissionError('Preencha o nome, o WhatsApp e a data de nascimento para continuar.'); return; }
-                  setSubmissionError(null); setBookingStep(2);
-                }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher a data</button>
+                <p className="font-jakarta text-xs text-[#786C63]">
+                  Informe seu número com DDD. Se você já tem cadastro no Espaço Angélica, seus dados serão recuperados automaticamente da planilha oficial.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#49382E]">
+                    WhatsApp com DDD *
+                    <div className="relative mt-1">
+                      <input
+                        required
+                        type="tel"
+                        value={clientPhone}
+                        onChange={e => handlePhoneChange(e.target.value)}
+                        onBlur={() => {
+                          const digits = clientPhone.replace(/\D/g, '');
+                          if (digits.length >= 10 && !isReturningClient && !isLookingUpClient) {
+                            performClientLookup(clientPhone);
+                          }
+                        }}
+                        className="w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] text-sm pr-10"
+                        placeholder="(12) 99123-4567"
+                      />
+                      {isLookingUpClient && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <span className="material-symbols-outlined text-[#D4AF37] animate-spin text-[20px]">
+                            progress_activity
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+
+                {!isReturningClient && !isLookingUpClient && clientPhone.replace(/\D/g, '').length >= 8 && (
+                  <button
+                    type="button"
+                    onClick={() => performClientLookup(clientPhone)}
+                    className="w-full rounded-full border border-[#D4AF37] px-4 py-2 text-xs font-semibold text-[#49382E] hover:bg-[#FBF2D5] transition-colors"
+                  >
+                    Consultar meu cadastro
+                  </button>
+                )}
+
+                {clientLookupMessage && !isReturningClient && (
+                  <p className="text-xs text-[#786C63]" role="status">
+                    {clientLookupMessage}
+                  </p>
+                )}
+
+                {/* CASO A: Cadastro Completo Recuperado da Coluna Q */}
+                {isReturningClient && clientName.trim() && clientBirthDate.trim() && !isManualEdit ? (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-[#FBF2D5]/70 border border-[#D4AF37] space-y-3">
+                    <div className="flex items-center gap-2 text-[#3C2F00]">
+                      <span className="material-symbols-outlined text-[#D4AF37] text-[22px]">verified</span>
+                      <h4 className="font-syne font-bold text-base">Olá, {clientName}!</h4>
+                    </div>
+                    <p className="font-jakarta text-xs text-[#49382E]">
+                      Seu cadastro foi localizado com sucesso. Não é necessário preencher seus dados novamente.
+                    </p>
+                    <div className="text-xs text-[#786C63] space-y-1.5 bg-white/90 p-3.5 rounded-xl border border-[#E8D9B5]">
+                      <p className="flex justify-between items-center">
+                        <span className="font-semibold text-[#49382E]">Nome:</span>
+                        <span>{clientName}</span>
+                      </p>
+                      <p className="flex justify-between items-center">
+                        <span className="font-semibold text-[#49382E]">WhatsApp:</span>
+                        <span>{clientPhone}</span>
+                      </p>
+                      {clientEmail && (
+                        <p className="flex justify-between items-center">
+                          <span className="font-semibold text-[#49382E]">E-mail:</span>
+                          <span>{clientEmail}</span>
+                        </p>
+                      )}
+                      <p className="flex justify-between items-center">
+                        <span className="font-semibold text-[#49382E]">Data de Nascimento:</span>
+                        <span className="font-bold text-[#49382E]">{formatBirthDateBR(clientBirthDate)}</span>
+                      </p>
+                    </div>
+
+                    <div className="pt-2 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSubmissionError(null);
+                          setBookingStep(2);
+                        }}
+                        className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00] shadow-sm hover:brightness-105 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Continuar para escolher a data</span>
+                        <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                      </button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setIsManualEdit(true)}
+                          className="text-[11px] text-[#786C63] hover:text-[#49382E] underline underline-offset-2 transition-colors cursor-pointer"
+                        >
+                          Deseja alterar algum dado cadastrado? Clique aqui
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : isReturningClient && clientName.trim() && !clientBirthDate.trim() && !isManualEdit ? (
+                  /* CASO B: Cadastro Parcial (Nome encontrado, mas Data de Nascimento ausente na Coluna Q) */
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-900 flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[18px] shrink-0 text-amber-700">info</span>
+                      <div>
+                        <strong>Olá, {clientName}!</strong> Localizamos seu cadastro. Para concluir seu agendamento, por favor informe apenas sua data de nascimento.
+                      </div>
+                    </div>
+
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      Nome completo
+                      <input
+                        value={clientName}
+                        readOnly
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#F7EFEA] border border-[#E8D9B5] text-[#49382E] font-medium cursor-not-allowed opacity-90"
+                      />
+                    </label>
+
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      E-mail (opcional)
+                      <input
+                        type="email"
+                        value={clientEmail}
+                        onChange={e => setClientEmail(e.target.value)}
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]"
+                        placeholder="voce@exemplo.com"
+                      />
+                    </label>
+
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      Data de nascimento *
+                      <input
+                        required
+                        type="date"
+                        max={toDateKey(today)}
+                        value={clientBirthDate}
+                        onChange={e => setClientBirthDate(e.target.value)}
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!clientBirthDate.trim()) {
+                          setSubmissionError('Por favor informe sua data de nascimento para continuar.');
+                          return;
+                        }
+                        setSubmissionError(null);
+                        setBookingStep(2);
+                      }}
+                      className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00] shadow-sm hover:brightness-105 active:scale-98 transition-all cursor-pointer"
+                    >
+                      Continuar para escolher a data
+                    </button>
+                  </div>
+                ) : (
+                  /* CASO C: Novo Cadastro ou Modo de Edição */
+                  <div className="space-y-4">
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      Nome completo *
+                      <input
+                        required
+                        value={clientName}
+                        onChange={e => setClientName(e.target.value)}
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]"
+                        placeholder="Seu nome completo"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      E-mail (opcional)
+                      <input
+                        type="email"
+                        value={clientEmail}
+                        onChange={e => setClientEmail(e.target.value)}
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]"
+                        placeholder="voce@exemplo.com"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-[#49382E]">
+                      Data de nascimento *
+                      <input
+                        required
+                        type="date"
+                        max={toDateKey(today)}
+                        value={clientBirthDate}
+                        onChange={e => setClientBirthDate(e.target.value)}
+                        className="mt-1 w-full px-3.5 py-3 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5]"
+                      />
+                    </label>
+
+                    <div className="space-y-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!clientName.trim() || !clientPhone.trim() || !clientBirthDate.trim()) {
+                            setSubmissionError('Preencha o nome, o WhatsApp e a data de nascimento para continuar.');
+                            return;
+                          }
+                          setSubmissionError(null);
+                          setBookingStep(2);
+                        }}
+                        className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00] shadow-sm hover:brightness-105 active:scale-98 transition-all cursor-pointer"
+                      >
+                        Continuar para escolher a data
+                      </button>
+
+                      {isManualEdit && isReturningClient && (
+                        <div className="text-center">
+                          <button
+                            type="button"
+                            onClick={() => setIsManualEdit(false)}
+                            className="text-[11px] text-[#786C63] hover:text-[#49382E] underline underline-offset-2 transition-colors cursor-pointer"
+                          >
+                            Voltar para o cadastro identificado
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -694,8 +939,13 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
                 </div>
                 <div className="pt-2 space-y-2">
+                  {!isDurationValid && (
+                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
+                      ⚠️ {procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR}
+                    </div>
+                  )}
                   <p className="text-[11px] text-[#786C63]">Depois de escolher um procedimento, você pode adicionar outros serviços ao mesmo atendimento ou seguir para escolher data e horário.</p>
-                  <button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
+                  <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) return; setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
                 </div>
               </div>
             )}
@@ -818,8 +1068,22 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 )}
               </div>}
+              {selectedTime && isDurationValid && procedureDuration.totalMinutes && (
+                <div className="p-3.5 rounded-xl bg-[#F7EFEA] border border-[#E8D9B5] text-xs text-[#49382E] flex items-center justify-between shadow-xs">
+                  <div>
+                    <span className="block font-semibold">Horário selecionado:</span>
+                    <span className="text-[#D4AF37] font-bold text-sm">{selectedTime} às {calculateEndTime(selectedTime, procedureDuration.totalMinutes)}</span>
+                  </div>
+                  <span className="font-semibold text-xs px-2.5 py-1 rounded-full bg-[#FFFFFF] border border-[#E8D9B5]">{procedureDuration.formatted}</span>
+                </div>
+              )}
+              {!isDurationValid && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
+                  ⚠️ {procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR}
+                </div>
+              )}
               {bookingStep === 2 && <button type="button" onClick={() => { setSubmissionError(null); setSelectedTime(''); void refreshAvailability(); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para escolher o horário</button>}
-              {bookingStep === 4 && <button type="button" onClick={() => { if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
+              {bookingStep === 4 && <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) { setSubmissionError(procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR); return; } if (!selectedTime || isSlotUnavailable(selectedTime) || isDateBlocked(selectedDate)) { setSubmissionError('Esse horário não está disponível. Por favor, escolha outro horário ou outra data.'); return; } setSubmissionError(null); setBookingStep(5); }} className="w-full rounded-full bg-[#D4AF37] disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-bold text-[#3C2F00]">Continuar para revisão</button>}
             </div>
 
 
@@ -1146,18 +1410,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   <span>Horário Selecionado:</span>
                   <span className="text-[#49382E] font-medium">{selectedTime}</span>
                 </div>
-
-                {isRecurring && (
-                  <div className="p-2.5 rounded-xl bg-[#F7EFEA] border border-[#E8D9B5] space-y-1">
-                    <div className="flex items-center justify-between text-[#49382E] font-bold">
-                      <span>Agendamento Recorrente:</span>
-                      <span>{recurrenceTotalSessions} sessões</span>
-                    </div>
-                    <span className="text-[#786C63] text-[11px] block">
-                      Intervalo: a cada {recurrenceFreqDays} dias
-                    </span>
-                  </div>
-                )}
 
                 {/* Price Breakdown */}
                 <div className="pt-2 border-t border-[#E8D9B5] space-y-2 text-xs">

@@ -64,9 +64,14 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
   const handleDeleteAppointment = async (apt: Appointment) => {
     const isBlock = apt.status === 'bloqueado';
-    const confirmMsg = isBlock
+    const isRecurring = Boolean(apt.recurrence?.seriesId);
+    let confirmMsg = isBlock
       ? `Deseja remover o bloqueio da data ${apt.date}?`
       : `Deseja excluir permanentemente o agendamento de ${apt.clientName} em ${apt.date} às ${apt.time}?`;
+
+    if (isRecurring) {
+      confirmMsg += '\n\nEste atendimento faz parte de uma série recorrente. A exclusão removerá esta sessão da agenda sem duplicar registros.';
+    }
 
     if (!onDeleteAppointment || !confirm(confirmMsg)) {
       return;
@@ -74,7 +79,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
     try {
       await onDeleteAppointment(apt);
       setSelectedSlotKey(null);
-      showNotice(isBlock ? `Bloqueio da data ${apt.date} removido da planilha.` : `Agendamento de ${apt.clientName} excluído da planilha.`);
+      showNotice(isBlock ? `Bloqueio da data ${apt.date} removido.` : `Agendamento de ${apt.clientName} excluído.`);
     } catch (err: any) {
       showNotice(err.message || 'Não foi possível excluir o agendamento.');
     }
@@ -468,6 +473,21 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                           <span>Lembrete</span>
                         </button>
 
+                        {onDeleteAppointment && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              void handleDeleteAppointment(matchingApt);
+                            }}
+                            className="px-2.5 py-1 rounded-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold transition-colors inline-flex items-center gap-1 shadow-xs cursor-pointer"
+                            title="Excluir agendamento"
+                          >
+                            <span className="material-symbols-outlined text-[14px]">delete</span>
+                            <span>Excluir</span>
+                          </button>
+                        )}
+
                         {matchingApt.status !== 'concluido' && (
                           <button
                             type="button"
@@ -595,6 +615,38 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                   <div className="p-3 rounded-lg bg-[#FDFBF9] border border-[#E8D9B5] text-[#786C63]">
                     <strong className="text-[#49382E] block mb-0.5">Observações:</strong>
                     {selectedAppointment.notes}
+                  </div>
+                )}
+
+                {selectedAppointment.recurrence && (
+                  <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[#49382E] flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-[#D4AF37] text-[16px]">update</span>
+                        Série Recorrente
+                      </span>
+                      <span className="text-[10px] bg-[#E8D9B5]/40 text-[#49382E] font-bold px-2 py-0.5 rounded-full">
+                        Sessão {selectedAppointment.recurrence.currentSession || 1} de {selectedAppointment.recurrence.totalSessions || 2}
+                      </span>
+                    </div>
+                    <div className="text-[#786C63] text-[11px] space-y-0.5">
+                      <div>Frequência: <strong className="text-[#49382E]">{selectedAppointment.recurrence.frequencyLabel || 'Recorrente'}</strong></div>
+                      {selectedAppointment.recurrence.seriesId && (
+                        <div>Série: <code className="text-[#49382E] text-[10px]">{selectedAppointment.recurrence.seriesId}</code></div>
+                      )}
+                    </div>
+                    {Array.isArray(selectedAppointment.recurrence.upcomingDates) && selectedAppointment.recurrence.upcomingDates.length > 0 && (
+                      <div className="pt-1 border-t border-[#E8D9B5]/50">
+                        <span className="text-[10px] font-semibold text-[#786C63] uppercase block mb-1">Próximas Sessões:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {selectedAppointment.recurrence.upcomingDates.map((upDate, uIdx) => (
+                            <span key={upDate} className="bg-white border border-[#E8D9B5] text-[#49382E] text-[10px] px-2 py-0.5 rounded-md font-medium">
+                              Sessão {uIdx + 2}: {upDate}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

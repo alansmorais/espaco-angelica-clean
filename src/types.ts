@@ -19,12 +19,15 @@ export interface Service {
 export type SlotStatus = 'concluido' | 'em_andamento' | 'bloqueado' | 'pendente_pix' | 'confirmado' | 'disponivel' | 'cancelado' | 'teste_sistema';
 
 export interface RecurrenceConfig {
-  frequencyDays: number; // e.g. 15, 21, 30
-  frequencyLabel: string; // e.g. "A cada 21 dias (Recomendado Fibra)"
+  frequencyDays: number; // e.g. 7, 14, 30
+  frequencyLabel: string; // e.g. "Semanal (a cada semana)"
+  recurrenceType?: 'weekly' | 'biweekly' | 'monthly';
   totalSessions: number; // e.g. 2, 3, 4
   seriesId: string;
   currentSession: number;
   upcomingDates?: string[];
+  isPaused?: boolean;
+  isCancelled?: boolean;
 }
 
 export interface Appointment {

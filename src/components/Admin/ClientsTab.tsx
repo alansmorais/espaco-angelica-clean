@@ -6,13 +6,15 @@ interface ClientsTabProps {
   onBookNextForClient: (client: ClientProfile) => void;
   clients?: ClientProfile[];
   onUpdateClient?: (client: ClientProfile) => void;
+  onDeleteClient?: (client: ClientProfile) => Promise<void> | void;
 }
 
 export const ClientsTab: React.FC<ClientsTabProps> = ({
   onOpenNewClientModal,
   onBookNextForClient,
   clients = [],
-  onUpdateClient
+  onUpdateClient,
+  onDeleteClient
 }) => {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(
     clients.length > 0 ? clients[0].id : null
@@ -276,6 +278,22 @@ export const ClientsTab: React.FC<ClientsTabProps> = ({
                   >
                     Agendar Horário
                   </button>
+
+                  {onDeleteClient && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Tem certeza de que deseja excluir o cadastro da cliente ${selectedClient.name}? Esta ação remove a ficha técnica da cliente do sistema.`)) {
+                          void onDeleteClient(selectedClient);
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-full bg-red-50 hover:bg-red-100 text-red-700 font-bold border border-red-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Excluir cadastro da cliente"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                      <span>Excluir Cliente</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

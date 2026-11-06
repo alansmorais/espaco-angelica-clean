@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Appointment, Service, SlotStatus } from '../../types';
+import {
+  calculateProcedureDuration,
+  OFFICIAL_DURATION_MISSING_ERROR
+} from '../../services/durationService';
 
 interface EditAppointmentModalProps {
   isOpen: boolean;
@@ -29,6 +33,8 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
   const [time, setTime] = useState('');
   const [status, setStatus] = useState<SlotStatus>('pendente_pix');
   const [notes, setNotes] = useState('');
+  const [applyToSeries, setApplyToSeries] = useState(true);
+  const [cancelWholeSeries, setCancelWholeSeries] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -58,6 +64,8 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       setTime(appointment.time || '');
       setStatus(appointment.status || 'pendente_pix');
       setNotes(appointment.notes || '');
+      setApplyToSeries(true);
+      setCancelWholeSeries(true);
       setSubmitError(null);
       setIsSubmitting(false);
     }
@@ -107,7 +115,12 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
     const chosenTitle = matchedService ? matchedService.title : serviceTitle.trim();
     const additionalServices = services.filter(service => additionalServiceIds.includes(service.id) && service.id !== matchedService?.id);
     const combinedPrice = matchedService ? matchedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0) : undefined;
-    const combinedDuration = matchedService ? [matchedService, ...additionalServices].reduce((sum, service) => { const match = String(service.duration || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:min|m))?/i); return sum + (match ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : 30); }, 0) : 0;
+    const procedureDuration = matchedService ? calculateProcedureDuration(matchedService, additionalServices) : null;
+    if (matchedService && (!procedureDuration || !procedureDuration.isValid)) {
+      setSubmitError(procedureDuration?.error || OFFICIAL_DURATION_MISSING_ERROR);
+      setIsSubmitting(false);
+      return;
+    }
 
     const fullTitle = [chosenTitle, ...additionalServices.map(service => service.title)].filter(Boolean).join(' + ');
 
@@ -120,7 +133,7 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       serviceId: matchedService ? matchedService.id : (selectedServiceId !== '__custom__' ? selectedServiceId : undefined),
       ...(matchedService && {
         servicePrice: combinedPrice === undefined ? matchedService.priceFormatted : `R$ ${combinedPrice.toFixed(2).replace('.', ',')}`,
-        serviceDuration: `${Math.floor(combinedDuration / 60) > 0 ? `${Math.floor(combinedDuration / 60)} h ` : ''}${combinedDuration % 60 > 0 ? `${combinedDuration % 60} min` : ''}`.trim() || matchedService.duration
+        serviceDuration: procedureDuration?.formatted || matchedService.duration
       }),
       additionalServiceIds,
       customRequest: customRequest.trim() || undefined,
@@ -129,8 +142,18 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
       date: date.trim(),
       time: time.trim(),
       status,
-      notes: notes.trim() || undefined
+      notes: notes.trim() || undefined,
+      recurrence: appointment.recurrence
+        ? {
+            ...appointment.recurrence,
+            isCancelled: status === 'cancelado' && cancelWholeSeries ? true : appointment.recurrence.isCancelled
+          }
+        : undefined
     };
+
+    if (!applyToSeries && appointment.recurrence) {
+      delete (updatedApt as any).recurrence;
+    }
 
     try {
       await onSave(updatedApt);
@@ -274,6 +297,43 @@ export const EditAppointmentModal: React.FC<EditAppointmentModalProps> = ({
               <option value="cancelado">Cancelado</option>
             </select>
           </div>
+
+          {/* Gerenciamento de Série Recorrente */}
+          {appointment.recurrence && (
+            <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-[#49382E] flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[#D4AF37] text-[16px]">update</span>
+                  Série Recorrente: {appointment.recurrence.frequencyLabel || 'Configurada'}
+                </span>
+                <span className="text-[10px] bg-[#E8D9B5]/40 text-[#49382E] font-bold px-2 py-0.5 rounded-full">
+                  Sessão {appointment.recurrence.currentSession || 1} de {appointment.recurrence.totalSessions || 2}
+                </span>
+              </div>
+
+              {status === 'cancelado' ? (
+                <label className="flex items-center gap-2 pt-1 text-[#49382E] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cancelWholeSeries}
+                    onChange={e => setCancelWholeSeries(e.target.checked)}
+                    className="w-4 h-4 rounded text-[#D4AF37] focus:ring-[#D4AF37]"
+                  />
+                  <span>Cancelar toda a série recorrente futura sem afetar agendamentos passados</span>
+                </label>
+              ) : (
+                <label className="flex items-center gap-2 pt-1 text-[#49382E] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyToSeries}
+                    onChange={e => setApplyToSeries(e.target.checked)}
+                    className="w-4 h-4 rounded text-[#D4AF37] focus:ring-[#D4AF37]"
+                  />
+                  <span>Aplicar novo horário e procedimento a todas as ocorrências da série</span>
+                </label>
+              )}
+            </div>
+          )}
 
           <div className="rounded-xl border border-[#E8D9B5] p-3 space-y-3">
             <label className="block text-[#49382E] font-bold mb-1">Serviços adicionais</label>

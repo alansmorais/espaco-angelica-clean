@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
-import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig, ClientProfile } from '../../types';
+import React, { useState, useMemo } from 'react';
+import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig, ClientProfile, DayScheduleConfig } from '../../types';
 import { sendAppointmentWhatsAppConfirmation } from '../../services/whatsappService';
 import { calculateDeposit40, calculateFullPrepayment, formatBRL } from '../../services/notificationTemplates';
 import { submitManualBooking } from '../../services/emailNotificationService';
-import { calculateRecurrenceDates } from '../../services/recurrenceService';
+import { calculateRecurrenceDates, validateRecurringOccurrences } from '../../services/recurrenceService';
+import {
+  parseDurationMinutes,
+  calculateProcedureDuration,
+  calculateEndTime,
+  OFFICIAL_DURATION_MISSING_ERROR
+} from '../../services/durationService';
 
 interface ManualBookingModalProps {
   isOpen: boolean;
@@ -16,6 +22,7 @@ interface ManualBookingModalProps {
   clients?: ClientProfile[];
   appointments?: Appointment[];
   blockedDates?: string[];
+  daySchedules?: DayScheduleConfig[];
 }
 
 export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
@@ -28,7 +35,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   paymentConfig = { pixKey: '', pixBeneficiary: '', depositAmount: 40 },
   clients = [],
   appointments = [],
-  blockedDates = []
+  blockedDates = [],
+  daySchedules = []
 }) => {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -46,8 +54,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   const [paymentMode, setPaymentMode] = useState<'sinal_40' | 'pre_pagamento_100'>('sinal_40');
   const [depositStatus, setDepositStatus] = useState<'liquidado' | 'pendente'>('liquidado');
   const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceFreq, setRecurrenceFreq] = useState(21);
-  const [totalSessions, setTotalSessions] = useState(3);
+  const [recurrenceInterval, setRecurrenceInterval] = useState<'weekly' | 'biweekly' | 'monthly'>('weekly');
+  const [totalSessions, setTotalSessions] = useState(4);
   const [notes, setNotes] = useState('');
   const [sendWhatsAppAuto, setSendWhatsAppAuto] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -97,9 +105,30 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
   const serv = services.find(s => s.id === selectedServiceId) || services[0];
   if (!serv) return null;
   const additionalServices = services.filter(service => additionalServiceIds.includes(service.id) && service.id !== serv.id);
+  const procedureDuration = calculateProcedureDuration(serv, additionalServices);
   const totalPrice = serv.price + additionalServices.reduce((sum, service) => sum + service.price, 0);
   const standardDeposit = calculateDeposit40(totalPrice, paymentConfig.depositAmount);
   const fullPrepayment = calculateFullPrepayment(totalPrice);
+
+  const recurrenceValidation = useMemo(() => {
+    if (!isRecurring) return null;
+    const durationMinutes = procedureDuration?.totalMinutes || 45;
+
+    return validateRecurringOccurrences({
+      baseDate: date.trim(),
+      time: time.trim(),
+      durationMinutes,
+      frequencyOrType: recurrenceInterval,
+      totalSessions,
+      daySchedules,
+      blockedDates,
+      appointments,
+      options: {
+        clientName: clientName.trim(),
+        serviceTitle: serv?.title
+      }
+    });
+  }, [isRecurring, date, time, procedureDuration, recurrenceInterval, totalSessions, daySchedules, blockedDates, appointments, clientName, serv]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,6 +163,17 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       return;
     }
 
+    if (!procedureDuration.isValid || !procedureDuration.totalMinutes) {
+      setSubmitError(procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR);
+      return;
+    }
+
+    // Validação estrita de conflitos em toda a série recorrente
+    if (isRecurring && recurrenceValidation && !recurrenceValidation.valid) {
+      setSubmitError(recurrenceValidation.error || 'Conflito detectado na série recorrente. Por favor, escolha outro dia ou horário.');
+      return;
+    }
+
     // Check overlap with existing appointments or blocked dates
     const timeToMinutes = (val: string): number | null => {
       const match = /^(\d{1,2}):(\d{2})$/.exec(String(val || '').trim());
@@ -141,15 +181,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       const h = Number(match[1]), m = Number(match[2]);
       return h <= 23 && m <= 59 ? h * 60 + m : null;
     };
-    const durMinutes = (val: string): number => {
-      const text = String(val || '').toLowerCase();
-      const h = text.match(/(\d+)\s*h/);
-      const m = text.match(/(\d+)\s*(?:min|m\b)/);
-      const total = (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
-      return total > 0 ? total : 30;
-    };
     const reqStart = timeToMinutes(time.trim());
-    const reqDuration = durMinutes(serv.duration) + additionalServices.reduce((sum, s) => sum + durMinutes(s.duration), 0);
+    const reqDuration = procedureDuration.totalMinutes;
     const reqEnd = reqStart !== null ? reqStart + reqDuration : null;
 
     if (reqStart !== null && reqEnd !== null) {
@@ -176,7 +209,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
           }
           const oStart = timeToMinutes(raw);
           if (oStart === null) return false;
-          const oDur = durMinutes(a.serviceDuration || '');
+          const oDur = parseDurationMinutes(a.serviceDuration);
+          if (!oDur || oDur <= 0) return false;
           const oEnd = oStart + oDur;
           return reqStart < oEnd && reqEnd > oStart;
         });
@@ -197,8 +231,16 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
     }
 
     const finalServiceTitle = [serv.title, ...additionalServices.map(service => service.title)].join(' + ');
+    const seriesId = `series-${Date.now()}`;
+    const freqDays = recurrenceInterval === 'weekly' ? 7 : recurrenceInterval === 'biweekly' ? 14 : 30;
+    const freqLabel = recurrenceInterval === 'weekly'
+      ? 'Semanal (a cada semana)'
+      : recurrenceInterval === 'biweekly'
+      ? 'Semanal (a cada 2 semanas / quinzenal)'
+      : 'Mensal (mesmo dia do mês)';
+
     const recurrenceUpcomingDates = isRecurring
-      ? calculateRecurrenceDates(date.trim(), recurrenceFreq, totalSessions, {
+      ? calculateRecurrenceDates(date.trim(), recurrenceInterval, totalSessions, {
           clientName: trimmedName,
           serviceTitle: finalServiceTitle
         })
@@ -206,10 +248,11 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
 
     const recurrenceConfig: RecurrenceConfig | undefined = isRecurring
       ? {
-          frequencyDays: recurrenceFreq,
-          frequencyLabel: recurrenceFreq === 7 ? 'Toda semana' : `A cada ${recurrenceFreq} dias`,
+          frequencyDays: freqDays,
+          frequencyLabel: freqLabel,
+          recurrenceType: recurrenceInterval,
           totalSessions,
-          seriesId: `series-${Date.now()}`,
+          seriesId,
           currentSession: 1,
           upcomingDates: recurrenceUpcomingDates
         }
@@ -231,7 +274,7 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       homeAddress: appointmentLocation === 'home' ? homeAddress.trim() : undefined,
       serviceTitle: [serv.title, ...additionalServices.map(service => service.title)].join(' + '),
       servicePrice: `R$ ${formatBRL(totalPrice)}`,
-      serviceDuration: (() => { const minutes = [serv, ...additionalServices].reduce((sum, service) => { const match = String(service.duration || '').match(/(?:(\d+)\s*h)?\s*(?:(\d+)\s*(?:min|m))?/i); return sum + (match ? Number(match[1] || 0) * 60 + Number(match[2] || 0) : 30); }, 0); return `${Math.floor(minutes / 60) > 0 ? `${Math.floor(minutes / 60)} h ` : ''}${minutes % 60 > 0 ? `${minutes % 60} min` : ''}`.trim() || '30 min'; })(),
+      serviceDuration: procedureDuration.formatted,
       date: date.trim(),
       time: time.trim(),
       status: depositStatus === 'liquidado' ? 'confirmado' : 'pendente_pix',
@@ -241,7 +284,9 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       requiresFullPrepayment: isInadimplente,
       isBlacklisted: isInadimplente,
       recurrence: recurrenceConfig,
-      notes: notes.trim() || undefined,
+      notes: isRecurring
+        ? `[Série Recorrente: ${seriesId} - Sessão 1/${totalSessions}] ${notes.trim()}`.trim()
+        : (notes.trim() || undefined),
       clientInitials: trimmedName
         .split(' ')
         .map(n => n[0])
@@ -264,6 +309,31 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
             'Falha ao persistir agendamento no Google Sheets. O servidor não confirmou a gravação.'
         );
         return;
+      }
+
+      // Persistir sessões futuras na planilha oficial para garantir bloqueio em cascata
+      if (isRecurring && recurrenceUpcomingDates && recurrenceUpcomingDates.length > 0) {
+        for (let i = 0; i < recurrenceUpcomingDates.length; i++) {
+          const subDate = recurrenceUpcomingDates[i];
+          const sessionNum = i + 2;
+          const subId = `${appointmentId}-rec-${sessionNum}`;
+          const subApt: Appointment = {
+            ...newApt,
+            id: subId,
+            date: subDate,
+            time: newApt.time,
+            notes: `[Série Recorrente: ${seriesId} - Sessão ${sessionNum}/${totalSessions}] ${notes.trim()}`.trim(),
+            recurrence: {
+              frequencyDays: freqDays,
+              frequencyLabel: freqLabel,
+              recurrenceType: recurrenceInterval,
+              totalSessions,
+              seriesId,
+              currentSession: sessionNum
+            }
+          };
+          void submitManualBooking(subApt, token).catch(e => console.warn('Falha ao persistir sessão futura:', e));
+        }
       }
 
       // Disparar WhatsApp se habilitado
@@ -486,6 +556,15 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
                 className="mt-1 w-full rounded-lg border border-[#E8D9B5] bg-[#FDFBF9] p-2" />
             </label>}
             <div className="font-bold text-sm">Total dos serviços: R$ {formatBRL(totalPrice)}</div>
+            <div className="text-xs text-[#786C63] mt-0.5">
+              Duração oficial total: <strong className="text-[#49382E]">{procedureDuration.formatted || 'Não configurada'}</strong>
+              {time && procedureDuration.totalMinutes ? ` (término previsto às ${calculateEndTime(time, procedureDuration.totalMinutes)})` : ''}
+            </div>
+            {!procedureDuration.isValid && (
+              <div className="text-xs text-rose-600 font-semibold mt-1">
+                ⚠️ {procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -512,46 +591,101 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
           </div>
 
           {/* Agendamento Recorrente */}
-          <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-2">
+          <div className="p-3.5 rounded-xl bg-[#FDFBF9] border border-[#E8D9B5] space-y-3">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[#49382E] flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[#D4AF37] text-[16px]">update</span>
-                Agendamento Recorrente
+              <span className="font-semibold text-[#49382E] flex items-center gap-1.5 text-sm">
+                <span className="material-symbols-outlined text-[#D4AF37] text-[18px]">update</span>
+                Agendamento Recorrente (Painel da Angélica)
               </span>
               <input
                 type="checkbox"
                 checked={isRecurring}
                 onChange={e => setIsRecurring(e.target.checked)}
-                className="w-4 h-4 rounded text-[#D4AF37] focus:ring-[#D4AF37]"
+                className="w-4 h-4 rounded text-[#D4AF37] focus:ring-[#D4AF37] cursor-pointer"
               />
             </div>
             {isRecurring && (
-              <div className="grid grid-cols-2 gap-2 pt-1 text-[11px]">
-                <div>
-                  <label className="text-[#786C63] block mb-0.5 font-medium">Intervalo</label>
-                  <select
-                    value={recurrenceFreq}
-                    onChange={e => setRecurrenceFreq(Number(e.target.value))}
-                    className="w-full p-2 rounded-lg bg-[#FFFFFF] text-[#49382E] border border-[#E8D9B5]"
-                  >
-                    <option value={7}>Toda semana</option>
-                    <option value={15}>A cada 15 dias</option>
-                    <option value={21}>A cada 21 dias (Recomendado)</option>
-                    <option value={30}>A cada 30 dias</option>
-                  </select>
+              <div className="space-y-3 pt-1 text-[12px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[#786C63] block mb-1 font-medium">Intervalo de Recorrência</label>
+                    <select
+                      value={recurrenceInterval}
+                      onChange={e => setRecurrenceInterval(e.target.value as 'weekly' | 'biweekly' | 'monthly')}
+                      className="w-full p-2.5 rounded-lg bg-[#FFFFFF] text-[#49382E] border border-[#E8D9B5] font-medium"
+                    >
+                      <option value="weekly">Semanal (a cada semana)</option>
+                      <option value="biweekly">Semanal (a cada 2 semanas / quinzenal)</option>
+                      <option value="monthly">Mensal (mesmo dia do mês)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[#786C63] block mb-1 font-medium">Qtd. Total de Sessões</label>
+                    <select
+                      value={totalSessions}
+                      onChange={e => setTotalSessions(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-lg bg-[#FFFFFF] text-[#49382E] border border-[#E8D9B5] font-medium"
+                    >
+                      <option value={2}>2 sessões</option>
+                      <option value={3}>3 sessões</option>
+                      <option value={4}>4 sessões (Recomendado)</option>
+                      <option value={6}>6 sessões</option>
+                      <option value={8}>8 sessões</option>
+                      <option value={12}>12 sessões</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[#786C63] block mb-0.5 font-medium">Qtd. Sessões</label>
-                  <select
-                    value={totalSessions}
-                    onChange={e => setTotalSessions(Number(e.target.value))}
-                    className="w-full p-2 rounded-lg bg-[#FFFFFF] text-[#49382E] border border-[#E8D9B5]"
-                  >
-                    <option value={2}>2 sessões</option>
-                    <option value={3}>3 sessões</option>
-                    <option value={4}>4 sessões</option>
-                  </select>
-                </div>
+
+                {/* Visualização Completa de Próximas Datas com Checagem de Conflitos */}
+                {recurrenceValidation && (
+                  <div className="p-3 rounded-xl bg-white border border-[#E8D9B5] space-y-2">
+                    <span className="text-[#49382E] font-semibold block text-[11px] uppercase tracking-wider">
+                      Cronograma Completo das Sessões ({recurrenceValidation.allDates.length} datas)
+                    </span>
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {recurrenceValidation.allDates.map((d, idx) => {
+                        const sessionNum = idx + 1;
+                        const conflict = recurrenceValidation.conflicts.find(c => c.session === sessionNum);
+                        return (
+                          <div
+                            key={d + '-' + sessionNum}
+                            className={`flex items-center justify-between p-2 rounded-lg text-[11px] border ${
+                              conflict
+                                ? 'bg-rose-50/80 border-rose-200 text-rose-800'
+                                : 'bg-[#FAF8F5] border-[#E8D9B5]/60 text-[#49382E]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-[#D4AF37]">Sessão {sessionNum}:</span>
+                              <span>{d} às {time}</span>
+                            </div>
+                            {conflict ? (
+                              <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px]">warning</span>
+                                Conflito
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px]">check</span>
+                                Horário Livre
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {recurrenceValidation.conflicts.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-300 text-rose-800 text-[11px] leading-relaxed">
+                        <strong className="block mb-0.5">Aviso de Conflito para a Angélica:</strong>
+                        {recurrenceValidation.conflicts.map(c => (
+                          <div key={c.session} className="text-[10px]">
+                            • Sessão {c.session} ({c.date}): {c.reason}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

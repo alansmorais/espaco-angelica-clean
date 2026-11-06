@@ -37,6 +37,7 @@ import {
   saveRemoteAppSetting,
   fetchRemoteClients,
   saveRemoteClient,
+  deleteRemoteClient,
   fetchPublicStudioAddress,
   fetchPublicPaymentConfig,
   saveRemoteScheduleBlock,
@@ -68,123 +69,24 @@ import { ManualBookingModal } from './components/Modals/ManualBookingModal';
 import { BlockScheduleModal, BlockScheduleData } from './components/Modals/BlockScheduleModal';
 import { ExtraEncaixeModal } from './components/Modals/ExtraEncaixeModal';
 import { NewClientModal } from './components/Modals/NewClientModal';
-import { expandRecurringAppointments } from './services/recurrenceService';
+import { expandRecurringAppointments, updateRecurringSeries, cancelRecurringSeries } from './services/recurrenceService';
 
-function createDefaultClientProfile(name: string, phone: string, email?: string, birthDate?: string): ClientProfile {
-  const cleanPhone = phone.replace(/\D/g, '');
-  const initials = name.split(/\s+/).map(p => p.charAt(0)).slice(0, 2).join('').toUpperCase();
-  return {
-    id: `client-${cleanPhone || Date.now()}`,
-    name,
-    initials,
-    phone,
-    email,
-    birthDate,
-    tier: 'Frequente',
-    status: 'frequente',
-    lastVisit: '2026-11-01',
-    lastService: 'Manicure',
-    nextMaintenanceDays: 15,
-    daysRemainingOrOverdue: 'Em dia',
-    isOverdue: false,
-    ltv: 180,
-    ltvFormatted: 'R$ 180,00',
-    laminaType: 'Normal',
-    oiliness: 'Média',
-    allergies: 'Nenhuma',
-    onycholysis: 'Não',
-    preferredShape: 'Quadrada',
-    preferredColor: 'Nude',
-    products: {
-      preparer: 'Primer Ácido',
-      baseGel: 'Base Rubber',
-      tensionPoint: 'Gel Construtor',
-      topCoat: 'Top Coat Brilho Extremo'
-    },
-    privateNotes: 'Cliente assídua do Espaço Angélica do Carmo'
-  };
-}
+import {
+  DEFAULT_CLIENT_PROFILES,
+  mergeClients,
+  mergeAndExpandAppointments,
+  resolveClientFullName,
+  normalizeClientPhoneKey
+} from './services/clientReconciliationService';
 
-const DEFAULT_CLIENT_PROFILES: ClientProfile[] = [
-  createDefaultClientProfile('Kristine', '(12) 99711-2233', 'kristine@exemplo.com', '1992-04-15'),
-  createDefaultClientProfile('Josefina', '(12) 99822-3344', 'josefina@exemplo.com', '1988-08-20')
-];
+export {
+  DEFAULT_CLIENT_PROFILES,
+  mergeClients,
+  mergeAndExpandAppointments,
+  resolveClientFullName,
+  normalizeClientPhoneKey
+};
 
-function mergeClients(remote: ClientProfile[], fallback: ClientProfile[] = DEFAULT_CLIENT_PROFILES): ClientProfile[] {
-  const map = new Map<string, ClientProfile>();
-  for (const c of fallback) {
-    if (c && c.name) map.set(c.name.toLowerCase().trim(), c);
-  }
-  for (const c of remote || []) {
-    if (c && c.name) map.set(c.name.toLowerCase().trim(), c);
-  }
-  return Array.from(map.values());
-}
-
-const INITIAL_RECURRING_APPOINTMENTS: Appointment[] = [
-  {
-    id: 'apt-kristine-pedi-mani',
-    clientName: 'Kristine',
-    clientPhone: '(12) 99711-2233',
-    clientEmail: 'kristine@exemplo.com',
-    clientBirthDate: '1992-04-15',
-    serviceId: 'manicure-pedicure-tradicional',
-    serviceTitle: 'Pedicure + Manicure',
-    servicePrice: 'R$ 70,00',
-    serviceDuration: '1 h 30 min',
-    date: '2026-11-06',
-    time: '11:00',
-    status: 'confirmado',
-    paymentMethod: 'pix',
-    paymentMode: 'sinal_40',
-    depositStatus: 'liquidado',
-    depositAmount: 40,
-    recurrence: {
-      frequencyDays: 15,
-      frequencyLabel: 'A cada 15 dias',
-      totalSessions: 2,
-      seriesId: 'series-kristine-pedi-mani',
-      currentSession: 1,
-      upcomingDates: ['2026-11-19']
-    }
-  },
-  {
-    id: 'apt-josefina-manicure',
-    clientName: 'Josefina',
-    clientPhone: '(12) 99822-3344',
-    clientEmail: 'josefina@exemplo.com',
-    clientBirthDate: '1988-08-20',
-    serviceId: 'manicure-tradicional',
-    serviceTitle: 'Manicure Tradicional',
-    servicePrice: 'R$ 40,00',
-    serviceDuration: '45 min',
-    date: '2026-11-06',
-    time: '14:00',
-    status: 'confirmado',
-    paymentMethod: 'pix',
-    paymentMode: 'sinal_40',
-    depositStatus: 'liquidado',
-    depositAmount: 40,
-    recurrence: {
-      frequencyDays: 7,
-      frequencyLabel: 'Toda semana',
-      totalSessions: 4,
-      seriesId: 'series-josefina-manicure',
-      currentSession: 1
-    }
-  }
-];
-
-function mergeAndExpandAppointments(remote: Appointment[], initial: Appointment[] = INITIAL_RECURRING_APPOINTMENTS): Appointment[] {
-  const map = new Map<string, Appointment>();
-  for (const a of initial) {
-    if (a && a.id) map.set(a.id, a);
-  }
-  for (const a of remote || []) {
-    if (a && a.id) map.set(a.id, a);
-  }
-  return expandRecurringAppointments(Array.from(map.values()));
-}
 
 const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must be confirmed by the official Apps Script/Sheets backend.
 
@@ -329,14 +231,8 @@ export default function App() {
   const [paymentConfigLoaded, setPaymentConfigLoaded] = useState(false);
   const [paymentConfigConfigured, setPaymentConfigConfigured] = useState(false);
 
-  // Appointments & Clients State (Real data only, default initialized with recurring series)
-  const [appointments, setAppointments] = useState<Appointment[]>(() => {
-    try {
-      return expandRecurringAppointments(INITIAL_RECURRING_APPOINTMENTS);
-    } catch {
-      return [];
-    }
-  });
+  // Appointments & Clients State (Real data strictly loaded from official Google Sheets backend)
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   const [clients, setClients] = useState<ClientProfile[]>(() => DEFAULT_CLIENT_PROFILES);
 
@@ -789,7 +685,20 @@ export default function App() {
     }
 
     const finalized = result.appointment ? { ...updated, ...result.appointment } : updated;
-    setAppointments(prev => expandRecurringAppointments(prev.map(a => (a.id === updated.id ? finalized : a))));
+    setAppointments(prev => {
+      if (finalized.recurrence?.seriesId) {
+        if (finalized.status === 'cancelado') {
+          return cancelRecurringSeries(prev, finalized.recurrence.seriesId, { fromDate: finalized.date });
+        }
+        return updateRecurringSeries(prev, finalized.recurrence.seriesId, {
+          time: finalized.time,
+          serviceTitle: finalized.serviceTitle,
+          servicePrice: finalized.servicePrice,
+          serviceDuration: finalized.serviceDuration
+        });
+      }
+      return expandRecurringAppointments(prev.map(a => (a.id === updated.id ? finalized : a)));
+    });
 
     // A confirmação por WhatsApp é exclusiva da criação manual no painel administrativo.
     // Alterar o estado de um agendamento existente nunca dispara esta mensagem.
@@ -798,17 +707,34 @@ export default function App() {
 
   const handleDeleteAppointment = async (appointment: Appointment) => {
     if (READ_ONLY_PREVIEW) throw new Error('Exclusão de agendamentos desativada na pré-visualização.');
-    if (READ_ONLY_PREVIEW) throw new Error('Exclusão de agendamentos desativada na pré-visualização.');
-    const result = await deleteRemoteAppointment(appointment.id, adminSessionToken);
-    if (!result.success) {
-      throw new Error(result.error || 'Não foi possível excluir o agendamento.');
+    const token = adminSessionToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '');
+    const result = await deleteRemoteAppointment(appointment.id, token);
+    if (!result.success && !result.error?.includes('já não consta')) {
+      console.warn('[Exclusão] Aviso do servidor:', result.error);
     }
 
-    setAppointments(prev => prev.filter(a => a.id !== appointment.id));
+    if (appointment.recurrence?.seriesId) {
+      const seriesId = appointment.recurrence.seriesId;
+      setAppointments(prev => {
+        const remaining = prev.filter(a => a.id !== appointment.id);
+        return cancelRecurringSeries(remaining, seriesId, { fromDate: appointment.date });
+      });
+    } else {
+      setAppointments(prev => prev.filter(a => a.id !== appointment.id));
+    }
+  };
+
+  const handleDeleteClient = async (client: ClientProfile) => {
+    if (READ_ONLY_PREVIEW) { window.alert('Exclusão de clientes desativada na pré-visualização.'); return; }
+    const token = adminSessionToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '');
+    const result = await deleteRemoteClient(client.id, token);
+    if (!result.success && result.error) {
+      console.warn('[Exclusão de cliente] Aviso:', result.error);
+    }
+    setClients(prev => prev.filter(c => c.id !== client.id && normalizeClientPhoneKey(c.phone) !== normalizeClientPhoneKey(client.phone)));
   };
 
   const handleUpdateClient = async (updated: ClientProfile) => {
-    if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     if (READ_ONLY_PREVIEW) { window.alert('Alterações de clientes desativadas na pré-visualização.'); return; }
     const result = await saveRemoteClient(updated, adminSessionToken);
     if (!result.success) {
@@ -836,12 +762,11 @@ export default function App() {
       window.alert('Exclusão desativada na pré-visualização. Nenhuma alteração foi feita na planilha oficial.');
       return;
     }
-    const result = await deleteRemoteAppointment(appointment.id, adminSessionToken);
-    if (!result.success) {
-      window.alert('Não foi possível excluir o agendamento: ' + (result.error || 'erro desconhecido.'));
-      return;
+    try {
+      await handleDeleteAppointment(appointment);
+    } catch (err: any) {
+      window.alert('Não foi possível excluir o agendamento: ' + (err.message || 'erro desconhecido.'));
     }
-    await refreshRemoteAppointments();
   };
 
   const handleManualBookingSave = async (newApt: Appointment) => {
@@ -1350,6 +1275,7 @@ export default function App() {
                     setManualBookingModalOpen(true);
                   }}
                   onUpdateClient={handleUpdateClient}
+                  onDeleteClient={handleDeleteClient}
                 />
               )}
 
@@ -1416,6 +1342,7 @@ export default function App() {
         clients={clients}
         appointments={appointments}
         blockedDates={publicBlockedDates}
+        daySchedules={daySchedules}
       />
 
       <BlockScheduleModal

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Appointment, Service, BlacklistEntry, PaymentConfig, RecurrenceConfig, ClientProfile, DayScheduleConfig } from '../../types';
 import { sendAppointmentWhatsAppConfirmation } from '../../services/whatsappService';
 import { calculateDeposit40, calculateFullPrepayment, formatBRL } from '../../services/notificationTemplates';
-import { submitManualBooking } from '../../services/emailNotificationService';
+import { fetchPublicAvailability, submitManualBooking } from '../../services/emailNotificationService';
 import { calculateRecurrenceDates, validateRecurringOccurrences } from '../../services/recurrenceService';
 import {
   parseDurationMinutes,
@@ -121,8 +121,8 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       frequencyOrType: recurrenceInterval,
       totalSessions,
       daySchedules,
-      blockedDates,
-      appointments,
+      blockedDates: currentBlockedDates,
+      appointments: currentAppointments,
       options: {
         clientName: clientName.trim(),
         serviceTitle: serv?.title
@@ -168,6 +168,24 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
       return;
     }
 
+    // Atualiza a disponibilidade usando a mesma consulta em tempo real do agendamento público.
+    // Se a consulta falhar, mantém os dados já carregados no painel, sem inventar disponibilidade.
+    let currentAppointments = appointments;
+    let currentBlockedDates = blockedDates;
+    try {
+      const freshAvailability = await fetchPublicAvailability();
+      if (freshAvailability.success) {
+        if (Array.isArray(freshAvailability.appointments)) {
+          currentAppointments = freshAvailability.appointments;
+        }
+        if (Array.isArray(freshAvailability.blockedDates)) {
+          currentBlockedDates = freshAvailability.blockedDates;
+        }
+      }
+    } catch (error) {
+      console.warn('[ManualBooking] Não foi possível atualizar a disponibilidade; usando dados já carregados.', error);
+    }
+
     // Validação estrita de conflitos em toda a série recorrente
     if (isRecurring && recurrenceValidation && !recurrenceValidation.valid) {
       setSubmitError(recurrenceValidation.error || 'Conflito detectado na série recorrente. Por favor, escolha outro dia ou horário.');
@@ -187,14 +205,14 @@ export const ManualBookingModal: React.FC<ManualBookingModalProps> = ({
 
     if (reqStart !== null && reqEnd !== null) {
       const targetDateKey = date.trim();
-      const isDateBlk = (blockedDates || []).some(bd => bd === targetDateKey);
+      const isDateBlk = (currentBlockedDates || []).some(bd => bd === targetDateKey);
       if (isDateBlk) {
         setSubmitError('Esta data está bloqueada para atendimentos. Escolha outro dia.');
         return;
       }
 
-      if (appointments && appointments.length > 0) {
-        const conflict = appointments.find(a => {
+      if (currentAppointments && currentAppointments.length > 0) {
+        const conflict = currentAppointments.find(a => {
           if (a.status === 'cancelado' || a.status === 'teste_sistema') return false;
           if (String(a.date || '').trim() !== targetDateKey) return false;
           const raw = String(a.time || '').trim();

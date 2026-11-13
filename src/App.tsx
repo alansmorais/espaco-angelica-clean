@@ -86,7 +86,7 @@ export {
 };
 
 
-const READ_ONLY_PREVIEW = false; // Admin actions are enabled; every write must be confirmed by the official Apps Script/Sheets backend.
+const READ_ONLY_PREVIEW = true; // Isolated preview: disable all booking/admin writes until a dedicated staging backend is configured.
 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
@@ -452,9 +452,10 @@ export default function App() {
     };
   }, [appMode, adminSessionToken]);
 
-  // Public availability is read from the official Apps Script. Booking writes are sent to
-  // the same backend and must only be treated as successful when persistence is confirmed.
+  // Availability reads are also disabled in the isolated preview because the deployed
+  // Apps Script read path may mutate sheet headers or create schedule configuration.
   useEffect(() => {
+    if (READ_ONLY_PREVIEW) return;
     let isMounted = true;
     const syncAvailability = async () => {
       const result = await fetchPublicAvailability();

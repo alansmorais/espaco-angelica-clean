@@ -11,6 +11,8 @@
 ## Identity and OAuth architecture
 The existing Apps Script web app is deployed to execute as its owner. Calls made with that execution identity do not automatically act as Angélica. Calendar access must therefore use a separate OAuth 2.0 authorization grant from Angélica.
 
+Use the official Google Apps Script OAuth2 library with its authorization-code flow and `/usercallback` endpoint (rather than inventing a redirect URL). The library's documented redirect format is `https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`; obtain the exact value from the library service's `getRedirectUri()` once added to the Apps Script project. The library script ID is `1B7FSrk5Zi6L1rSxxTDgDEUsPzlukDsi4KGuTMorsTQHhGBzBkMun4iDF`.
+
 Use an OAuth 2.0 web-server authorization-code flow:
 1. Admin opens a protected "Conectar Google Calendar" screen.
 2. Backend generates a one-time state value and redirects Angélica to Google's consent page.
@@ -29,7 +31,7 @@ Confirm the exact API method compatibility and consent-screen requirements durin
 
 ## Calendar behavior
 - Query Google Calendar busy intervals before offering a slot.
-- Resolve primary and additional service durations from the official service catalogue (column F); do not accept duration supplied by the browser or a future WhatsApp agent.
+- Resolve the exact duration separately for each selected service and each additional service from the official service catalogue (column F); do not assume a fixed duration or accept duration supplied by the browser or a future WhatsApp agent. The 13:00–16:00 / three-hour case is illustrative only.
 - Check the entire requested interval, including overlap with existing Sheets bookings and Google Calendar busy intervals.
 - On confirmed booking, persist the booking in Sheets and create one Calendar event covering the complete duration. Do not create a second "block" event.
 - Store the resulting Google Calendar event ID against the booking record in a dedicated, explicitly approved field/column after reviewing the real sheet schema. Do not repurpose an existing column without confirmation.
@@ -45,7 +47,17 @@ Confirm the exact API method compatibility and consent-screen requirements durin
 - Do not replace the deployed Apps Script with this repository copy. The repository's `apps-script/Code.gs` is a development copy only.
 
 ## OAuth publishing caveat
-For an External OAuth consent screen left in Testing, Google documents that refresh tokens expire after 7 days (except basic identity-only scopes). Before relying on long-lived authorization, configure the app's publishing/verification state appropriately and confirm the impact of Calendar scopes. Add Angélica as a test user during development if the consent screen is External/Testing.
+For an External OAuth consent screen left in Testing, Google documents that refresh tokens for non-basic scopes expire after 7 days. This is acceptable only for short development tests; it is not a durable production setup. Before relying on long-lived authorization, configure the app's publishing/verification state appropriately and confirm the impact of Calendar scopes. Add Angélica as a test user during development if the consent screen is External/Testing.
+
+## Google Cloud Console setup sequence
+1. In Google Cloud Console, select an existing project dedicated to this integration or create one; record its Project ID.
+2. Enable **Google Calendar API** for that project.
+3. Configure Google Auth Platform / OAuth consent screen. Use **External** if Angélica's consumer Gmail account is outside the Cloud project's Workspace organization. During development, keep the app in Testing and add `angelikm19@gmail.com` as a test user.
+4. Add the app name, support email, developer contact email, and the required application/privacy-policy details. Do not claim verification or production readiness at this stage.
+5. Create a **Web application** OAuth client. Register the exact Apps Script OAuth2 library callback URI from `getRedirectUri()` as an authorized redirect URI. No JavaScript origin is needed for the server-side Apps Script flow.
+6. Enable the Calendar API and configure only the two narrow scopes listed above.
+7. Store the Client ID and Client Secret in Apps Script Script Properties; do not send the secret in chat or commit it.
+8. Angélica completes consent later from her own signed-in Google account.
 
 ## Setup required before live authorization
 - Google Cloud project selected/created and Google Calendar API enabled.

@@ -40,10 +40,10 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
               setMobileMenuOpen(false);
             }}
           >
-            <div className="w-[150px] h-[150px] flex items-center justify-center shrink-0">
+            <div className="w-[150px] h-[150px] rounded-full border-2 border-[#D4AF37] overflow-hidden flex items-center justify-center shrink-0 bg-white">
               <img
                 alt="Espaço Angelica do Carmo Logo"
-                className="w-[150px] h-[150px] object-contain"
+                className="w-full h-full rounded-full object-cover"
                 width={150}
                 height={150}
                 src={BRAND_ASSETS.logoRoundEmblem}

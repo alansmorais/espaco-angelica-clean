@@ -35,14 +35,58 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
   return (
     <section className="relative w-full px-4 sm:px-8 lg:px-12 py-12 sm:py-16 bg-[#FBF7F2]" id="catalogo-vitrine">
       <div className="max-w-6xl mx-auto">
+        {/* Header & Filter */}
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 sm:mb-12">
+          <div>
+            <div className="flex items-center gap-1.5 text-[#D4AF37] mb-1">
+              <span className="font-jakarta text-[11px] uppercase tracking-widest font-bold">
+                Menu de Experiências &amp; Fotografia Real
+              </span>
+            </div>
+            <h2 className="font-syne text-2xl sm:text-3xl md:text-4xl text-[#49382E] font-bold">
+              Vitrine de Procedimentos
+            </h2>
+            <p className="font-jakarta text-xs sm:text-sm text-[#786C63] max-w-xl mt-2 leading-relaxed">
+              Fotos reais dos procedimentos executados no Espaço. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
+            </p>
+          </div>
+
+          {/* Dynamic Filter Chips - Smooth horizontal scroll on mobile, wrap on tablet/desktop */}
+          <div className="flex flex-wrap items-center justify-center gap-1.5 bg-[#FFFFFF] p-2 rounded-2xl border border-[#E8D9B5] w-full lg:w-auto lg:max-w-[560px] self-stretch shadow-xs">
+            {[
+              { id: 'all', label: `Todos (${activeServices.length})` },
+              { id: 'gel', label: 'Procedimentos em gel' },
+              { id: 'manicure', label: 'Manicure' },
+              { id: 'pedicure', label: 'Pedicure' },
+              { id: 'alongamento', label: 'Alongamento' },
+              { id: 'depilacao', label: 'Depilação' },
+              { id: 'spa', label: 'Spa & Cuidados' }
+            ].map(cat => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveCategory(cat.id)}
+                className={`flex-1 min-w-[112px] px-3 py-2.5 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-normal text-center leading-tight min-h-[44px] flex items-center justify-center active:scale-95 ${
+                  activeCategory === cat.id
+                    ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
+                    : 'text-[#786C63] hover:text-[#49382E]'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+
         {/* Main price menu followed by the selected service's submenu */}
         <div className="mb-10 sm:mb-14">
           <div className="mb-5">
             <span className="font-jakarta text-[11px] uppercase tracking-widest font-bold text-[#D4AF37]">
-              Menu de serviços
+              Procedimentos em destaque
             </span>
             <h2 className="font-syne text-2xl sm:text-3xl text-[#49382E] font-bold mt-1">
-              Escolha o procedimento
+              Escolha uma opção para consultar os valores
             </h2>
           </div>
 
@@ -107,49 +151,6 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
             <p className="font-jakarta text-[10px] sm:text-xs text-[#786C63] mt-4">
               Os valores dos adicionais são somados ao procedimento principal.
             </p>
-          </div>
-        </div>
-
-        {/* Header & Filter */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 sm:mb-12">
-          <div>
-            <div className="flex items-center gap-1.5 text-[#D4AF37] mb-1">
-              <span className="font-jakarta text-[11px] uppercase tracking-widest font-bold">
-                Menu de Experiências &amp; Fotografia Real
-              </span>
-            </div>
-            <h2 className="font-syne text-2xl sm:text-3xl md:text-4xl text-[#49382E] font-bold">
-              Vitrine de Procedimentos
-            </h2>
-            <p className="font-jakarta text-xs sm:text-sm text-[#786C63] max-w-xl mt-2 leading-relaxed">
-              Fotos reais dos procedimentos executados no Espaço. Selecione o serviço ideal para a saúde e beleza das suas mãos. Todas as sessões incluem cutilagem combinada e acabamento autoral de alta precisão.
-            </p>
-          </div>
-
-          {/* Dynamic Filter Chips - Smooth horizontal scroll on mobile, wrap on tablet/desktop */}
-          <div className="flex flex-wrap items-center justify-center gap-1.5 bg-[#FFFFFF] p-2 rounded-2xl border border-[#E8D9B5] w-full lg:w-auto lg:max-w-[560px] self-stretch shadow-xs">
-            {[
-              { id: 'all', label: `Todos (${activeServices.length})` },
-              { id: 'gel', label: 'Procedimentos em gel' },
-              { id: 'manicure', label: 'Manicure' },
-              { id: 'pedicure', label: 'Pedicure' },
-              { id: 'alongamento', label: 'Alongamento' },
-              { id: 'depilacao', label: 'Depilação' },
-              { id: 'spa', label: 'Spa & Cuidados' }
-            ].map(cat => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setActiveCategory(cat.id)}
-                className={`flex-1 min-w-[112px] px-3 py-2.5 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-normal text-center leading-tight min-h-[44px] flex items-center justify-center active:scale-95 ${
-                  activeCategory === cat.id
-                    ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
-                    : 'text-[#786C63] hover:text-[#49382E]'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
           </div>
         </div>
 

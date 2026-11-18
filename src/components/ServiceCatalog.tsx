@@ -35,7 +35,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
     <section className="relative w-full px-4 sm:px-8 lg:px-12 py-12 sm:py-16 bg-[#FBF7F2]" id="catalogo-vitrine">
       <div className="max-w-6xl mx-auto">
         {/* Header & Filter */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 sm:mb-12">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8 sm:mb-12">
           <div>
             <div className="flex items-center gap-1.5 text-[#D4AF37] mb-1">
               <span className="font-jakarta text-[11px] uppercase tracking-widest font-bold">
@@ -51,7 +51,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
           </div>
 
           {/* Dynamic Filter Chips - Smooth horizontal scroll on mobile, wrap on tablet/desktop */}
-          <div className="flex flex-nowrap md:flex-wrap items-center gap-1.5 bg-[#FFFFFF] p-1.5 rounded-full border border-[#E8D9B5] self-stretch md:self-auto overflow-x-auto max-w-full shadow-xs scrollbar-none snap-x touch-pan-x">
+          <div className="flex flex-wrap items-center justify-center gap-1.5 bg-[#FFFFFF] p-2 rounded-2xl border border-[#E8D9B5] w-full lg:w-auto lg:max-w-[560px] self-stretch shadow-xs">
             {[
               { id: 'all', label: `Todos (${activeServices.length})` },
               { id: 'gel', label: 'Procedimentos em gel' },
@@ -65,7 +65,7 @@ export const ServiceCatalog: React.FC<ServiceCatalogProps> = ({
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCategory(cat.id)}
-                className={`px-4 py-2 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-nowrap min-h-[44px] flex items-center shrink-0 snap-start active:scale-95 ${
+                className={`flex-1 min-w-[112px] px-3 py-2.5 rounded-full font-jakarta text-[11px] sm:text-[12px] font-semibold transition-all cursor-pointer whitespace-normal text-center leading-tight min-h-[44px] flex items-center justify-center active:scale-95 ${
                   activeCategory === cat.id
                     ? 'bg-[#D4AF37] text-[#3C2F00] shadow-xs font-bold'
                     : 'text-[#786C63] hover:text-[#49382E]'

@@ -31,7 +31,7 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
   return (
     <>
       <header className="fixed top-0 left-0 right-0 w-full z-50 bg-[#FFFFFF]/90 backdrop-blur-xl border-b border-[#E8D9B5] shadow-[0_4px_20px_rgba(73,56,46,0.06)]">
-        <div className="max-w-7xl mx-auto h-16 sm:h-20 px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-4">
+        <div className="max-w-7xl mx-auto h-[160px] px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-4">
           {/* Brand Lockup */}
           <div
             className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 sm:flex-initial cursor-pointer select-none"
@@ -40,11 +40,13 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
               setMobileMenuOpen(false);
             }}
           >
-            <div className="p-1 sm:p-1.5 rounded-xl bg-[#0B0A0A] border border-[#E8D9B5] shadow-sm flex items-center justify-center shrink-0">
+            <div className="w-[150px] h-[150px] rounded-full border-2 border-[#D4AF37] overflow-hidden flex items-center justify-center shrink-0 bg-white">
               <img
                 alt="Espaço Angelica do Carmo Logo"
-                className="h-6 sm:h-8 w-auto object-contain drop-shadow"
-                src={BRAND_ASSETS.logoGold}
+                className="w-full h-full rounded-full object-cover"
+                width={150}
+                height={150}
+                src={BRAND_ASSETS.logoRoundEmblem}
               />
             </div>
             <div className="flex flex-col min-w-0">
@@ -149,7 +151,7 @@ export const HeaderPublic: React.FC<HeaderPublicProps> = ({
           />
 
           {/* Menu Card */}
-          <div className="fixed top-16 sm:top-20 left-0 right-0 bg-[#FFFFFF] border-b border-[#E8D9B5] p-4 sm:p-5 shadow-2xl max-h-[calc(100vh-4rem)] sm:max-h-[85vh] overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 animate-fadeIn">
+          <div className="fixed top-[160px] left-0 right-0 bg-[#FFFFFF] border-b border-[#E8D9B5] p-4 sm:p-5 shadow-2xl max-h-[calc(100vh-4rem)] sm:max-h-[85vh] overflow-y-auto overscroll-contain space-y-3 sm:space-y-4 animate-fadeIn">
             <div className="grid grid-cols-1 gap-2">
               <button
                 onClick={() => handleNavClick(onOpenBooking)}

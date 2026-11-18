@@ -16,6 +16,7 @@ import {
   OFFICIAL_DURATION_MISSING_ERROR
 } from '../services/durationService';
 import { triggerNewPreBookingEmailNotification, lookupPublicClientByPhone, fetchPublicAvailability } from '../services/emailNotificationService';
+import { isServiceInCategory } from '../services/catalogService';
 
 interface BookingWizardProps {
   selectedService: Service;
@@ -212,7 +213,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const hours = Number(match[1]), minutes = Number(match[2]);
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
-  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id);
+  const selectedIsGel = isServiceInCategory(selectedService, 'gel');
+  const selectedIsExtension = isServiceInCategory(selectedService, 'alongamento');
+  const supportsAddons = selectedIsGel || selectedIsExtension;
+  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id && (selectedIsGel ? isServiceInCategory(service, 'gel') : selectedIsExtension && isServiceInCategory(service, 'alongamento')));
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
@@ -903,20 +907,21 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       if (/manicure|\bmaos\b|\bmao\b|esmalta|cuticula|cutilagem/.test(combined)) return 'Manicure';
                       if (category.includes('depil')) return 'Depilação';
                       if (category.includes('spa')) return 'Spa & Cuidados';
-                      if (/alongamento|blindagem|\bgel\b|fibra/.test(combined)) return 'Unha em gel';
+                      if (/alongamento|fibra/.test(combined) || isServiceInCategory(service, 'alongamento')) return 'Alongamentos';
+                      if (isServiceInCategory(service, 'gel') || /blindagem|\\bgel\\b/.test(combined)) return 'Procedimentos em gel';
                       return service.category || 'Outros procedimentos';
                     };
                     // Nail Art is an optional add-on, never a primary procedure.
                     const activeServices = services.filter(service =>
                       service.active !== false && !/nail\s*art|nailart/i.test(String(service.title || ''))
                     );
-                    const preferredOrder = ['Manicure', 'Pedicure', 'Unha em gel'];
+                    const preferredOrder = ['Manicure', 'Pedicure', 'Procedimentos em gel', 'Alongamentos'];
                     const groups = Array.from(new Set([...preferredOrder, ...activeServices.map(classifyService)]));
                     return groups.map(group => {
                       const groupServices = activeServices.filter(service => classifyService(service) === group);
                       return <section key={group} className="space-y-2">
                         <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
-                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
+                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(false); }}
                           className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
                           <span className="block font-semibold text-[#49382E]">{service.title}</span>
                           <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
@@ -926,18 +931,20 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     });
                   })()}
                 </div>
-                <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                      <p className="text-[11px] text-[#786C63]">Adicione um ou mais serviços do catálogo ao mesmo agendamento.</p>
+                {supportsAddons && (
+                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-syne font-semibold text-sm text-[#49382E]">Personalize seu procedimento</h4>
+                        <p className="text-[11px] text-[#786C63]">Escolha os adicionais compatíveis com {selectedIsGel ? 'este procedimento em gel' : 'este alongamento'}.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
+                        {additionalServiceIds.length ? `Editar (${additionalServiceIds.length})` : 'Personalizar'}
+                      </button>
                     </div>
-                    <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
-                      {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
-                    </button>
+                    {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
                   </div>
-                  {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                </div>
+                )}
                 <div className="pt-2 space-y-2">
                   {!isDurationValid && (
                     <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
@@ -1369,14 +1376,18 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 </div>
                 <p className="text-[10px] text-[#786C63]">Escolha entre os serviços ativos cadastrados no sistema. Os preços são os valores oficiais carregados do cadastro.</p>
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                {showAddAnotherPrompt && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[125] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Adicionar outro serviço" className="w-full max-w-sm rounded-2xl bg-white border border-[#E8D9B5] p-6 shadow-2xl text-center space-y-3"><h4 className="font-syne text-lg font-semibold text-[#49382E]">Deseja adicionar outro serviço?</h4><p className="text-sm text-[#786C63]">Você pode combinar mais de um procedimento no mesmo agendamento.</p><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setShowAdditionalServices(true); }} className="w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#3C2F00]">Sim, adicionar outro serviço</button><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full border border-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Não, continuar</button></div></div>, document.body)}
-                {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
-                  <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
-                    <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
-                    <p className="text-xs text-[#786C63] mb-3">Adicionais opcionais: escolha Nail Art, francesinha em gel ou outro serviço, se desejar. Os valores oficiais vêm do catálogo; Nail Art e francesinha são cobradas à parte.</p>
-                    {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="accent-[#D4AF37]" /><span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span><span className="block text-[10px] text-[#9A7A28]">Opcional · adicional ao procedimento principal</span></span><span className="font-semibold whitespace-nowrap">{/nail\s*art|francesinha/i.test(service.title) ? `A partir de ${service.priceFormatted}` : service.priceFormatted}</span></label>)}
-                    {eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há outros serviços ativos cadastrados.</p>}
-                    <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
+                {showAdditionalServices && bookingStep === 3 && supportsAddons && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/65 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdditionalServices(false)}>
+                  <div role="dialog" aria-modal="true" aria-label="Personalizar procedimento" onClick={event => event.stopPropagation()} className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl bg-[#FBF7F2] border border-[#E8D9B5] shadow-2xl">
+                    <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-3xl bg-[#FBF7F2] border-b border-[#E8D9B5] p-5 sm:p-6">
+                      <div><span className="font-jakarta text-[10px] uppercase tracking-widest font-bold text-[#D4AF37]">Personalização</span><h4 className="mt-1 font-syne text-xl font-bold text-[#49382E]">Personalize seu procedimento</h4><p className="mt-1 text-xs text-[#786C63]">{selectedService.title}</p></div>
+                      <button type="button" aria-label="Fechar personalização" onClick={() => setShowAdditionalServices(false)} className="w-10 h-10 shrink-0 rounded-full border border-[#E8D9B5] bg-white text-xl text-[#49382E] hover:bg-[#F7EFEA]">×</button>
+                    </div>
+                    <div className="p-5 sm:p-6">
+                      <p className="mb-3 text-xs leading-relaxed text-[#786C63]">Selecione os adicionais disponíveis para este grupo. Os valores são carregados do catálogo oficial do Espaço Angélica.</p>
+                      {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-3 py-4 border-b border-[#E8D9B5] text-sm cursor-pointer"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="mt-1 h-4 w-4 accent-[#D4AF37]" /><span className="flex-1 min-w-0"><span className="block font-semibold text-[#49382E]">{service.title}</span>{service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}</span><span className="whitespace-nowrap font-semibold text-[#49382E]">{service.priceFormatted}</span></label>)}
+                      {eligibleAdditionalServices.length === 0 && <p className="rounded-xl border border-dashed border-[#E8D9B5] bg-white p-5 text-center text-xs text-[#786C63]">Ainda não há adicionais ativos cadastrados para este grupo no catálogo oficial.</p>}
+                    </div>
+                    <div className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-3xl border-t border-[#E8D9B5] bg-white p-5"><div><span className="block text-[10px] uppercase tracking-wider text-[#786C63]">Novo total</span><strong className="font-syne text-lg text-[#49382E]">R$ {formatBRL(servicePrice)}</strong><span className="block text-[10px] text-[#786C63]">Sinal de 40%: R$ {formatBRL(standardDeposit)}</span></div><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full bg-[#D4AF37] px-6 py-3 font-jakarta text-sm font-bold text-[#3C2F00] shadow-sm">Confirmar seleção</button></div>
                   </div>
                 </div>, document.body)}
                 <label className="block text-xs font-semibold text-[#49382E]">Pedido personalizado (opcional)

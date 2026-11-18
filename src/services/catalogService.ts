@@ -112,9 +112,13 @@ export function isServiceInCategory(service: Service, categoryId: string): boole
   if (categoryId === 'spa') {
     return (
       cat === 'spa' ||
+      cat === 'cuidados' ||
+      cat === 'spa-cuidados' ||
       id.includes('spa') ||
+      id.includes('cuidados') ||
       title.includes('spa') ||
-      title.includes('massagem')
+      title.includes('massagem') ||
+      title.includes('cuidados')
     );
   }
 

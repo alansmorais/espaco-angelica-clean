@@ -2,7 +2,7 @@ name: Build and publish GitHub Pages preview
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'preview/**']
   workflow_dispatch:
 
 permissions:

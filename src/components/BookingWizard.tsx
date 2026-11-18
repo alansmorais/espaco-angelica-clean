@@ -213,10 +213,10 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const hours = Number(match[1]), minutes = Number(match[2]);
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
-  const selectedIsGel = isServiceInCategory(selectedService, 'gel');
   const selectedIsExtension = isServiceInCategory(selectedService, 'alongamento');
+  const selectedIsGel = !selectedIsExtension && isServiceInCategory(selectedService, 'gel');
   const supportsAddons = selectedIsGel || selectedIsExtension;
-  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id && (selectedIsGel ? isServiceInCategory(service, 'gel') : selectedIsExtension && isServiceInCategory(service, 'alongamento')));
+  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id && (selectedIsExtension ? isServiceInCategory(service, 'alongamento') : selectedIsGel && !isServiceInCategory(service, 'alongamento') && isServiceInCategory(service, 'gel')));
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;

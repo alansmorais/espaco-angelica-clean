@@ -923,7 +923,7 @@ export default function App() {
           />
 
           {/* Main Public Content */}
-          <main className="w-full pt-20 flex-1">
+          <main className="w-full pt-[168px] flex-1">
             {/* Hero Section with Official Gold Logo and Badges */}
             <HeroSection
               onStartBooking={() => setBookingModalOpen(true)}

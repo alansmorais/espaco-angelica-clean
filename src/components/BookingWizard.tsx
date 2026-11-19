@@ -218,7 +218,51 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   useEffect(() => {
     if (bookingStep === 1 && supportsAddons) setShowAdditionalServices(true);
   }, [bookingStep, supportsAddons]);
-  const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id && (selectedIsExtension ? isServiceInCategory(service, 'alongamento') : selectedIsGel && !isServiceInCategory(service, 'alongamento') && isServiceInCategory(service, 'gel')));
+
+  // Add-ons follow Angélica's exact price list. Duration still comes only
+  // from the official service catalog (Google Sheets, column F).
+  const addonRules = selectedIsExtension
+    ? [
+        { label: 'Esmaltação em Gel', price: 25, matches: ['esmaltacao em gel'] },
+        { label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30, matches: ['esmaltacao em gel + decoracao simples', 'esmaltacao em gel com decoracao simples'] },
+        { label: 'Esmaltação tradicional (esmalte comum)', price: 15, matches: ['esmaltacao tradicional', 'esmalte comum'] },
+        { label: 'Baby boomer', price: 30, matches: ['baby boomer'] },
+        { label: 'Encapsulada', price: 30, matches: ['encapsulada'] },
+        { label: 'Cromado', price: 30, matches: ['cromado'] },
+        { label: 'Espelhado', price: 30, matches: ['espelhado'] },
+        { label: 'Olho de gato', price: 30, matches: ['olho de gato'] },
+        { label: 'Degradê', price: 30, matches: ['degrade'] },
+        { label: 'Marmorizado', price: 30, matches: ['marmorizado'] },
+        { label: 'Holográfico', price: 30, matches: ['holografico'] },
+        { label: 'Reversa 3D (por unidade)', price: 40, matches: ['reversa 3d'] }
+      ]
+    : [
+        { label: 'Esmaltação em Gel', price: 25, matches: ['esmaltacao em gel'] },
+        { label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30, matches: ['esmaltacao em gel + decoracao simples', 'esmaltacao em gel com decoracao simples'] },
+        { label: 'Esmaltação tradicional (esmalte comum)', price: 15, matches: ['esmaltacao tradicional', 'esmalte comum'] },
+        { label: 'Encapsulada', price: 30, matches: ['encapsulada'] },
+        { label: 'Cromado', price: 30, matches: ['cromado'] },
+        { label: 'Espelhado', price: 30, matches: ['espelhado'] },
+        { label: 'Olho de gato', price: 30, matches: ['olho de gato'] },
+        { label: 'Degradê', price: 30, matches: ['degrade'] },
+        { label: 'Marmorizado', price: 30, matches: ['marmorizado'] },
+        { label: 'Holográfico', price: 30, matches: ['holografico'] }
+      ];
+  const normalizeAddonName = (value: string) => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+  const eligibleAdditionalServices = addonRules.flatMap(rule => {
+    const match = services.find(service => {
+      if (service.active === false || service.id === selectedService.id) return false;
+      if (selectedIsExtension ? !isServiceInCategory(service, 'alongamento') : isServiceInCategory(service, 'alongamento') || !isServiceInCategory(service, 'gel')) return false;
+      const title = normalizeAddonName(service.title);
+      return rule.matches.some(alias => title.includes(alias));
+    });
+    return match ? [{
+      ...match,
+      title: rule.label,
+      price: rule.price,
+      priceFormatted: `R$ ${formatBRL(rule.price)}`
+    }] : [];
+  });
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
@@ -915,7 +959,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
-                        <p className="mt-1 text-xs text-[#786C63]">Adicione serviços opcionais antes de continuar.</p>
+                        <p className="mt-1 text-xs text-[#786C63]">Você pode selecionar vários adicionais. Os valores seguem a tabela oficial do Espaço.</p>
                       </div>
                       <button type="button" onClick={() => setShowAdditionalServices(value => !value)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
                         {showAdditionalServices ? 'Ocultar opções' : 'Ver adicionais'}
@@ -939,7 +983,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                             <strong className="whitespace-nowrap text-[#49382E]">{service.priceFormatted}</strong>
                           </label>
                         ))}
-                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Ainda não há adicionais ativos cadastrados para este grupo.</p>}
+                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Os adicionais desta lista precisam estar cadastrados na planilha oficial com duração preenchida para aparecerem aqui.</p>}
                         <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-2 w-full rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00]">Confirmar adicionais</button>
                       </div>
                     )}

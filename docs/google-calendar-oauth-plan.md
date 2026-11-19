@@ -1,81 +1,63 @@
-# Google Calendar integration plan — Espaço Angélica
+# Google Calendar integration — shared calendar access
 
-## Confirmed decisions
-- Implement on `feature/google-calendar-sync-preview` only.
+## Confirmed architecture
+
+- Implement only on `feature/google-calendar-sync-preview`.
+- The calendar has already been shared with the account that will operate the integration.
+- Use the native Google Apps Script `CalendarApp` service under the Apps Script project's execution identity.
+- The Apps Script execution account must be the account that received the calendar share, with **Make changes to events** permission.
+- No Google Cloud project, OAuth client, OAuth consent screen, OAuth2 library, or separate Angélica consent flow is required for this shared-calendar model.
 - Keep the existing Google Sheets workbook as the booking source of truth.
-- Keep service durations sourced from column F of the official service catalogue.
-- Angélica authorizes the app directly with `angelikm19@gmail.com`; do not ask her to share the calendar with Alan's personal Google account.
-- Do not modify the live Apps Script deployment, live spreadsheet, production website, or create real calendar events during development.
-- WhatsApp/Meta Business Agent integration is a later phase.
+- Resolve service durations from column F of the official service catalogue.
+- Do not modify the live Apps Script deployment, official spreadsheet, production website, or real Calendar events during development.
 
-## Identity and OAuth architecture
-The existing Apps Script web app is deployed to execute as its owner. Calls made with that execution identity do not automatically act as Angélica. Calendar access must therefore use a separate OAuth 2.0 authorization grant from Angélica.
+## Configuration
 
-Use the official Google Apps Script OAuth2 library with its authorization-code flow and `/usercallback` endpoint (rather than inventing a redirect URL). The library's documented redirect format is `https://script.google.com/macros/d/{SCRIPT_ID}/usercallback`; obtain the exact value from the library service's `getRedirectUri()` once added to the Apps Script project. The library script ID is `1B7FSrk5Zi6L1rSxxTDgDEUsPzlukDsi4KGuTMorsTQHhGBzBkMun4iDF`.
+Set the Script Property `GOOGLE_CALENDAR_ID` in the Apps Script project to the exact ID of the shared calendar. Do not assume the owner's email address is the calendar ID; use the Calendar settings' calendar ID or the exact ID supplied by the owner.
 
-Use an OAuth 2.0 web-server authorization-code flow:
-1. Admin opens a protected "Conectar Google Calendar" screen.
-2. Backend generates a one-time state value and redirects Angélica to Google's consent page.
-3. Google redirects to the registered Apps Script callback.
-4. Backend validates state, exchanges the authorization code, and securely stores the refresh token.
-5. Backend refreshes access tokens as needed and calls Calendar API server-side only.
-6. UI shows connection status and the authorized account email; never expose refresh/access tokens to the browser.
+The project must be authorized to use the Apps Script Calendar service by its execution account. If `CalendarApp.getCalendarById` returns null or permission errors, verify:
+1. The Apps Script project/deployment executes as the account that received the share.
+2. That account has **Make changes to events** permission.
+3. `GOOGLE_CALENDAR_ID` is the exact shared calendar ID.
+4. The Apps Script project has been authorized for Calendar access.
 
-Use the Apps Script OAuth2 library (official Apps Script external-service guide documents the library approach). Store OAuth client secret and refresh token only in Script Properties or another server-side secret store. Never commit credentials or return them in JSON responses/logs.
+## Implemented development preview
 
-## Candidate minimum Calendar scopes
-- `https://www.googleapis.com/auth/calendar.events.owned` — create, view, update, and delete events on calendars Angélica owns.
-- `https://www.googleapis.com/auth/calendar.events.freebusy` — query availability for calendars she can access.
+The development copy of `apps-script/Code.gs` now contains:
+- `getSharedCalendar_()`: resolves the shared calendar from `GOOGLE_CALENDAR_ID`.
+- `getCalendarSyncPreview(data)`: reads events in a requested date range (defaults to 90 days back and 180 days forward), returning event IDs, titles, start/end times, all-day status, calendar name, and timezone.
+- Protected POST action `getCalendarSyncPreview`.
 
-Confirm the exact API method compatibility and consent-screen requirements during implementation. Do not request full `calendar` scope unless a required operation cannot be performed with narrower scopes.
+This action is strictly read-only. It does not write to Sheets, create/update/delete Calendar events, or import historical appointments. It is not deployed to the live Apps Script web app.
 
-## Calendar behavior
-- Query Google Calendar busy intervals before offering a slot.
-- Resolve the exact duration separately for each selected service and each additional service from the official service catalogue (column F); do not assume a fixed duration or accept duration supplied by the browser or a future WhatsApp agent. The 13:00–16:00 / three-hour case is illustrative only.
-- Check the entire requested interval, including overlap with existing Sheets bookings and Google Calendar busy intervals.
-- On confirmed booking, persist the booking in Sheets and create one Calendar event covering the complete duration. Do not create a second "block" event.
-- Store the resulting Google Calendar event ID against the booking record in a dedicated, explicitly approved field/column after reviewing the real sheet schema. Do not repurpose an existing column without confirmation.
-- On edit, update the matching Calendar event. On cancellation/deletion, cancel/delete only the event linked to that booking ID.
-- Make create/update/cancel operations idempotent and reconcile partial failures (e.g. sheet write succeeds but Calendar API fails) without silently reporting success.
-- Use the studio's configured timezone consistently; verify it from the official settings before coding.
+## Next implementation stages
 
-## Preview and test safety
-- Preview must remain read-only and disconnected from production mutations.
-- Do not call known side-effecting availability/schedule reads against production from preview.
-- Use a dedicated test calendar and isolated test spreadsheet/backend for integration tests.
-- Never import historical appointments or create real events without explicit owner approval.
-- Do not replace the deployed Apps Script with this repository copy. The repository's `apps-script/Code.gs` is a development copy only.
+1. Verify the preview can read the shared calendar using the actual Apps Script execution account.
+2. Build a reconciliation preview that compares Calendar events against Sheet rows without writing.
+3. Confirm the real `Agendamentos` header layout and identify a safe dedicated Calendar Event ID field. Never repurpose an existing column.
+4. After explicit approval, import only approved real bookings into rows after the existing data (currently expected to begin at row 25), with duplicate protection.
+5. Resolve each procedure's duration from the official service catalogue column F.
+6. Correct Calendar event end times only after a dry-run report has been reviewed and approved.
+7. Make ongoing create/update/cancel synchronization idempotent and reconcile partial failures.
 
-## OAuth publishing caveat
-For an External OAuth consent screen left in Testing, Google documents that refresh tokens for non-basic scopes expire after 7 days. This is acceptable only for short development tests; it is not a durable production setup. Before relying on long-lived authorization, configure the app's publishing/verification state appropriately and confirm the impact of Calendar scopes. Add Angélica as a test user during development if the consent screen is External/Testing.
+## Reconciliation rules
 
-## Google Cloud Console setup sequence
-1. In Google Cloud Console, select an existing project dedicated to this integration or create one; record its Project ID.
-2. Enable **Google Calendar API** for that project.
-3. Configure Google Auth Platform / OAuth consent screen. Use **External** if Angélica's consumer Gmail account is outside the Cloud project's Workspace organization. During development, keep the app in Testing and add `angelikm19@gmail.com` as a test user.
-4. Add the app name, support email, developer contact email, and the required application/privacy-policy details. Do not claim verification or production readiness at this stage.
-5. Create a **Web application** OAuth client. Register the exact Apps Script OAuth2 library callback URI from `getRedirectUri()` as an authorized redirect URI. No JavaScript origin is needed for the server-side Apps Script flow.
-6. Enable the Calendar API and configure only the two narrow scopes listed above.
-7. Store the Client ID and Client Secret in Apps Script Script Properties; do not send the secret in chat or commit it.
-8. Angélica completes consent later from her own signed-in Google account.
+- Do not import all-day entries such as `Folga` as customer appointments.
+- Do not import explicit test events.
+- Match existing Sheet rows conservatively using event ID where available, otherwise a normalized combination of client, date, start time, and service; report ambiguous matches instead of guessing.
+- Keep the Sheet as the authoritative source for procedure duration.
+- Calculate event end as event start plus the official duration; never assume a one-hour default.
+- Preserve event title, description, location, recurrence, and other Calendar metadata unless a specific change is approved.
+- Never delete or cancel an event merely because it is absent from the Sheet.
+- Do not change rows 1–24 or overwrite any existing booking.
+- Treat cancelled Sheet bookings and Calendar cancellations explicitly; never silently infer deletion.
 
-## Setup required before live authorization
-- Google Cloud project selected/created and Google Calendar API enabled.
-- OAuth consent screen configured with app name, support contact, privacy policy and authorized domains as required.
-- OAuth client ID/secret for a Web application.
-- Exact Apps Script callback URL registered as an authorized redirect URI.
-- Angélica's account added as a test user if applicable.
-- OAuth client secret and library configuration stored server-side.
-- Dedicated test calendar and isolated test backend available.
+## Safety and acceptance
 
-## Acceptance tests
-1. OAuth connects specifically as `angelikm19@gmail.com`.
-2. Backend reports connected/disconnected state without leaking credentials.
-3. Busy time blocks a candidate slot.
-4. A 3-hour service at 13:00 creates exactly one event from 13:00 to 16:00.
-5. Sheets duration remains authoritative even if a client submits a different duration.
-6. Existing Sheets bookings and Calendar busy events both prevent overlap.
-7. Editing a booking updates the same event ID.
-8. Cancellation removes/cancels only the linked event.
-9. Retry after partial failure does not create duplicate events.
-10. Production remains untouched until explicit approval.
+- Preview branch only; no production deployment or live writes without explicit approval.
+- Read-only preview must show the shared calendar identity and the exact range checked.
+- Dry-run reconciliation must report matched, calendar-only, sheet-only, skipped all-day, skipped test, and ambiguous records.
+- A service's Calendar interval must equal the official duration from column F.
+- A retry must not create duplicate Sheet rows or Calendar events.
+- Edits must update only the linked event; cancellations must affect only the event linked to that booking.
+- Production remains untouched until the owner explicitly approves deployment and synchronization.

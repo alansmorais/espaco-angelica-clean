@@ -67,7 +67,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     return new Date(studioToday.getFullYear(), studioToday.getMonth(), 1);
   });
   const [selectedTime, setSelectedTime] = useState<string>('');
-  const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [bookingStep, setBookingStep] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [activeAppointments, setActiveAppointments] = useState<Appointment[]>(appointments);
   const [activeBlockedDates, setActiveBlockedDates] = useState<string[]>(blockedDates);
 
@@ -216,6 +216,9 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const selectedIsExtension = isServiceInCategory(selectedService, 'alongamento');
   const selectedIsGel = !selectedIsExtension && isServiceInCategory(selectedService, 'gel');
   const supportsAddons = selectedIsGel || selectedIsExtension;
+  useEffect(() => {
+    if (bookingStep === 3 && supportsAddons) setShowAdditionalServices(true);
+  }, [bookingStep, supportsAddons]);
   const eligibleAdditionalServices = services.filter(service => service.active !== false && service.id !== selectedService.id && (selectedIsExtension ? isServiceInCategory(service, 'alongamento') : selectedIsGel && !isServiceInCategory(service, 'alongamento') && isServiceInCategory(service, 'gel')));
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
   const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
@@ -921,7 +924,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       const groupServices = activeServices.filter(service => classifyService(service) === group);
                       return <section key={group} className="space-y-2">
                         <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
-                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(false); }}
+                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAddAnotherPrompt(false); setShowAdditionalServices(isServiceInCategory(service, 'gel') || isServiceInCategory(service, 'alongamento')); }}
                           className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
                           <span className="block font-semibold text-[#49382E]">{service.title}</span>
                           <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
@@ -952,7 +955,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     </div>
                   )}
                   <p className="text-[11px] text-[#786C63]">Depois de escolher um procedimento, você pode adicionar outros serviços ao mesmo atendimento ou seguir para escolher data e horário.</p>
-                  <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) return; setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full bg-[#D4AF37] disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-bold text-[#3C2F00]">Continuar para data e horário</button>
+                  <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) return; setShowAddAnotherPrompt(false); setBookingStep(1); }} className="w-full rounded-full bg-[#D4AF37] disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-bold text-[#3C2F00]">Continuar para seus dados</button>
                 </div>
               </div>
             )}

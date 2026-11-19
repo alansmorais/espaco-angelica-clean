@@ -178,29 +178,29 @@ function _casReadServiceDurations_(ss) {
 function _casParseDuration_(value) {
   var s = String(value || "").toLowerCase().trim();
   if (!s) return null;
-  var h = s.match(/(\\d+)\\s*h/);
-  var m = s.match(/(\\d+)\\s*(?:min|m\\b)/);
+  var h = s.match(/(\d+)\s*h/);
+  var m = s.match(/(\d+)\s*(?:min|m\b)/);
   var total = (h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0);
-  if (!total && /^\\d+$/.test(s)) total = Number(s);
+  if (!total && /^\d+$/.test(s)) total = Number(s);
   return total > 0 ? total : null;
 }
 
 function _casNormalize_(value) {
-  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\\s+/g, " ");
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
 }
 
 function _casDateKey_(raw, tz, displayed) {
   if (raw instanceof Date && !isNaN(raw.getTime())) return Utilities.formatDate(raw, tz, "yyyy-MM-dd");
   var s = String(displayed || raw || "").trim();
-  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;
-  var br = s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return br ? br[3] + "-" + br[2] + "-" + br[1] : "";
 }
 
 function _casTimeKey_(raw, tz, displayed) {
   if (raw instanceof Date && !isNaN(raw.getTime())) return Utilities.formatDate(raw, tz, "HH:mm");
   var s = String(displayed || raw || "").trim();
-  var m = s.match(/^(\\d{1,2}):(\\d{2})/);
+  var m = s.match(/^(\d{1,2}):(\d{2})/);
   return m ? ("0" + m[1]).slice(-2) + ":" + m[2] : "";
 }

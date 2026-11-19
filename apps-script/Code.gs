@@ -1121,6 +1121,66 @@ function getPublicGalleryPhotosData() {
   }
 }
 
+/**
+ * Google Calendar shared-access integration (development preview).
+ *
+ * Uses the Apps Script execution identity. The account that owns/runs this
+ * Apps Script project must have been granted "Make changes to events" on the
+ * shared calendar. No Google Cloud OAuth client is required for CalendarApp.
+ *
+ * Configure Script Property GOOGLE_CALENDAR_ID with the shared calendar ID.
+ * This preview is read-only: it never writes to Sheets or changes Calendar.
+ */
+function getSharedCalendar_() {
+  var calendarId = String(
+    PropertiesService.getScriptProperties().getProperty("GOOGLE_CALENDAR_ID") || ""
+  ).trim();
+  if (!calendarId) {
+    throw new Error("Configure GOOGLE_CALENDAR_ID nas Propriedades do Script com o ID do calendário compartilhado.");
+  }
+  var calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) {
+    throw new Error("Calendário não encontrado ou sem acesso para a conta que executa este Apps Script. Confirme o ID e o compartilhamento.");
+  }
+  return calendar;
+}
+
+function getCalendarSyncPreview(data) {
+  var calendar = getSharedCalendar_();
+  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var start = data && data.startDate ? new Date(data.startDate + "T00:00:00") : new Date(new Date().getTime() - 90 * 86400000);
+  var end = data && data.endDate ? new Date(data.endDate + "T23:59:59") : new Date(new Date().getTime() + 180 * 86400000);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    throw new Error("Intervalo inválido. Informe startDate e endDate no formato AAAA-MM-DD.");
+  }
+  var events = calendar.getEvents(start, end);
+  var result = events.map(function(event) {
+    var allDay = event.isAllDayEvent();
+    return {
+      eventId: event.getId(),
+      title: event.getTitle(),
+      start: Utilities.formatDate(event.getStartTime(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
+      end: Utilities.formatDate(event.getEndTime(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
+      allDay: allDay,
+      status: "calendar_only_preview"
+    };
+  });
+  return {
+    status: "success",
+    readOnly: true,
+    calendarName: calendar.getName(),
+    calendarId: calendar.getId(),
+    timezone: tz,
+    range: {
+      start: Utilities.formatDate(start, tz, "yyyy-MM-dd"),
+      end: Utilities.formatDate(end, tz, "yyyy-MM-dd")
+    },
+    total: result.length,
+    events: result,
+    message: "Prévia somente leitura. Nenhum dado foi gravado na planilha e nenhum evento foi alterado."
+  };
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -1220,7 +1280,7 @@ function doPost(e) {
     }
 
     // 2. Leitura administrativa segura via POST (token no corpo)
-    if (data.action === "getAppointments") {
+    if (data.action === "getCalendarSyncPreview") {\n      return responseJSON(getCalendarSyncPreview(data));\n    }\n\n    if (data.action === "getAppointments") {
       return fetchAppointmentsFromSheet();
     }
 

@@ -7,6 +7,8 @@
  */
 
 var TARGET_SPREADSHEET_ID = "1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0";
+// Operational timezone for every Espaço Angélica booking and calendar comparison.
+var OFFICIAL_TIME_ZONE = "America/Sao_Paulo";
 // Use the same existing Drive folder that feeds the official portfolio gallery.
 var PHOTO_FOLDER_ID = "1JGypjL9OqGL5i2OUrjiGMKxkWD11YuAw";
 
@@ -106,6 +108,24 @@ function revokeAdminSession(token) {
 function responseJSON(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+
+// One-time configuration helper. Changes only the spreadsheet timezone setting;
+// it does not rewrite, move, or delete any appointment cell values.
+function applyOfficialSpreadsheetTimezone() {
+  var ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
+  var previousTimezone = ss.getSpreadsheetTimeZone();
+  ss.setSpreadsheetTimeZone(OFFICIAL_TIME_ZONE);
+  SpreadsheetApp.flush();
+  return {
+    status: "success",
+    previousTimezone: previousTimezone,
+    spreadsheetTimezone: ss.getSpreadsheetTimeZone(),
+    officialTimezone: OFFICIAL_TIME_ZONE,
+    dataChanged: false,
+    message: "Fuso da planilha definido para America/Sao_Paulo. Nenhuma célula de agendamento foi editada."
+  };
 }
 
 function getOfficialSheet() {
@@ -393,7 +413,7 @@ function getPublicAvailabilityData() {
   var values = sheet.getDataRange().getValues();
   var slots = [];
   var blockedDates = [];
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var tz = OFFICIAL_TIME_ZONE;
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
     if (!row[5]) continue;
@@ -749,7 +769,7 @@ function normalizeBirthDateToISO(val) {
     if (isNaN(val.getTime())) return "";
     try {
       if (typeof Utilities !== "undefined" && Utilities.formatDate) {
-        return Utilities.formatDate(val, Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd");
+        return Utilities.formatDate(val, OFFICIAL_TIME_ZONE, "yyyy-MM-dd");
       }
     } catch (e) {}
     var y = val.getFullYear();
@@ -777,7 +797,7 @@ function normalizeBirthDateToISO(val) {
   if (parsed instanceof Date && !isNaN(parsed.getTime())) {
     try {
       if (typeof Utilities !== "undefined" && Utilities.formatDate) {
-        return Utilities.formatDate(parsed, Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd");
+        return Utilities.formatDate(parsed, OFFICIAL_TIME_ZONE, "yyyy-MM-dd");
       }
     } catch (e) {}
     var y = parsed.getFullYear();
@@ -1162,7 +1182,7 @@ function getCalendarReconciliationPreview(data) {
   var sheet = getOfficialSheet();
   if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
   var values = sheet.getDataRange().getValues();
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var tz = OFFICIAL_TIME_ZONE;
   var sheetRows = [];
 
   for (var i = 1; i < values.length; i++) {
@@ -1282,7 +1302,7 @@ function getCalendarReconciliationPreview(data) {
 
 function getCalendarSyncPreview(data) {
   var calendar = getSharedCalendar_();
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var tz = OFFICIAL_TIME_ZONE;
   var start = data && data.startDate ? new Date(data.startDate + "T00:00:00") : new Date(new Date().getTime() - 90 * 86400000);
   var end = data && data.endDate ? new Date(data.endDate + "T23:59:59") : new Date(new Date().getTime() + 180 * 86400000);
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
@@ -1957,7 +1977,7 @@ function doPost(e) {
 
       var clientPhone = data.clientPhone ? String(data.clientPhone).trim() : "";
       var clientBirthDate = String(data.clientBirthDate || "").trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate) || clientBirthDate > Utilities.formatDate(new Date(), Session.getScriptTimeZone() || "America/Sao_Paulo", "yyyy-MM-dd")) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(clientBirthDate) || clientBirthDate > Utilities.formatDate(new Date(), OFFICIAL_TIME_ZONE, "yyyy-MM-dd")) {
         return responseJSON({ status: "error", persisted: false, message: "A data de nascimento é obrigatória e deve ser uma data válida no passado." });
       }
       var phoneDigits = clientPhone.replace(/\D/g, "");
@@ -2419,7 +2439,7 @@ function isValidBookingTime(timeKey) {
 
 function normalizeBookingTime(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
-    return Utilities.formatDate(value, Session.getScriptTimeZone() || "America/Sao_Paulo", "HH:mm");
+    return Utilities.formatDate(value, OFFICIAL_TIME_ZONE, "HH:mm");
   }
   var text = String(value || "").trim();
   var match = text.match(/^(\d{1,2}):(\d{2})/);
@@ -2434,7 +2454,7 @@ function fetchAppointmentsFromSheet() {
 
   var values = sheet.getDataRange().getValues();
   var appointments = [];
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var tz = OFFICIAL_TIME_ZONE;
 
   for (var i = 1; i < values.length; i++) {
     var row = values[i];

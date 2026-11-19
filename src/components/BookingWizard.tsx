@@ -254,6 +254,8 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       if (service.active === false || service.id === selectedService.id) return false;
       if (selectedIsExtension ? !isServiceInCategory(service, 'alongamento') : isServiceInCategory(service, 'alongamento') || !isServiceInCategory(service, 'gel')) return false;
       const title = normalizeAddonName(service.title);
+      if (rule.label === 'Esmaltação em Gel' && (title.includes('decoracao simples') || title.includes('com decoracao'))) return false;
+      if (rule.label.includes('decoração simples') && !(title.includes('decoracao simples') || title.includes('com decoracao'))) return false;
       return rule.matches.some(alias => title.includes(alias));
     });
     return match ? [{

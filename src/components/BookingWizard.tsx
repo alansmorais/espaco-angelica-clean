@@ -896,66 +896,43 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
             )}
 
             {bookingStep === 1 && (
-              <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-4">
-                <h3 className="font-syne text-lg font-semibold text-[#49382E]">3. Escolhe o procedimento</h3>
-                <p className="text-xs text-[#786C63]">Os preços e as durações são os que estão no catálogo oficial.</p>
-                <div className="space-y-5">
-                  {(() => {
-                    const classifyService = (service: any) => {
-                      const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-                      const category = normalize(service.category);
-                      const title = normalize(service.title);
-                      const combined = category + ' ' + title;
-                      if (/pedicure|\bpes\b|\bpe\b|podologia/.test(combined)) return 'Pedicure';
-                      if (/manicure|\bmaos\b|\bmao\b|esmalta|cuticula|cutilagem/.test(combined)) return 'Manicure';
-                      if (category.includes('depil')) return 'Depilação';
-                      if (category.includes('spa')) return 'Spa & Cuidados';
-                      if (/alongamento|fibra/.test(combined) || isServiceInCategory(service, 'alongamento')) return 'Alongamentos';
-                      if (isServiceInCategory(service, 'gel') || /blindagem|\\bgel\\b/.test(combined)) return 'Procedimentos em gel';
-                      return service.category || 'Outros procedimentos';
-                    };
-                    // Nail Art is an optional add-on, never a primary procedure.
-                    const activeServices = services.filter(service =>
-                      service.active !== false && !/nail\s*art|nailart/i.test(String(service.title || ''))
-                    );
-                    const preferredOrder = ['Manicure', 'Pedicure', 'Procedimentos em gel', 'Alongamentos'];
-                    const groups = Array.from(new Set([...preferredOrder, ...activeServices.map(classifyService)]));
-                    return groups.map(group => {
-                      const groupServices = activeServices.filter(service => classifyService(service) === group);
-                      return <section key={group} className="space-y-2">
-                        <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
-                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAddAnotherPrompt(false); setShowAdditionalServices(isServiceInCategory(service, 'gel') || isServiceInCategory(service, 'alongamento')); }}
-                          className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
-                          <span className="block font-semibold text-[#49382E]">{service.title}</span>
-                          <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
-                          {service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}
-                        </button>)}
-                      </section>;
-                    });
-                  })()}
+              <div className="p-5 sm:p-7 rounded-2xl bg-white border border-[#E8D9B5] shadow-md space-y-5">
+                <div>
+                  <span className="font-jakarta text-[10px] uppercase tracking-widest font-bold text-[#D4AF37]">Etapa 1 · Procedimento escolhido</span>
+                  <h3 className="mt-1 font-syne text-lg font-semibold text-[#49382E]">Seu procedimento</h3>
+                  <p className="mt-1 text-xs text-[#786C63]">Você já escolheu este serviço na Vitrine. Não é necessário selecioná-lo novamente.</p>
                 </div>
-                {supportsAddons && (
-                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4 space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className="font-syne font-semibold text-sm text-[#49382E]">Personalize seu procedimento</h4>
-                        <p className="text-[11px] text-[#786C63]">Escolha os adicionais compatíveis com {selectedIsGel ? 'este procedimento em gel' : 'este alongamento'}.</p>
-                      </div>
-                      <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
-                        {additionalServiceIds.length ? `Editar (${additionalServiceIds.length})` : 'Personalizar'}
-                      </button>
-                    </div>
-                    {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                  </div>
-                )}
-                <div className="pt-2 space-y-2">
-                  {!isDurationValid && (
-                    <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium">
-                      ⚠️ {procedureDuration.error || OFFICIAL_DURATION_MISSING_ERROR}
-                    </div>
+                <div className="flex items-center gap-3 rounded-xl border border-[#E8D9B5] bg-[#FDFBF9] p-4">
+                  {selectedService.imageUrl && (
+                    <img src={selectedService.imageUrl} alt={selectedService.title} className="h-16 w-16 shrink-0 rounded-xl border border-[#E8D9B5] object-cover" />
                   )}
-                  <p className="text-[11px] text-[#786C63]">Depois de escolher um procedimento, você pode adicionar outros serviços ao mesmo atendimento ou seguir para escolher data e horário.</p>
-                  <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) return; setShowAddAnotherPrompt(false); setBookingStep(2); }} className="w-full rounded-full bg-[#D4AF37] disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 font-bold text-[#3C2F00]">Continuar para seus dados</button>
+                  <div className="min-w-0 flex-1">
+                    <strong className="block font-syne text-base text-[#49382E]">{selectedService.title}</strong>
+                    <span className="mt-1 block text-xs text-[#786C63]">{selectedService.duration} · {selectedService.priceFormatted}</span>
+                  </div>
+                </div>
+                {supportsAddons ? (
+                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FBF7F2] p-4">
+                    <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
+                    <p className="mt-1 text-xs text-[#786C63]">Escolha os detalhes e adicionais no modal que foi aberto para este serviço.</p>
+                    {additionalServices.map(service => (
+                      <div key={service.id} className="mt-2 flex justify-between gap-2 text-xs text-[#49382E]">
+                        <span>{service.title}</span><strong>{service.priceFormatted}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#786C63]">Este serviço não possui opções adicionais nesta etapa. Você pode continuar diretamente.</p>
+                )}
+                <div className="rounded-xl bg-[#FDFBF9] p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <span className="block text-[10px] uppercase tracking-wider text-[#786C63]">Total atual</span>
+                    <strong className="font-syne text-lg text-[#49382E]">R$ {formatBRL(servicePrice)}</strong>
+                    <span className="block text-[10px] text-[#786C63]">Sinal de 40%: R$ {formatBRL(standardDeposit)}</span>
+                  </div>
+                  <button type="button" disabled={!isDurationValid || showAdditionalServices} onClick={() => { if (!isDurationValid || showAdditionalServices) return; setSubmissionError(null); setBookingStep(2); }} className="rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00] disabled:cursor-not-allowed disabled:opacity-50">
+                    Continuar para seus dados
+                  </button>
                 </div>
               </div>
             )}

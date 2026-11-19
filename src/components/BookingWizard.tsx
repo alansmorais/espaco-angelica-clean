@@ -871,7 +871,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                             return;
                           }
                           setSubmissionError(null);
-                          setBookingStep(2);
+                          setBookingStep(3);
                         }}
                         className="w-full rounded-full bg-[#D4AF37] px-5 py-3 font-bold text-[#3C2F00] shadow-sm hover:brightness-105 active:scale-98 transition-all cursor-pointer"
                       >

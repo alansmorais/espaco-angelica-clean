@@ -1204,9 +1204,11 @@ function getCalendarReconciliationPreview(data) {
     var eventDate = event.start.substring(0, 10);
     var eventTime = event.start.substring(11, 16);
     var candidates = sheetRows.filter(function(row) {
+      var clientSignal = normalizeCalendarMatchText_(row.clientName);
+      var serviceSignal = normalizeCalendarMatchText_(row.serviceTitle);
       return !row.used && row.date === eventDate && row.time === eventTime &&
-        (normalizedTitle.indexOf(normalizeCalendarMatchText_(row.clientName)) >= 0 ||
-         normalizedTitle.indexOf(normalizeCalendarMatchText_(row.serviceTitle)) >= 0);
+        ((clientSignal.length >= 4 && normalizedTitle.indexOf(clientSignal) >= 0) ||
+         (serviceSignal.length >= 5 && normalizedTitle.indexOf(serviceSignal) >= 0));
     });
 
     if (candidates.length === 1) {

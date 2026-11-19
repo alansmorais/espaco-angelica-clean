@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { Service, Appointment, TimeSlotConfig, BlacklistEntry, StudioAddressConfig, PaymentConfig, RecurrenceConfig, DayScheduleConfig } from '../types';
 import {
   buildOfficialWhatsAppUrl,
@@ -912,14 +911,38 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                   </div>
                 </div>
                 {supportsAddons ? (
-                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FBF7F2] p-4">
-                    <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
-                    <p className="mt-1 text-xs text-[#786C63]">Escolha os detalhes e adicionais no modal que foi aberto para este serviço.</p>
+                  <div className="rounded-xl border border-[#E8D9B5] bg-[#FBF7F2] p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
+                        <p className="mt-1 text-xs text-[#786C63]">Adicione serviços opcionais antes de continuar.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowAdditionalServices(value => !value)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
+                        {showAdditionalServices ? 'Ocultar opções' : 'Ver adicionais'}
+                      </button>
+                    </div>
                     {additionalServices.map(service => (
-                      <div key={service.id} className="mt-2 flex justify-between gap-2 text-xs text-[#49382E]">
+                      <div key={service.id} className="flex justify-between gap-2 text-xs text-[#49382E]">
                         <span>{service.title}</span><strong>{service.priceFormatted}</strong>
                       </div>
                     ))}
+                    {showAdditionalServices && (
+                      <div className="rounded-xl border border-[#E8D9B5] bg-white p-3 space-y-1">
+                        <p className="mb-2 text-xs text-[#786C63]">Selecione um ou mais adicionais. Os preços e a duração serão atualizados automaticamente.</p>
+                        {eligibleAdditionalServices.map(service => (
+                          <label key={service.id} className="flex items-start gap-3 border-b border-[#E8D9B5] py-3 text-xs cursor-pointer last:border-0">
+                            <input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="mt-0.5 h-4 w-4 accent-[#D4AF37]" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-[#49382E]">{service.title}</span>
+                              {service.description && <span className="mt-1 block text-[#786C63]">{service.description}</span>}
+                            </span>
+                            <strong className="whitespace-nowrap text-[#49382E]">{service.priceFormatted}</strong>
+                          </label>
+                        ))}
+                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Ainda não há adicionais ativos cadastrados para este grupo.</p>}
+                        <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-2 w-full rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00]">Confirmar adicionais</button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-[#786C63]">Este serviço não possui opções adicionais nesta etapa. Você pode continuar diretamente.</p>
@@ -930,7 +953,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                     <strong className="font-syne text-lg text-[#49382E]">R$ {formatBRL(servicePrice)}</strong>
                     <span className="block text-[10px] text-[#786C63]">Sinal de 40%: R$ {formatBRL(standardDeposit)}</span>
                   </div>
-                  <button type="button" disabled={!isDurationValid || showAdditionalServices} onClick={() => { if (!isDurationValid || showAdditionalServices) return; setSubmissionError(null); setBookingStep(2); }} className="rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00] disabled:cursor-not-allowed disabled:opacity-50">
+                  <button type="button" disabled={!isDurationValid} onClick={() => { if (!isDurationValid) return; setSubmissionError(null); setBookingStep(2); }} className="rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00] disabled:cursor-not-allowed disabled:opacity-50">
                     Continuar para seus dados
                   </button>
                 </div>
@@ -1356,20 +1379,6 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 </div>
                 <p className="text-[10px] text-[#786C63]">Escolha entre os serviços ativos cadastrados no sistema. Os preços são os valores oficiais carregados do cadastro.</p>
                 {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                {showAdditionalServices && bookingStep === 1 && supportsAddons && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/65 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdditionalServices(false)}>
-                  <div role="dialog" aria-modal="true" aria-label="Personalizar procedimento" onClick={event => event.stopPropagation()} className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl bg-[#FBF7F2] border border-[#E8D9B5] shadow-2xl">
-                    <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-3xl bg-[#FBF7F2] border-b border-[#E8D9B5] p-5 sm:p-6">
-                      <div><span className="font-jakarta text-[10px] uppercase tracking-widest font-bold text-[#D4AF37]">Personalização</span><h4 className="mt-1 font-syne text-xl font-bold text-[#49382E]">Personalize seu procedimento</h4><p className="mt-1 text-xs text-[#786C63]">{selectedService.title}</p></div>
-                      <button type="button" aria-label="Fechar personalização" onClick={() => setShowAdditionalServices(false)} className="w-10 h-10 shrink-0 rounded-full border border-[#E8D9B5] bg-white text-xl text-[#49382E] hover:bg-[#F7EFEA]">×</button>
-                    </div>
-                    <div className="p-5 sm:p-6">
-                      <p className="mb-3 text-xs leading-relaxed text-[#786C63]">Selecione os adicionais disponíveis para este grupo. Os valores são carregados do catálogo oficial do Espaço Angélica.</p>
-                      {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-3 py-4 border-b border-[#E8D9B5] text-sm cursor-pointer"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="mt-1 h-4 w-4 accent-[#D4AF37]" /><span className="flex-1 min-w-0"><span className="block font-semibold text-[#49382E]">{service.title}</span>{service.description && <span className="mt-1 block text-xs text-[#786C63]">{service.description}</span>}</span><span className="whitespace-nowrap font-semibold text-[#49382E]">{service.priceFormatted}</span></label>)}
-                      {eligibleAdditionalServices.length === 0 && <p className="rounded-xl border border-dashed border-[#E8D9B5] bg-white p-5 text-center text-xs text-[#786C63]">Ainda não há adicionais ativos cadastrados para este grupo no catálogo oficial.</p>}
-                    </div>
-                    <div className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-3xl border-t border-[#E8D9B5] bg-white p-5"><div><span className="block text-[10px] uppercase tracking-wider text-[#786C63]">Novo total</span><strong className="font-syne text-lg text-[#49382E]">R$ {formatBRL(servicePrice)}</strong><span className="block text-[10px] text-[#786C63]">Sinal de 40%: R$ {formatBRL(standardDeposit)}</span></div><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full bg-[#D4AF37] px-6 py-3 font-jakarta text-sm font-bold text-[#3C2F00] shadow-sm">Confirmar seleção</button></div>
-                  </div>
-                </div>, document.body)}
                 <label className="block text-xs font-semibold text-[#49382E]">Pedido personalizado (opcional)
                   <textarea value={customRequest} onChange={event => setCustomRequest(event.target.value)}
                     placeholder="Ex.: decoração especial de unhas (preço sujeito à confirmação)"

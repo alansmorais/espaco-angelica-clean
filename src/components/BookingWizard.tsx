@@ -219,54 +219,52 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     if (bookingStep === 1 && supportsAddons) setShowAdditionalServices(true);
   }, [bookingStep, supportsAddons]);
 
-  // Add-ons follow Angélica's exact price list. Duration still comes only
-  // from the official service catalog (Google Sheets, column F).
+  // Add-ons are a code-defined price catalog supplied by Angélica.
+  // They do not need to exist in the Google Sheets service catalog.
   const addonRules = selectedIsExtension
     ? [
-        { label: 'Esmaltação em Gel', price: 25, matches: ['esmaltacao em gel'] },
-        { label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30, matches: ['esmaltacao em gel + decoracao simples', 'esmaltacao em gel com decoracao simples'] },
-        { label: 'Esmaltação tradicional (esmalte comum)', price: 15, matches: ['esmaltacao tradicional', 'esmalte comum'] },
-        { label: 'Baby boomer', price: 30, matches: ['baby boomer'] },
-        { label: 'Encapsulada', price: 30, matches: ['encapsulada'] },
-        { label: 'Cromado', price: 30, matches: ['cromado'] },
-        { label: 'Espelhado', price: 30, matches: ['espelhado'] },
-        { label: 'Olho de gato', price: 30, matches: ['olho de gato'] },
-        { label: 'Degradê', price: 30, matches: ['degrade'] },
-        { label: 'Marmorizado', price: 30, matches: ['marmorizado'] },
-        { label: 'Holográfico', price: 30, matches: ['holografico'] },
-        { label: 'Reversa 3D (por unidade)', price: 40, matches: ['reversa 3d'] }
+        { id: 'addon-gel', label: 'Esmaltação em Gel', price: 25 },
+        { id: 'addon-gel-decoracao', label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30 },
+        { id: 'addon-tradicional', label: 'Esmaltação tradicional (esmalte comum)', price: 15 },
+        { id: 'addon-baby-boomer', label: 'Baby boomer', price: 30 },
+        { id: 'addon-encapsulada', label: 'Encapsulada', price: 30 },
+        { id: 'addon-cromado', label: 'Cromado', price: 30 },
+        { id: 'addon-espelhado', label: 'Espelhado', price: 30 },
+        { id: 'addon-olho-gato', label: 'Olho de gato', price: 30 },
+        { id: 'addon-degrade', label: 'Degradê', price: 30 },
+        { id: 'addon-marmorizado', label: 'Marmorizado', price: 30 },
+        { id: 'addon-holografico', label: 'Holográfico', price: 30 },
+        { id: 'addon-reversa-3d', label: 'Reversa 3D (R$ 40 por unidade)', price: 40 }
       ]
     : [
-        { label: 'Esmaltação em Gel', price: 25, matches: ['esmaltacao em gel'] },
-        { label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30, matches: ['esmaltacao em gel + decoracao simples', 'esmaltacao em gel com decoracao simples'] },
-        { label: 'Esmaltação tradicional (esmalte comum)', price: 15, matches: ['esmaltacao tradicional', 'esmalte comum'] },
-        { label: 'Encapsulada', price: 30, matches: ['encapsulada'] },
-        { label: 'Cromado', price: 30, matches: ['cromado'] },
-        { label: 'Espelhado', price: 30, matches: ['espelhado'] },
-        { label: 'Olho de gato', price: 30, matches: ['olho de gato'] },
-        { label: 'Degradê', price: 30, matches: ['degrade'] },
-        { label: 'Marmorizado', price: 30, matches: ['marmorizado'] },
-        { label: 'Holográfico', price: 30, matches: ['holografico'] }
+        { id: 'addon-gel', label: 'Esmaltação em Gel', price: 25 },
+        { id: 'addon-gel-decoracao', label: 'Esmaltação em Gel + decoração simples (ex.: francesinha)', price: 30 },
+        { id: 'addon-tradicional', label: 'Esmaltação tradicional (esmalte comum)', price: 15 },
+        { id: 'addon-encapsulada', label: 'Encapsulada', price: 30 },
+        { id: 'addon-cromado', label: 'Cromado', price: 30 },
+        { id: 'addon-espelhado', label: 'Espelhado', price: 30 },
+        { id: 'addon-olho-gato', label: 'Olho de gato', price: 30 },
+        { id: 'addon-degrade', label: 'Degradê', price: 30 },
+        { id: 'addon-marmorizado', label: 'Marmorizado', price: 30 },
+        { id: 'addon-holografico', label: 'Holográfico', price: 30 }
       ];
-  const normalizeAddonName = (value: string) => value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
-  const eligibleAdditionalServices = addonRules.flatMap(rule => {
-    const match = services.find(service => {
-      if (service.active === false || service.id === selectedService.id) return false;
-      if (selectedIsExtension ? !isServiceInCategory(service, 'alongamento') : isServiceInCategory(service, 'alongamento') || !isServiceInCategory(service, 'gel')) return false;
-      const title = normalizeAddonName(service.title);
-      if (rule.label === 'Esmaltação em Gel' && (title.includes('decoracao simples') || title.includes('com decoracao'))) return false;
-      if (rule.label.includes('decoração simples') && !(title.includes('decoracao simples') || title.includes('com decoracao'))) return false;
-      return rule.matches.some(alias => title.includes(alias));
-    });
-    return match ? [{
-      ...match,
-      title: rule.label,
-      price: rule.price,
-      priceFormatted: `R$ ${formatBRL(rule.price)}`
-    }] : [];
-  });
+  const eligibleAdditionalServices = addonRules.map(rule => ({
+    id: rule.id,
+    title: rule.label,
+    category: 'nailart' as const,
+    price: rule.price,
+    priceFormatted: `R$ ${formatBRL(rule.price)}`,
+    // These are price-only finishing options; appointment duration remains
+    // the official duration of the main procedure, without invented minutes.
+    duration: selectedService.duration,
+    specs: [],
+    description: '',
+    note: '',
+    imageUrl: '',
+    active: true
+  }));
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
-  const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
+  const procedureDuration = calculateProcedureDuration(selectedService);
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
   const isDurationValid = procedureDuration.isValid && combinedDurationMinutes > 0;
 
@@ -985,7 +983,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                             <strong className="whitespace-nowrap text-[#49382E]">{service.priceFormatted}</strong>
                           </label>
                         ))}
-                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Os adicionais desta lista precisam estar cadastrados na planilha oficial com duração preenchida para aparecerem aqui.</p>}
+                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Escolha os acabamentos desejados. Os valores já estão configurados nesta lista.</p>}
                         <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-2 w-full rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00]">Confirmar adicionais</button>
                       </div>
                     )}

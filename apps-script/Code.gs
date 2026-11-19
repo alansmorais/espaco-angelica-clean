@@ -1303,8 +1303,8 @@ function getCalendarReconciliationPreview(data) {
 function getCalendarSyncPreview(data) {
   var calendar = getSharedCalendar_();
   var tz = OFFICIAL_TIME_ZONE;
-  var start = data && data.startDate ? new Date(data.startDate + "T00:00:00") : new Date(new Date().getTime() - 90 * 86400000);
-  var end = data && data.endDate ? new Date(data.endDate + "T23:59:59") : new Date(new Date().getTime() + 180 * 86400000);
+  var start = data && data.startDate ? new Date(data.startDate + "T00:00:00-03:00") : new Date(new Date().getTime() - 90 * 86400000);
+  var end = data && data.endDate ? new Date(data.endDate + "T23:59:59-03:00") : new Date(new Date().getTime() + 180 * 86400000);
   if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
     throw new Error("Intervalo inválido. Informe startDate e endDate no formato AAAA-MM-DD.");
   }

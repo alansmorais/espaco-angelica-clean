@@ -1145,6 +1145,137 @@ function getSharedCalendar_() {
   return calendar;
 }
 
+function normalizeCalendarMatchText_(value) {
+  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\\s+/g, " ");
+}
+
+/**
+ * Read-only reconciliation report. No sheet writes and no Calendar mutations.
+ * A match requires the same local date/time plus a client/service text signal.
+ * Ambiguous records are reported separately rather than guessed.
+ */
+function getCalendarReconciliationPreview(data) {
+  var calendarPreview = getCalendarSyncPreview(data);
+  if (calendarPreview.status !== "success") return calendarPreview;
+
+  var sheet = getOfficialSheet();
+  if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
+  var values = sheet.getDataRange().getValues();
+  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var sheetRows = [];
+
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (!row[9] && !row[1]) continue;
+    var dateKey = normalizeBookingDate(row[5]);
+    var timeKey = normalizeBookingTime(row[6]);
+    if (!dateKey || !timeKey) continue;
+    sheetRows.push({
+      rowNumber: i + 1,
+      appointmentId: String(row[9] || ""),
+      clientName: String(row[1] || ""),
+      serviceTitle: String(row[4] || ""),
+      date: dateKey,
+      time: timeKey,
+      status: String(row[8] || ""),
+      used: false
+    });
+  }
+
+  var matched = [];
+  var calendarOnly = [];
+  var skippedAllDay = [];
+  var skippedTest = [];
+  var ambiguous = [];
+
+  calendarPreview.events.forEach(function(event) {
+    var title = String(event.title || "");
+    var normalizedTitle = normalizeCalendarMatchText_(title);
+    if (event.allDay) {
+      skippedAllDay.push({ eventId: event.eventId, title: title, start: event.start });
+      return;
+    }
+    if (/\\bteste?\\b|\\bintegracao\\b|\\bintegration\\b|\\be2e\\b/i.test(normalizedTitle)) {
+      skippedTest.push({ eventId: event.eventId, title: title, start: event.start });
+      return;
+    }
+
+    var eventDate = event.start.substring(0, 10);
+    var eventTime = event.start.substring(11, 16);
+    var candidates = sheetRows.filter(function(row) {
+      return !row.used && row.date === eventDate && row.time === eventTime &&
+        (normalizedTitle.indexOf(normalizeCalendarMatchText_(row.clientName)) >= 0 ||
+         normalizedTitle.indexOf(normalizeCalendarMatchText_(row.serviceTitle)) >= 0);
+    });
+
+    if (candidates.length === 1) {
+      candidates[0].used = true;
+      matched.push({
+        eventId: event.eventId,
+        title: title,
+        sheetRow: candidates[0].rowNumber,
+        appointmentId: candidates[0].appointmentId,
+        date: eventDate,
+        time: eventTime
+      });
+    } else if (candidates.length > 1) {
+      ambiguous.push({
+        eventId: event.eventId,
+        title: title,
+        date: eventDate,
+        time: eventTime,
+        candidateRows: candidates.map(function(row) { return row.rowNumber; })
+      });
+    } else {
+      calendarOnly.push({
+        eventId: event.eventId,
+        title: title,
+        start: event.start,
+        end: event.end
+      });
+    }
+  });
+
+  var sheetOnly = sheetRows.filter(function(row) { return !row.used; }).map(function(row) {
+    return {
+      rowNumber: row.rowNumber,
+      appointmentId: row.appointmentId,
+      clientName: row.clientName,
+      serviceTitle: row.serviceTitle,
+      date: row.date,
+      time: row.time,
+      status: row.status
+    };
+  });
+
+  return {
+    status: "success",
+    readOnly: true,
+    calendar: calendarPreview.calendarName,
+    calendarId: calendarPreview.calendarId,
+    timezone: tz,
+    range: calendarPreview.range,
+    totals: {
+      calendarEvents: calendarPreview.total,
+      sheetAppointments: sheetRows.length,
+      matched: matched.length,
+      calendarOnly: calendarOnly.length,
+      sheetOnly: sheetOnly.length,
+      skippedAllDay: skippedAllDay.length,
+      skippedTest: skippedTest.length,
+      ambiguous: ambiguous.length
+    },
+    matched: matched,
+    calendarOnly: calendarOnly,
+    sheetOnly: sheetOnly,
+    skippedAllDay: skippedAllDay,
+    skippedTest: skippedTest,
+    ambiguous: ambiguous,
+    message: "Relatório somente leitura. Nenhuma linha foi gravada e nenhum evento foi alterado."
+  };
+}
+
 function getCalendarSyncPreview(data) {
   var calendar = getSharedCalendar_();
   var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
@@ -1280,7 +1411,7 @@ function doPost(e) {
     }
 
     // 2. Leitura administrativa segura via POST (token no corpo)
-    if (data.action === "getCalendarSyncPreview") {\n      return responseJSON(getCalendarSyncPreview(data));\n    }\n\n    if (data.action === "getAppointments") {
+    if (data.action === "getCalendarSyncPreview") {\n      return responseJSON(getCalendarSyncPreview(data));\n    }\n\n    if (data.action === "getCalendarReconciliationPreview") {\n      return responseJSON(getCalendarReconciliationPreview(data));\n    }\n\n    if (data.action === "getAppointments") {
       return fetchAppointmentsFromSheet();
     }
 

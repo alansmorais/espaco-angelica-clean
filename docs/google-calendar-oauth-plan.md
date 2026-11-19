@@ -30,6 +30,20 @@ The development copy of `apps-script/Code.gs` now contains:
 
 This action is strictly read-only. It does not write to Sheets, create/update/delete Calendar events, or import historical appointments. It is not deployed to the live Apps Script web app.
 
+## Read-only reconciliation preview
+
+The development Apps Script copy also exposes protected POST action `getCalendarReconciliationPreview`. It compares events and booking rows in the same requested date range and reports:
+- Matched event/Sheet rows (exact local date and start time plus a client/service title signal).
+- Calendar-only events.
+- Sheet-only appointments.
+- All-day events skipped (for example, `Folga`).
+- Test/integration events skipped.
+- Ambiguous matches requiring manual review.
+
+Matching is deliberately conservative. It does not import, edit, delete, or otherwise mutate either system. The calendar preview reports `Session.getEffectiveUser().getEmail()` as `executionAccount` so the actual Apps Script execution identity can be checked during the first authorized run.
+
+The connected Google Calendar account currently exposes the shared calendar `angelikm19@gmail.com` with access role `owner` through the ChatGPT Calendar connection. This verifies access for that connector, **not** yet the Apps Script deployment identity. The Apps Script preview must still be run to confirm that its effective execution account has the shared-calendar permission.
+
 ## Next implementation stages
 
 1. Verify the preview can read the shared calendar using the actual Apps Script execution account.

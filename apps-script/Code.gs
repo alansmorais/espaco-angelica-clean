@@ -1170,7 +1170,9 @@ function getCalendarReconciliationPreview(data) {
     if (!row[9] && !row[1]) continue;
     var dateKey = normalizeBookingDate(row[5]);
     var timeKey = normalizeBookingTime(row[6]);
-    if (!dateKey || !timeKey) continue;
+    if (!dateKey || !timeKey ||
+        dateKey < calendarPreview.range.start ||
+        dateKey > calendarPreview.range.end) continue;
     sheetRows.push({
       rowNumber: i + 1,
       appointmentId: String(row[9] || ""),

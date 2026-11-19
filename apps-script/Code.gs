@@ -1305,6 +1305,7 @@ function getCalendarSyncPreview(data) {
     readOnly: true,
     calendarName: calendar.getName(),
     calendarId: calendar.getId(),
+    executionAccount: String(Session.getEffectiveUser().getEmail() || ""),
     timezone: tz,
     range: {
       start: Utilities.formatDate(start, tz, "yyyy-MM-dd"),

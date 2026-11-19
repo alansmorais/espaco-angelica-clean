@@ -1416,7 +1416,15 @@ function doPost(e) {
     }
 
     // 2. Leitura administrativa segura via POST (token no corpo)
-    if (data.action === "getCalendarSyncPreview") {\n      return responseJSON(getCalendarSyncPreview(data));\n    }\n\n    if (data.action === "getCalendarReconciliationPreview") {\n      return responseJSON(getCalendarReconciliationPreview(data));\n    }\n\n    if (data.action === "getAppointments") {
+    if (data.action === "getCalendarSyncPreview") {
+      return responseJSON(getCalendarSyncPreview(data));
+    }
+
+    if (data.action === "getCalendarReconciliationPreview") {
+      return responseJSON(getCalendarReconciliationPreview(data));
+    }
+
+    if (data.action === "getAppointments") {
       return fetchAppointmentsFromSheet();
     }
 

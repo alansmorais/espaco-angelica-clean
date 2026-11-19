@@ -956,35 +956,36 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 </div>
                 {supportsAddons ? (
                   <div className="rounded-xl border border-[#E8D9B5] bg-[#FBF7F2] p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
-                        <p className="mt-1 text-xs text-[#786C63]">Você pode selecionar vários adicionais. Os valores seguem a tabela oficial do Espaço.</p>
-                      </div>
-                      <button type="button" onClick={() => setShowAdditionalServices(value => !value)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
-                        {showAdditionalServices ? 'Ocultar opções' : 'Ver adicionais'}
-                      </button>
+                    <div>
+                      <h4 className="font-syne text-sm font-semibold text-[#49382E]">Personalize seu procedimento</h4>
+                      <p className="mt-1 text-xs text-[#786C63]">Selecione um ou mais adicionais no menu abaixo. Os valores são somados automaticamente.</p>
                     </div>
-                    {additionalServices.map(service => (
-                      <div key={service.id} className="flex justify-between gap-2 text-xs text-[#49382E]">
-                        <span>{service.title}</span><strong>{service.priceFormatted}</strong>
-                      </div>
-                    ))}
-                    {showAdditionalServices && (
-                      <div className="rounded-xl border border-[#E8D9B5] bg-white p-3 space-y-1">
-                        <p className="mb-2 text-xs text-[#786C63]">Selecione um ou mais adicionais. Os preços e a duração serão atualizados automaticamente.</p>
-                        {eligibleAdditionalServices.map(service => (
-                          <label key={service.id} className="flex items-start gap-3 border-b border-[#E8D9B5] py-3 text-xs cursor-pointer last:border-0">
-                            <input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="mt-0.5 h-4 w-4 accent-[#D4AF37]" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block font-semibold text-[#49382E]">{service.title}</span>
-                              {service.description && <span className="mt-1 block text-[#786C63]">{service.description}</span>}
-                            </span>
-                            <strong className="whitespace-nowrap text-[#49382E]">{service.priceFormatted}</strong>
-                          </label>
+                    <div className="relative">
+                      <button type="button" aria-expanded={showAdditionalServices} onClick={() => setShowAdditionalServices(value => !value)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#D4AF37] bg-white px-4 py-3 text-left text-sm font-semibold text-[#49382E]">
+                        <span>{additionalServices.length ? `${additionalServices.length} adicional(is) selecionado(s)` : 'Selecionar adicionais'}</span>
+                        <span className={`transition-transform ${showAdditionalServices ? 'rotate-180' : ''}`}>▾</span>
+                      </button>
+                      {showAdditionalServices && (
+                        <div className="absolute left-0 right-0 top-full z-30 mt-2 max-h-72 overflow-y-auto rounded-xl border border-[#E8D9B5] bg-white p-3 shadow-xl">
+                          <p className="mb-2 text-xs text-[#786C63]">Marque todas as opções desejadas:</p>
+                          {eligibleAdditionalServices.map(service => (
+                            <label key={service.id} className="flex cursor-pointer items-start gap-3 border-b border-[#E8D9B5] py-3 text-xs last:border-0">
+                              <input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="mt-0.5 h-4 w-4 accent-[#D4AF37]" />
+                              <span className="min-w-0 flex-1 font-semibold text-[#49382E]">{service.title}</span>
+                              <strong className="whitespace-nowrap text-[#49382E]">{service.priceFormatted}</strong>
+                            </label>
+                          ))}
+                          <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-3 w-full rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00]">Concluir seleção</button>
+                        </div>
+                      )}
+                    </div>
+                    {additionalServices.length > 0 && (
+                      <div className="space-y-2 border-t border-[#E8D9B5] pt-3">
+                        {additionalServices.map(service => (
+                          <div key={service.id} className="flex justify-between gap-2 text-xs text-[#49382E]">
+                            <span>{service.title}</span><strong>{service.priceFormatted}</strong>
+                          </div>
                         ))}
-                        {eligibleAdditionalServices.length === 0 && <p className="py-3 text-center text-xs text-[#786C63]">Escolha os acabamentos desejados. Os valores já estão configurados nesta lista.</p>}
-                        <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-2 w-full rounded-full bg-[#D4AF37] px-5 py-3 text-sm font-bold text-[#3C2F00]">Confirmar adicionais</button>
                       </div>
                     )}
                   </div>

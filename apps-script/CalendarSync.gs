@@ -323,3 +323,85 @@ function previewCalendarDecisionPlan() {
   Logger.log(JSON.stringify(result, null, 2));
   return result;
 }
+
+
+/**
+ * Auditoria estrutural da aba Agendamentos.
+ * Somente leitura: não altera cabeçalhos, células ou eventos.
+ * Confere se os valores reais seguem o contrato de colunas usado pelo Code.gs.
+ */
+function auditCalendarSyncSchema() {
+  var ss = SpreadsheetApp.openById("1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0");
+  var sh = ss.getSheetByName("Agendamentos");
+  if (!sh) throw new Error("Aba Agendamentos não encontrada.");
+  var lastRow = sh.getLastRow();
+  var lastCol = Math.max(sh.getLastColumn(), 20);
+  var data = sh.getRange(1, 1, Math.max(lastRow, 1), lastCol).getValues();
+  var display = sh.getRange(1, 1, Math.max(lastRow, 1), lastCol).getDisplayValues();
+  var expected = {
+    10:"ID Agendamento (contrato Code.gs)",
+    11:"Observações / Anamnese",
+    12:"Local do Atendimento",
+    13:"Endereço Domiciliar",
+    14:"IDs Serviços Adicionais",
+    15:"Pedido Personalizado",
+    16:"ID Serviço Principal",
+    17:"Data de Nascimento",
+    18:"Forma de Pagamento",
+    19:"Configuração de Recorrência",
+    20:"Google Calendar Event ID"
+  };
+  var headerAudit=[];
+  for (var c=10;c<=20;c++) {
+    headerAudit.push({
+      column:c,
+      letter:String.fromCharCode(64+c),
+      actualHeader:String(display[0][c-1]||""),
+      expectedByCode:expected[c],
+      headerMatchesExpected:String(display[0][c-1]||"").trim().toLowerCase()===String(expected[c]||"").trim().toLowerCase()
+    });
+  }
+  var targetIds={
+    "apt-1793902283321":true,
+    "apt-1793902440508":true,
+    "apt-1793903713527":true,
+    "apt-1793903805661":true,
+    "apt-1794006950286-rec-4":true,
+    "apt-1794603000976":true
+  };
+  var rows=[];
+  for (var r=1;r<data.length;r++) {
+    var rowId=String(data[r][9]||"").trim();
+    if (!targetIds[rowId]) continue;
+    var cells=[];
+    for (var k=1;k<=20;k++) {
+      var val=display[r][k-1];
+      if (val!=="" && val!==null && val!==undefined) {
+        cells.push({column:k,letter:String.fromCharCode(64+k),header:String(display[0][k-1]||""),displayValue:String(val).substring(0,180),valueType:Object.prototype.toString.call(data[r][k-1])});
+      }
+    }
+    rows.push({
+      row:r+1,
+      appointmentIdFromJ:rowId,
+      clientFromB:String(data[r][1]||""),
+      dateFromF:_casDateKey_(data[r][5], "America/Sao_Paulo", display[r][5]),
+      timeFromG:_casTimeKey_(data[r][6], "America/Sao_Paulo", display[r][6]),
+      statusFromI:String(data[r][8]||""),
+      cells:cells
+    });
+  }
+  var result={
+    status:"success",
+    readOnly:true,
+    spreadsheetId:"1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0",
+    sheet:"Agendamentos",
+    lastRow:lastRow,
+    lastColumn:lastCol,
+    headerAudit:headerAudit,
+    targetRows:rows,
+    interpretation:"Comparar valores reais com o contrato de Code.gs. Cabeçalhos divergentes não serão corrigidos automaticamente.",
+    safety:"Somente leitura. Nenhuma célula ou evento foi alterado."
+  };
+  Logger.log(JSON.stringify(result,null,2));
+  return result;
+}

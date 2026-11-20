@@ -204,3 +204,122 @@ function _casTimeKey_(raw, tz, displayed) {
   var m = s.match(/^(\d{1,2}):(\d{2})/);
   return m ? ("0" + m[1]).slice(-2) + ":" + m[2] : "";
 }
+
+
+/**
+ * Plano de reconciliação baseado nas decisões do administrador.
+ * SOMENTE LEITURA: não grava na planilha nem altera o Google Calendar.
+ * Executar previewCalendarDecisionPlan() e revisar o relatório antes de
+ * implementar qualquer rotina de escrita.
+ */
+function previewCalendarDecisionPlan() {
+  var tz = "America/Sao_Paulo";
+  var ss = SpreadsheetApp.openById("1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0");
+  var sheet = ss.getSheetByName("Agendamentos");
+  if (!sheet) throw new Error("Aba Agendamentos não encontrada.");
+  var range = sheet.getDataRange();
+  var values = range.getValues();
+  var display = range.getDisplayValues();
+  var headers = display.length ? display[0] : [];
+  var calendarId = String(PropertiesService.getScriptProperties().getProperty("GOOGLE_CALENDAR_ID") || "").trim();
+  var calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) throw new Error("Calendário não encontrado ou sem acesso.");
+
+  var decisions = [
+    { appointmentId: "apt-1793902283321", client: "Maria de Jesus Abreu", action: "UPDATE_CALENDAR_DURATION", targetDate: "2026-12-23", targetTime: "16:00", targetDuration: 90, source: "SHEET" },
+    { appointmentId: "apt-1793902440508", client: "Kristine Sorensen", action: "KEEP_CALENDAR_AND_ALIGN_SHEET", targetDate: "2026-12-24", targetTime: "12:30", targetDuration: 90, source: "CALENDAR" },
+    { appointmentId: "apt-1793903713527", client: "Josefina Calderón", action: "NO_CHANGE_EXACT_MATCH", targetDate: "2026-12-23", targetTime: "15:00", targetDuration: 60, source: "BOTH" },
+    { appointmentId: "apt-1793903805661", client: "Josefina Calderón", action: "CREATE_CALENDAR_EVENT", targetDate: "2026-12-30", targetTime: "15:00", targetDuration: 60, source: "SHEET" },
+    { appointmentId: "apt-1794006950286-rec-4", client: "Alan TesteAdmin", action: "EXCLUDE_FROM_SYNC", targetDate: "2026-12-07", targetTime: "09:30", targetDuration: 180, source: "ADMIN" },
+    { appointmentId: "apt-1794603000976", client: "Ana Rosa", action: "CREATE_CALENDAR_EVENT_PENDING_PIX", targetDate: "2026-12-02", targetTime: "15:00", targetDuration: 90, source: "SHEET_ADMIN_OVERRIDE" }
+  ];
+
+  var rowsById = {};
+  for (var i = 1; i < values.length; i++) {
+    var id = String(values[i][9] || "").trim();
+    if (id) rowsById[id] = { row: i + 1, values: values[i], display: display[i] };
+  }
+
+  var plan = [];
+  decisions.forEach(function(decision) {
+    var found = rowsById[decision.appointmentId];
+    var item = {
+      appointmentId: decision.appointmentId,
+      client: decision.client,
+      action: decision.action,
+      target: decision.targetDate + " " + decision.targetTime + " (" + decision.targetDuration + " min)",
+      sourceOfTruth: decision.source,
+      sheetRow: found ? found.row : null,
+      sheetStatus: found ? String(found.values[8] || "") : null,
+      sheetDate: found ? _casDateKey_(found.values[5], tz, found.display[5]) : null,
+      sheetTime: found ? _casTimeKey_(found.values[6], tz, found.display[6]) : null,
+      sheetCalendarIdColumnT: found ? String(found.values[19] || "") : null,
+      validation: []
+    };
+    if (!found) item.validation.push("ERRO: appointmentId não encontrado na planilha; nenhuma ação permitida.");
+
+    if (decision.action === "EXCLUDE_FROM_SYNC") {
+      item.validation.push("Registro de teste excluído da sincronização; linha será preservada.");
+      plan.push(item);
+      return;
+    }
+
+    var start = new Date(decision.targetDate + "T" + decision.targetTime + ":00-03:00");
+    var end = new Date(start.getTime() + decision.targetDuration * 60000);
+    var dayStart = new Date(decision.targetDate + "T00:00:00-03:00");
+    var dayEnd = new Date(decision.targetDate + "T23:59:59-03:00");
+    var dayEvents = calendar.getEvents(dayStart, dayEnd);
+    var overlaps = [];
+    dayEvents.forEach(function(ev) {
+      var evStart = ev.getStartTime();
+      var evEnd = ev.getEndTime();
+      var isOverlap = start < evEnd && end > evStart;
+      if (isOverlap) {
+        var sameClient = _casNormalize_(ev.getTitle()).indexOf(_casNormalize_(decision.client)) >= 0;
+        var isExpectedCandidate =
+          (decision.client === "Maria de Jesus Abreu" && ev.getId() === "6g07637k50lq60c35h36qt72uo@google.com") ||
+          (decision.client === "Kristine Sorensen" && ev.getId() === "gmdts7nvfk56vl6v1iaa068leg@google.com") ||
+          (decision.client === "Josefina Calderón" && ev.getId() === "bj320net3mqnvtndi3q201qcis@google.com");
+        if (!isExpectedCandidate) {
+          overlaps.push({
+            eventId: ev.getId(),
+            title: ev.getTitle(),
+            start: Utilities.formatDate(evStart, tz, "yyyy-MM-dd'T'HH:mm:ss"),
+            end: Utilities.formatDate(evEnd, tz, "yyyy-MM-dd'T'HH:mm:ss"),
+            allDay: ev.isAllDayEvent(),
+            sameClient: sameClient
+          });
+        }
+      }
+    });
+    item.overlappingEvents = overlaps;
+    if (overlaps.length) item.validation.push("CONFLITO: há evento(s) sobrepostos; bloquear gravação até revisão.");
+    else item.validation.push("Nenhum outro evento sobreposto ao intervalo pretendido.");
+
+    if (decision.action === "UPDATE_CALENDAR_DURATION") {
+      item.validation.push("Atualizar somente o fim do evento existente; confirmar ocorrência exata por ID + início, não apenas pelo ID recorrente.");
+      item.expectedCalendarOccurrence = "6g07637k50lq60c35h36qt72uo@google.com|2026-12-23T16:00:00";
+    }
+    if (decision.action === "KEEP_CALENDAR_AND_ALIGN_SHEET") {
+      item.validation.push("A escolha do administrador torna o Calendar a referência: planejar ajuste da linha para 12:30 e exceção de duração de 90 min; verificar cabeçalho/coluna de duração antes de gravar.");
+      item.expectedCalendarOccurrence = "gmdts7nvfk56vl6v1iaa068leg@google.com|2026-12-24T12:30:00";
+    }
+    if (decision.action === "CREATE_CALENDAR_EVENT" || decision.action === "CREATE_CALENDAR_EVENT_PENDING_PIX") {
+      item.validation.push("Criar somente após confirmar ausência de evento equivalente e ausência de conflito; persistir vínculo de ocorrência após confirmar coluna correta.");
+    }
+    plan.push(item);
+  });
+
+  var result = {
+    status: "success",
+    readOnly: true,
+    timezone: tz,
+    executionAccount: String(Session.getEffectiveUser().getEmail() || ""),
+    calendarName: calendar.getName(),
+    sheetHeaders: headers.map(function(h, i) { return { column: i + 1, letter: String.fromCharCode(65 + i), header: h }; }),
+    decisions: plan,
+    safety: "Somente leitura. Nenhuma célula foi alterada. Nenhum evento foi criado, atualizado ou excluído."
+  };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}

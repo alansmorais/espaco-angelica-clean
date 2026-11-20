@@ -140,10 +140,54 @@ function getOfficialSheet() {
 // Called only on explicit write paths after validation, never during reads.
 function ensureOptionalBookingHeaders(sheet) {
   if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
-  var extensionHeaders = ["Local do Atendimento", "Endereço Domiciliar", "IDs Serviços Adicionais", "Pedido Personalizado", "ID Serviço Principal", "Data de Nascimento", "Forma de Pagamento", "Configuração de Recorrência"];
-  for (var h = 0; h < extensionHeaders.length; h++) {
-    var cell = sheet.getRange(1, 12 + h);
-    if (!String(cell.getValue() || "").trim()) cell.setValue(extensionHeaders[h]);
+
+  // Canonical A:T schema used by appendRow(), fetchAppointmentsFromSheet()
+  // and CalendarSync. Only header cells are normalized; booking data is untouched.
+  var canonicalHeaders = [
+    "ID Agendamento",
+    "Observações / Anamnese",
+    "Local do Atendimento",
+    "Endereço Domiciliar",
+    "IDs Serviços Adicionais",
+    "Pedido Personalizado",
+    "ID Serviço Principal",
+    "Data de Nascimento",
+    "Forma de Pagamento",
+    "Configuração de Recorrência",
+    "Google Calendar Event ID"
+  ];
+
+  var headerRange = sheet.getRange(1, 10, 1, canonicalHeaders.length);
+  var current = headerRange.getValues()[0];
+  var changed = false;
+  for (var h = 0; h < canonicalHeaders.length; h++) {
+    if (String(current[h] || "").trim() !== canonicalHeaders[h]) {
+      current[h] = canonicalHeaders[h];
+      changed = true;
+    }
+  }
+  if (changed) headerRange.setValues([current]);
+}
+
+// Explicit one-time repair for the existing Agendamentos header row.
+// Changes J1:T1 only. It never moves, clears, or rewrites appointment data.
+function repairAppointmentSheetHeaders() {
+  var sheet = getOfficialSheet();
+  if (!sheet) throw new Error("Aba 'Agendamentos' não encontrada na planilha oficial.");
+  var lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    ensureOptionalBookingHeaders(sheet);
+    SpreadsheetApp.flush();
+    return {
+      status: "success",
+      repairedRange: "Agendamentos!J1:T1",
+      headers: sheet.getRange(1, 10, 1, 11).getDisplayValues()[0],
+      appointmentCellsChanged: false,
+      message: "Somente os cabeçalhos J:T foram alinhados ao contrato do Code.gs."
+    };
+  } finally {
+    lock.releaseLock();
   }
 }
 

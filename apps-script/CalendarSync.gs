@@ -405,3 +405,45 @@ function auditCalendarSyncSchema() {
   Logger.log(JSON.stringify(result,null,2));
   return result;
 }
+
+
+/**
+ * Auditoria compacta das colunas críticas.
+ * Somente leitura. Execute auditCalendarSyncCriticalCells().
+ */
+function auditCalendarSyncCriticalCells() {
+  var ss = SpreadsheetApp.openById("1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0");
+  var sh = ss.getSheetByName("Agendamentos");
+  if (!sh) throw new Error("Aba Agendamentos não encontrada.");
+  var ids = {
+    "apt-1793902283321": true,
+    "apt-1793902440508": true,
+    "apt-1793903713527": true,
+    "apt-1793903805661": true,
+    "apt-1794006950286-rec-4": true,
+    "apt-1794603000976": true
+  };
+  var last = sh.getLastRow();
+  var data = sh.getRange(1, 1, last, 20).getDisplayValues();
+  var cols = [2,5,6,7,9,10,11,12,13,14,15,16,17,18,19,20];
+  var result = {
+    status: "success",
+    readOnly: true,
+    sheet: "Agendamentos",
+    columns: cols.map(function(c) {
+      return {letter: String.fromCharCode(64+c), header: data[0][c-1] || ""};
+    }),
+    rows: []
+  };
+  for (var r = 1; r < data.length; r++) {
+    var id = String(data[r][9] || "").trim();
+    if (!ids[id]) continue;
+    var cells = {};
+    cols.forEach(function(c) {
+      cells[String.fromCharCode(64+c)] = data[r][c-1] || "";
+    });
+    result.rows.push({row: r+1, cells: cells});
+  }
+  Logger.log(JSON.stringify(result));
+  return result;
+}

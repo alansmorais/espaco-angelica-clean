@@ -445,8 +445,12 @@ function runCalendarDurationSyncDryRun(options) {
     }
 
     var evDurationMin = Math.round((ev.getEndTime().getTime() - ev.getStartTime().getTime()) / 60000);
+    var isRecurring = false;
+    try { isRecurring = !!ev.isRecurringEvent(); } catch (recErr) {}
     calendarEvents.push({
       id: evId,
+      isRecurring: isRecurring,
+      occurrenceKey: evId + "|" + evStartIso,
       title: evTitle,
       normalizedTitle: normEvTitle,
       description: evDesc,
@@ -565,6 +569,8 @@ function runCalendarDurationSyncDryRun(options) {
         columnTEventId: colTEventId || null,
         matchType: candidates[0].matchType,
         calendarEventId: matchedEv.id,
+        isRecurringEvent: matchedEv.isRecurring,
+        occurrenceKey: matchedEv.occurrenceKey,
         calendarTitle: matchedEv.title,
         calendarStart: matchedEv.startIso,
         calendarEnd: matchedEv.endIso,
@@ -655,16 +661,23 @@ function runCalendarDurationSyncDryRun(options) {
     authorityRule: "GOOGLE_CALENDAR_OFFICIAL_APPOINTMENTS__SHEETS_OFFICIAL_SERVICES_AND_DURATIONS",
     timezone: tz,
     range: { start: today, end: endKey },
-    configAudit: configAudit,
+    configSummary: {
+      configReady: configAudit.configReady,
+      writeSyncEnabled: configAudit.writeSyncEnabled,
+      triggersTotal: configAudit.triggers.total,
+      calendarName: configAudit.calendar.calendarName,
+      isOwnedByExecutionAccount: configAudit.calendar.isOwnedByExecutionAccount,
+      blockers: configAudit.blockers
+    },
     summary: {
-      1_totalFutureAppointments: futureAppointments.length,
-      2_uniqueMatches: uniqueMatches.length,
-      3_unmatchedCalendarEvents: unmatchedCalendarEvents.length,
-      4_appointmentsWithoutEvent: appointmentsWithoutEvent.length,
-      5_ambiguousMatches: ambiguousMatches.length,
-      6_ignoredByExceptions: ignoredByExceptions.length,
-      7_safeToUpdate: safeToUpdate.length,
-      8_duplicateRiskRecords: duplicateRiskRecords.length,
+      totalFutureAppointments: futureAppointments.length,
+      uniqueMatches: uniqueMatches.length,
+      unmatchedCalendarEvents: unmatchedCalendarEvents.length,
+      appointmentsWithoutEvent: appointmentsWithoutEvent.length,
+      ambiguousMatches: ambiguousMatches.length,
+      ignoredByExceptions: ignoredByExceptions.length,
+      safeToUpdate: safeToUpdate.length,
+      duplicateRiskRecords: duplicateRiskRecords.length,
       duplicateSheetRowsDetected: duplicateSheetRows.length,
       pendingHumanReviewCount: pendingHumanReview.length,
       withColumnTId: futureAppointments.filter(function(a) { return a.hasColumnTId; }).length,
@@ -742,11 +755,26 @@ function syncCalendarChangesToSheet(options) {
         continue;
       }
 
-      // 1. Duplicidade inequívoca na planilha (mais de uma linha ativa com o mesmo Event ID oficial)
-      if (seenEventOwnerRow[colTEventId]) {
+      var sheetDate = _cdsDateKey_(r[5], d[5]);
+      var sheetTime = _cdsTimeKey_(r[6], d[6]);
+      var resolved = _cdsResolveEventOccurrence_(calendar, colTEventId, sheetDate, sheetTime, tz);
+
+      if (resolved.status === "AMBIGUOUS") {
+        skipped++;
+        logs.push({ row: rowNum, appointmentId: appointmentId, status: "SKIPPED_AMBIGUOUS_RECURRING_OCCURRENCE", eventId: colTEventId, date: sheetDate });
+        continue;
+      }
+
+      // Chave de deduplicação: para eventos recorrentes usa Event ID + Data da ocorrência;
+      // para eventos únicos usa Event ID. Assim ocorrências legítimas de datas diferentes
+      // (ex.: 10/12 e 24/12) não são confundidas com duplicidades.
+      var ownerKey = resolved.isRecurring && sheetDate ? (colTEventId + "|" + sheetDate) : colTEventId;
+
+      // 1. Duplicidade inequívoca na planilha (mais de uma linha ativa para o mesmo evento/ocorrência oficial)
+      if (seenEventOwnerRow[ownerKey]) {
         if (guard.reason === "AUTHORIZED_DURATION_EXCEPTION") {
           skipped++;
-          logs.push({ row: rowNum, appointmentId: appointmentId, status: "SKIPPED_EXCEPTION_NOT_CANCELLED", eventId: colTEventId });
+          logs.push({ row: rowNum, appointmentId: appointmentId, status: "SKIPPED_EXCEPTION_NOT_CANCELLED", eventId: colTEventId, ownerKey: ownerKey });
           continue;
         }
         if (!dryRun) {
@@ -758,17 +786,16 @@ function syncCalendarChangesToSheet(options) {
           appointmentId: appointmentId,
           status: dryRun ? "WOULD_CANCEL_DUPLICATE_IN_SHEET" : "CANCELLED_DUPLICATE_IN_SHEET",
           eventId: colTEventId,
-          primaryRow: seenEventOwnerRow[colTEventId]
+          ownerKey: ownerKey,
+          primaryRow: seenEventOwnerRow[ownerKey]
         });
         continue;
       }
-      seenEventOwnerRow[colTEventId] = rowNum;
+      seenEventOwnerRow[ownerKey] = rowNum;
 
-      var sheetDate = _cdsDateKey_(r[5], d[5]);
-      var sheetTime = _cdsTimeKey_(r[6], d[6]);
-      var ev = calendar.getEventById(colTEventId);
+      var ev = resolved.event;
 
-      // 2. Evento excluído/cancelado no Google Calendar -> refletir cancelamento na planilha preservando histórico
+      // 2. Evento/ocorrência excluído ou cancelado no Google Calendar -> refletir cancelamento na planilha preservando histórico
       if (!ev) {
         if (sheetDate && sheetTime) {
           var sheetStart = new Date(sheetDate + "T" + sheetTime + ":00" + CDS_TZ_OFFSET);
@@ -998,9 +1025,12 @@ function _cdsUpdateExistingEventDurationOnly_(ss, calendar, rowIndex) {
 
   var lastCol = Math.max(agSheet.getLastColumn(), 20);
   var row = agSheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  var display = agSheet.getRange(rowIndex, 1, 1, lastCol).getDisplayValues()[0];
 
   var client = String(row[1] || "").trim();
   var procedure = String(row[4] || "").trim();
+  var sheetDate = _cdsDateKey_(row[5], display[5]);
+  var sheetTime = _cdsTimeKey_(row[6], display[6]);
   var statusNorm = _cdsNormalize_(row[8]);
   var appointmentId = String(row[9] || "").trim();
   var additionalIds = _cdsParseAdditionalIds_(row[13]);
@@ -1021,14 +1051,28 @@ function _cdsUpdateExistingEventDurationOnly_(ss, calendar, rowIndex) {
     };
   }
 
-  var existingEvent = calendar.getEventById(colTEventId);
+  // Resolve ocorrência exata por Event ID + Data (fundamental para séries recorrentes no CalendarApp)
+  var resolved = _cdsResolveEventOccurrence_(calendar, colTEventId, sheetDate, sheetTime, _cdsTimezone_());
+  if (resolved.status === "AMBIGUOUS") {
+    return {
+      status: "ERROR",
+      errorCode: "AMBIGUOUS_RECURRING_OCCURRENCE",
+      rowIndex: rowIndex,
+      appointmentId: appointmentId,
+      eventId: colTEventId,
+      date: sheetDate,
+      message: "Mais de uma ocorrência encontrada para o mesmo Event ID e data; evento não alterado."
+    };
+  }
+  var existingEvent = resolved.event;
   if (!existingEvent) {
     return {
       status: "SKIPPED_EVENT_NOT_FOUND_IN_CALENDAR",
       rowIndex: rowIndex,
       appointmentId: appointmentId,
       eventId: colTEventId,
-      message: "Evento não encontrado no Google Calendar (não recriado automaticamente)."
+      date: sheetDate,
+      message: "Evento/ocorrência não encontrada no Google Calendar para a data informada (não recriado automaticamente)."
     };
   }
   if (existingEvent.isAllDayEvent()) {
@@ -1122,6 +1166,65 @@ function _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm) {
   return { skip: false };
 }
 
+/**
+ * Resolve uma ocorrência exata no CalendarApp sem presumir que eventId seja único
+ * entre ocorrências de uma série recorrente.
+ * - Comportamento real do CalendarApp: todas as ocorrências de uma série recorrente
+ *   compartilham o mesmo event.getId(); calendar.getEventById(id) retorna a série/primeira
+ *   instância, enquanto calendar.getEvents(dayStart, dayEnd) retorna a ocorrência exata daquele dia
+ *   e permite atualizar apenas aquela ocorrência via setTime() sem alterar as demais.
+ */
+function _cdsResolveEventOccurrence_(calendar, eventId, dateKey, timeKey, tz) {
+  if (!eventId) return { status: "NOT_FOUND", event: null, isRecurring: false };
+  var timeZone = tz || _cdsTimezone_();
+
+  // 1. Busca pela combinação exata Event ID + Data da ocorrência (seguro para séries recorrentes)
+  if (dateKey) {
+    var dayEvents = calendar.getEvents(
+      new Date(dateKey + "T00:00:00" + CDS_TZ_OFFSET),
+      new Date(dateKey + "T23:59:59" + CDS_TZ_OFFSET)
+    );
+    var sameDayMatches = [];
+    for (var i = 0; i < dayEvents.length; i++) {
+      if (dayEvents[i].getId() === eventId) {
+        sameDayMatches.push(dayEvents[i]);
+      }
+    }
+    if (sameDayMatches.length === 1) {
+      var isRec = false;
+      try { isRec = !!sameDayMatches[0].isRecurringEvent(); } catch (e) {}
+      return { status: "FOUND_BY_ID_AND_DATE", event: sameDayMatches[0], isRecurring: isRec };
+    }
+    if (sameDayMatches.length > 1) {
+      if (timeKey) {
+        var exactTimeMatches = sameDayMatches.filter(function(ev) {
+          return Utilities.formatDate(ev.getStartTime(), timeZone, "HH:mm") === timeKey;
+        });
+        if (exactTimeMatches.length === 1) {
+          var isRecT = false;
+          try { isRecT = !!exactTimeMatches[0].isRecurringEvent(); } catch (e) {}
+          return { status: "FOUND_BY_ID_DATE_AND_TIME", event: exactTimeMatches[0], isRecurring: isRecT };
+        }
+      }
+      return { status: "AMBIGUOUS", event: null, isRecurring: true };
+    }
+  }
+
+  // 2. Fallback seguro apenas para eventos NÃO recorrentes (ex.: evento único remarcado manualmente para outro dia)
+  var byId = calendar.getEventById(eventId);
+  if (byId) {
+    var byIdRecurring = false;
+    try { byIdRecurring = !!byId.isRecurringEvent(); } catch (e) {}
+    if (!byIdRecurring) {
+      return { status: "FOUND_NON_RECURRING_BY_ID", event: byId, isRecurring: false };
+    }
+    // É série recorrente, mas NÃO existe ocorrência na data informada: nunca confundir com outra data (ex.: 10/12 ou 07/01)!
+    return { status: "RECURRING_OCCURRENCE_NOT_ON_DATE", event: null, isRecurring: true };
+  }
+
+  return { status: "NOT_FOUND", event: null, isRecurring: false };
+}
+
 function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
   var matches = [];
   var clientNorm = _cdsNormalize_(apt.client);
@@ -1130,12 +1233,33 @@ function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
   var tag = apt.appointmentId ? CDS_APT_TAG_PREFIX + apt.appointmentId + "]" : "";
 
   if (apt.columnTEventId) {
+    var sameIdEvents = [];
     for (var i = 0; i < calendarEvents.length; i++) {
       if (calendarEvents[i].id === apt.columnTEventId) {
-        matches.push({ event: calendarEvents[i], matchType: "COLUMN_T_EVENT_ID" });
+        sameIdEvents.push(calendarEvents[i]);
       }
     }
-    if (matches.length > 0) return matches;
+    if (sameIdEvents.length > 0) {
+      var anyRecurring = sameIdEvents.length > 1 || sameIdEvents.some(function(ev) { return !!ev.isRecurring; });
+      if (!anyRecurring) {
+        // Evento único (não recorrente): ID na Coluna T identifica exclusivamente o evento (mesmo se remarcado de data)
+        return [{ event: sameIdEvents[0], matchType: "COLUMN_T_EVENT_ID" }];
+      }
+      // Série recorrente: identificar obrigatoriamente pela combinação Event ID + Data exata da ocorrência!
+      var sameDate = sameIdEvents.filter(function(ev) { return ev.dateKey === apt.date; });
+      if (sameDate.length === 1) {
+        return [{ event: sameDate[0], matchType: "COLUMN_T_EVENT_ID_AND_DATE" }];
+      }
+      if (sameDate.length > 1) {
+        var exactTime = sameDate.filter(function(ev) { return ev.timeKey === apt.time; });
+        if (exactTime.length === 1) {
+          return [{ event: exactTime[0], matchType: "COLUMN_T_EVENT_ID_DATE_AND_TIME" }];
+        }
+        return sameDate.map(function(ev) { return { event: ev, matchType: "COLUMN_T_RECURRING_AMBIGUOUS_SAME_DAY" }; });
+      }
+      // Nenhuma ocorrência desta série recorrente na data apt.date: nunca confundir com 10/12, 07/01 ou outras datas!
+      return [];
+    }
   }
   if (tag) {
     for (var j = 0; j < calendarEvents.length; j++) {

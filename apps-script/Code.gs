@@ -1488,6 +1488,14 @@ function doPost(e) {
       return responseJSON(getCalendarReconciliationPreview(data));
     }
 
+    if (data.action === "auditCalendarDurationSyncConfig") {
+      return responseJSON(auditCalendarDurationSyncConfig());
+    }
+
+    if (data.action === "runCalendarDurationSyncDryRun") {
+      return responseJSON(runCalendarDurationSyncDryRun(data));
+    }
+
     if (data.action === "getAppointments") {
       return fetchAppointmentsFromSheet();
     }
@@ -1696,11 +1704,23 @@ function doPost(e) {
 
         SpreadsheetApp.flush();
 
+        var calendarSyncResult = null;
+        if (typeof syncAppointmentRowAfterPanelUpdate_ === "function" &&
+            (data.serviceTitle !== undefined || data.serviceId !== undefined || data.additionalServiceIds !== undefined || data.date !== undefined || data.time !== undefined)) {
+          try {
+            calendarSyncResult = syncAppointmentRowAfterPanelUpdate_(foundRowIndex);
+          } catch (calSyncErr) {
+            console.error("Calendar duration sync warning after updateAppointment: " + calSyncErr);
+            calendarSyncResult = { status: "error", message: String(calSyncErr && calSyncErr.message ? calSyncErr.message : calSyncErr) };
+          }
+        }
+
         return responseJSON({
           status: "success",
           updated: true,
           persisted: true,
           appointmentId: rawUpdateId,
+          calendarDurationSync: calendarSyncResult,
           message: "Agendamento atualizado com sucesso na planilha oficial."
         });
       } finally {
@@ -1763,16 +1783,35 @@ function doPost(e) {
           new Date()
         ];
 
+        var previousDuration = foundServRow > 0 ? String(existingRows[foundServRow - 1][5] || '').trim() : '';
+
         if (foundServRow > 0) {
           saveServSheet.getRange(foundServRow, 1, 1, 13).setValues([rowData]);
         } else {
           saveServSheet.appendRow(rowData);
         }
 
+        SpreadsheetApp.flush();
+
+        var serviceCalendarSync = null;
+        if (foundServRow > 0 && typeof syncFutureAppointmentsForServiceDurationChange === "function") {
+          try {
+            serviceCalendarSync = syncFutureAppointmentsForServiceDurationChange(
+              sIdToSave,
+              String(data.title || '').trim(),
+              { previousDuration: previousDuration, source: "saveService" }
+            );
+          } catch (servSyncErr) {
+            console.error("Calendar duration sync warning after saveService: " + servSyncErr);
+            serviceCalendarSync = { status: "error", message: String(servSyncErr && servSyncErr.message ? servSyncErr.message : servSyncErr) };
+          }
+        }
+
         return responseJSON({
           status: "success",
           saved: true,
           serviceId: sIdToSave,
+          calendarDurationSync: serviceCalendarSync,
           message: "Serviço salvo com sucesso na planilha oficial."
         });
       } finally {

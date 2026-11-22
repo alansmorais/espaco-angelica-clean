@@ -1,79 +1,70 @@
 /**
- * Espaço Angélica — Sincronização Controlada de Duração (Google Sheets -> Google Calendar)
+ * Espaço Angélica — Sincronização Bidirecional Controlada (Google Calendar <-> Google Sheets)
  *
- * Módulo integrado ao projeto oficial (apps-script/), preservando Code.gs e CalendarSync.gs.
- * Reutiliza funções/constantes oficiais já existentes em Code.gs:
- *   - TARGET_SPREADSHEET_ID
- *   - OFFICIAL_TIME_ZONE ("America/Sao_Paulo")
- *   - getSharedCalendar_()
- *   - getOfficialSheet()
- *   - getServicesSheets()
- *   - normalizeBookingDate() / normalizeBookingTime()
+ * REGRA DEFINITIVA DE AUTORIDADE:
+ * - Google Calendar é a FONTE OFICIAL dos agendamentos (data, horário inicial, horário final e existência).
+ * - Google Sheets é o CATÁLOGO OFICIAL de serviços, a ÚNICA FONTE OFICIAL das durações em Serviços!F,
+ *   a base de relacionamento e o registro dos Google Calendar Event IDs em Agendamentos!T.
+ * - NUNCA permitir que datas/horários antigos da planilha sobrescrevam agendamentos oficiais do Calendar.
+ * - NUNCA alterar Serviços!F em razão de edição individual de evento no Calendar.
+ * - NUNCA apagar linhas da planilha: duplicidades inequívocas são marcadas como "cancelado" preservando histórico.
+ * - Prevenção de ciclos infinitos via guarda de sincronização interna (CacheService + verificação no-op).
  *
- * Contrato oficial de colunas (1-based):
- * - Aba "Serviços" (e "Depilação"):
- *     Coluna A (1): ID
- *     Coluna B (2): Título
- *     Coluna F (6): Duração (ÚNICA fonte oficial da duração!)
- * - Aba "Agendamentos":
- *     Coluna B (2): Cliente
- *     Coluna E (5): Procedimento
- *     Coluna F (6): Data Agendada (NUNCA usar como duração!)
- *     Coluna G (7): Horário Agendado (horário inicial)
- *     Coluna I (9): Status
- *     Coluna J (10): ID Agendamento
- *     Coluna N (14): IDs Serviços Adicionais (JSON opcional)
- *     Coluna P (16): ID Serviço Principal
- *     Coluna T (20): Google Calendar Event ID
- *
- * TRAVA DE ATIVAÇÃO SEGURA:
- * - Por padrão (CALENDAR_DURATION_SYNC_ENABLED !== "true"), nenhuma escrita no Calendar
- *   ou na Coluna T é executada.
- * - Execute primeiro:
- *     1) auditCalendarDurationSyncConfig()
- *     2) runCalendarDurationSyncDryRun()
- *   Somente após confirmar configuração, ausência de ambiguidades e conciliação de IDs,
- *   habilite CALENDAR_DURATION_SYNC_ENABLED="true" e execute installCalendarDurationSyncTrigger().
+ * Reutiliza funções/constantes oficiais de Code.gs sem duplicá-las:
+ *   TARGET_SPREADSHEET_ID, OFFICIAL_TIME_ZONE, getSharedCalendar_(), getOfficialSheet(),
+ *   getServicesSheets(), normalizeBookingDate(), normalizeBookingTime().
  */
 
 var CDS_TZ_OFFSET = "-03:00";
 var CDS_APT_TAG_PREFIX = "[ESPACO_ANGELICA_APT_ID:";
-var CDS_TRIGGER_HANDLER = "handleSpreadsheetEditForCalendarSync";
+var CDS_EDIT_TRIGGER_HANDLER = "handleSpreadsheetEditForCalendarSync";
+var CDS_CALENDAR_TRIGGER_HANDLER = "syncCalendarChangesToSheet";
+var CDS_LOOP_GUARD_KEY = "CDS_INTERNAL_SYNC_LOCK_TS";
+var CDS_LOOP_GUARD_TTL_SEC = 15;
 
-// Exceções já autorizadas no sistema (alinhadas com apps-script/CalendarSync.gs).
+// Exceções oficiais autorizadas pelo administrador (alinhadas com CalendarSync.gs + decisões consolidadas).
 var CDS_AUTHORIZED_EXCEPTIONS = {
+  // Registros excluídos da sincronização (preservados na planilha)
   excludeAppointmentIds: [
-    "apt-1794006950286-rec-4" // Registro de teste excluído da sincronização (EXCLUDE_FROM_SYNC)
+    "apt-1794006950286-rec-4" // Linha 23: registro de teste (Alan TesteAdmin — EXCLUDE_FROM_SYNC)
   ],
+  // Exceções oficiais de duração especial no Google Calendar (não reduzir automaticamente)
   durationOverrideByAppointmentId: {
-    "apt-1793902440508": 90   // Exceção autorizada pelo administrador (KEEP_CALENDAR_AND_ALIGN_SHEET)
+    "apt-1793902283321": 150, // Linha 16 (23/12): atendimento especial 150 min (mãe e filha)
+    "apt-1793902440508": 90   // Linha 17 (24/12): Calendar oficial 12:30, duração especial 90 min
   },
-  allowPendingPixIds: [
-    "apt-1794603000976"       // Exceção autorizada pelo administrador (CREATE_CALENDAR_EVENT_PENDING_PIX)
+  // Registros pendentes de confirmação humana (não criar evento nem cancelar automaticamente)
+  pendingReviewAppointmentIds: [
+    "apt-1793903805661",      // Linha 20 (30/12): sem evento no Calendar — aguarda confirmação de validade
+    "apt-1794603000976"       // Linha 24 (02/12): conflito com evento sobreposto — aguarda resolução
   ]
 };
 
-/**
- * Resolve o fuso horário oficial reutilizando OFFICIAL_TIME_ZONE do Code.gs.
- */
 function _cdsTimezone_() {
   return (typeof OFFICIAL_TIME_ZONE !== "undefined" && OFFICIAL_TIME_ZONE)
     ? OFFICIAL_TIME_ZONE
     : "America/Sao_Paulo";
 }
 
-/**
- * Verifica se a trava de ativação em produção está explicitamente ligada.
- */
 function _cdsIsWriteSyncEnabled_() {
   var flag = String(PropertiesService.getScriptProperties().getProperty("CALENDAR_DURATION_SYNC_ENABLED") || "").trim().toLowerCase();
   return flag === "true";
 }
 
-/**
- * Resolve e valida o ID da planilha sem nunca alterar Script Properties automaticamente.
- * Reutiliza TARGET_SPREADSHEET_ID do Code.gs como referência oficial.
- */
+function _cdsMarkInternalSync_() {
+  try {
+    CacheService.getScriptCache().put(CDS_LOOP_GUARD_KEY, String(new Date().getTime()), CDS_LOOP_GUARD_TTL_SEC);
+  } catch (e) {}
+}
+
+function _cdsIsInternalSyncActive_() {
+  try {
+    return !!CacheService.getScriptCache().get(CDS_LOOP_GUARD_KEY);
+  } catch (e) {
+    return false;
+  }
+}
+
 function _cdsResolveSpreadsheetConfig_() {
   var props = PropertiesService.getScriptProperties();
   var propSpreadsheetId = String(props.getProperty("SPREADSHEET_ID") || "").trim();
@@ -105,30 +96,20 @@ function _cdsResolveSpreadsheetConfig_() {
   };
 }
 
-/**
- * Abre a planilha oficial com bloqueio de segurança caso SPREADSHEET_ID divirja de TARGET_SPREADSHEET_ID.
- */
-function _cdsOpenOfficialSpreadsheet_(allowReadOnlyFallback) {
+function _cdsOpenOfficialSpreadsheet_(allowFallbackToTarget) {
   var cfg = _cdsResolveSpreadsheetConfig_();
   if (cfg.status === "MISMATCH_WITH_TARGET_SPREADSHEET_ID") {
     throw new Error(cfg.actionRequired);
   }
-  if (!cfg.hasScriptProperty && !allowReadOnlyFallback) {
+  if (!cfg.hasScriptProperty && !allowFallbackToTarget) {
     throw new Error(cfg.actionRequired || "Script Property SPREADSHEET_ID não configurada.");
   }
-  if (!cfg.effectiveId) {
-    throw new Error("ID da planilha oficial não disponível.");
-  }
+  if (!cfg.effectiveId) throw new Error("ID da planilha oficial indisponível.");
   return SpreadsheetApp.openById(cfg.effectiveId);
 }
 
-/**
- * Abre o calendário compartilhado reutilizando getSharedCalendar_() do Code.gs.
- */
 function _cdsGetCalendar_() {
-  if (typeof getSharedCalendar_ === "function") {
-    return getSharedCalendar_();
-  }
+  if (typeof getSharedCalendar_ === "function") return getSharedCalendar_();
   var calId = String(PropertiesService.getScriptProperties().getProperty("GOOGLE_CALENDAR_ID") || "").trim();
   if (!calId) throw new Error("Configure GOOGLE_CALENDAR_ID nas Propriedades do Script.");
   var cal = CalendarApp.getCalendarById(calId);
@@ -137,9 +118,162 @@ function _cdsGetCalendar_() {
 }
 
 /**
- * AUDITORIA SOMENTE LEITURA DE CONFIGURAÇÃO E GATILHOS.
- * Não altera propriedades, não instala gatilhos, não grava na planilha,
- * não modifica eventos e NÃO imprime tokens, senhas ou segredos.
+ * 1. CONCILIAÇÃO INICIAL CONTROLADA E AUTORIZADA (Linhas 16, 17 e 19).
+ *
+ * - Revalida cliente, data e horário de cada evento no Google Calendar ANTES de gravar.
+ * - Preenche Agendamentos!T nas linhas 16, 17 e 19 sem criar nenhum evento no Calendar.
+ * - Atualiza Agendamentos!G17 de 12:00 para 12:30 (horário oficial do Calendar) mantendo exceção de 90 min.
+ * - Mantém exceção de 150 min na Linha 16 (não altera o evento no Calendar).
+ * - NÃO toca nas linhas 20, 23, 24 nem em qualquer evento do Google Calendar.
+ * - Idempotente: execuções repetidas não sobrescrevem nem duplicam nada.
+ */
+function applyAuthorizedColumnTReconciliation() {
+  var tz = _cdsTimezone_();
+  var ss = _cdsOpenOfficialSpreadsheet_(true);
+  var agSheet = ss.getSheetByName("Agendamentos");
+  if (!agSheet) throw new Error("Aba 'Agendamentos' não encontrada.");
+  var calendar = _cdsGetCalendar_();
+
+  var authorizedTargets = [
+    {
+      row: 16,
+      appointmentId: "apt-1793902283321",
+      expectedClientToken: "maria de jesus",
+      expectedDate: "2026-12-23",
+      expectedCalendarStartTime: "16:00",
+      expectedCalendarDurationMin: 150,
+      eventId: "6g07637k50lq60c35h36qt72uo@google.com",
+      alignSheetTimeTo: null,
+      exceptionNote: "Exceção de 150 min (mãe e filha) preservada; evento do Calendar não alterado."
+    },
+    {
+      row: 17,
+      appointmentId: "apt-1793902440508",
+      expectedClientToken: "kristine sorensen",
+      expectedDate: "2026-12-24",
+      expectedCalendarStartTime: "12:30",
+      expectedCalendarDurationMin: 90,
+      eventId: "gmdts7nvfk56vl6v1iaa068leg@google.com",
+      alignSheetTimeTo: "12:30",
+      exceptionNote: "Calendar oficial 12:30 (90 min): planilha alinhada para 12:30 e exceção de 90 min preservada."
+    },
+    {
+      row: 19,
+      appointmentId: "apt-1793903713527",
+      expectedClientToken: "josefina calderon",
+      expectedDate: "2026-12-23",
+      expectedCalendarStartTime: "15:00",
+      expectedCalendarDurationMin: 60,
+      eventId: "bj320net3mqnvtndi3q201qcis@google.com",
+      alignSheetTimeTo: null,
+      exceptionNote: "Correspondência exata de 60 min; apenas vínculo na Coluna T gravado."
+    }
+  ];
+
+  var results = [];
+  _cdsMarkInternalSync_();
+
+  for (var i = 0; i < authorizedTargets.length; i++) {
+    var target = authorizedTargets[i];
+    var rowVals = agSheet.getRange(target.row, 1, 1, 20).getValues()[0];
+    var rowDisp = agSheet.getRange(target.row, 1, 1, 20).getDisplayValues()[0];
+
+    var sheetAptId = String(rowVals[9] || "").trim();
+    var sheetClient = String(rowVals[1] || "").trim();
+    var sheetDate = _cdsDateKey_(rowVals[5], rowDisp[5]);
+    var sheetTime = _cdsTimeKey_(rowVals[6], rowDisp[6]);
+    var existingColT = String(rowVals[19] || "").trim();
+
+    // Validação estrita da linha na planilha antes de gravar
+    if (sheetAptId !== target.appointmentId || _cdsNormalize_(sheetClient).indexOf(target.expectedClientToken) < 0 || sheetDate !== target.expectedDate) {
+      results.push({
+        row: target.row,
+        status: "BLOCKED_SHEET_MISMATCH",
+        expectedAppointmentId: target.appointmentId,
+        actualAppointmentId: sheetAptId,
+        actualClient: sheetClient,
+        actualDate: sheetDate
+      });
+      continue;
+    }
+
+    // Revalidação estrita do evento no Google Calendar por cliente, data e horário
+    var dayEvents = calendar.getEvents(
+      new Date(target.expectedDate + "T00:00:00" + CDS_TZ_OFFSET),
+      new Date(target.expectedDate + "T23:59:59" + CDS_TZ_OFFSET)
+    );
+    var matchedEvent = null;
+    for (var eIdx = 0; eIdx < dayEvents.length; eIdx++) {
+      var ev = dayEvents[eIdx];
+      if (ev.getId() !== target.eventId) continue;
+      var evStartTime = Utilities.formatDate(ev.getStartTime(), tz, "HH:mm");
+      var evTitleNorm = _cdsNormalize_(ev.getTitle());
+      var evDurMin = Math.round((ev.getEndTime().getTime() - ev.getStartTime().getTime()) / 60000);
+      if (evStartTime === target.expectedCalendarStartTime && evTitleNorm.indexOf(target.expectedClientToken) >= 0) {
+        matchedEvent = {
+          id: ev.getId(),
+          title: ev.getTitle(),
+          start: Utilities.formatDate(ev.getStartTime(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
+          end: Utilities.formatDate(ev.getEndTime(), tz, "yyyy-MM-dd'T'HH:mm:ss"),
+          durationMinutes: evDurMin
+        };
+        break;
+      }
+    }
+
+    if (!matchedEvent) {
+      results.push({
+        row: target.row,
+        appointmentId: target.appointmentId,
+        status: "BLOCKED_CALENDAR_IDENTITY_NOT_CONFIRMED",
+        expectedEventId: target.eventId,
+        expectedDate: target.expectedDate,
+        expectedTime: target.expectedCalendarStartTime
+      });
+      continue;
+    }
+
+    var actionsTaken = [];
+    if (existingColT !== target.eventId) {
+      agSheet.getRange(target.row, 20).setValue(target.eventId);
+      actionsTaken.push("COLUMN_T_SET:" + target.eventId);
+    } else {
+      actionsTaken.push("COLUMN_T_ALREADY_SET");
+    }
+
+    if (target.alignSheetTimeTo && sheetTime !== target.alignSheetTimeTo) {
+      agSheet.getRange(target.row, 7).setValue(target.alignSheetTimeTo);
+      actionsTaken.push("COLUMN_G_TIME_ALIGNED:" + sheetTime + "->" + target.alignSheetTimeTo);
+    } else if (target.alignSheetTimeTo) {
+      actionsTaken.push("COLUMN_G_ALREADY_ALIGNED:" + target.alignSheetTimeTo);
+    }
+
+    results.push({
+      row: target.row,
+      appointmentId: target.appointmentId,
+      client: sheetClient,
+      status: "RECONCILED",
+      verifiedCalendarEvent: matchedEvent,
+      actionsTaken: actionsTaken,
+      note: target.exceptionNote
+    });
+  }
+
+  SpreadsheetApp.flush();
+
+  var summary = {
+    status: "success",
+    calendarEventsCreated: 0,
+    calendarEventsModified: 0,
+    results: results,
+    safety: "Nenhum evento do Google Calendar foi criado, alterado ou excluído. Linhas 20, 23 e 24 preservadas intactas."
+  };
+  Logger.log(JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+/**
+ * 2. AUDITORIA SOMENTE LEITURA DE CONFIGURAÇÃO E GATILHOS (zero segredos nos logs).
  */
 function auditCalendarDurationSyncConfig() {
   var props = PropertiesService.getScriptProperties();
@@ -147,9 +281,7 @@ function auditCalendarDurationSyncConfig() {
   var sheetCfg = _cdsResolveSpreadsheetConfig_();
   var calIdConfigured = !!String(props.getProperty("GOOGLE_CALENDAR_ID") || "").trim();
   var executionAccount = "";
-  try {
-    executionAccount = String(Session.getEffectiveUser().getEmail() || "");
-  } catch (e) {}
+  try { executionAccount = String(Session.getEffectiveUser().getEmail() || ""); } catch (e) {}
 
   var spreadsheetCheck = {
     scriptPropertyConfigured: sheetCfg.hasScriptProperty,
@@ -211,12 +343,14 @@ function auditCalendarDurationSyncConfig() {
   }
 
   var existingTriggers = [];
-  var hasDurationSyncTrigger = false;
+  var hasEditTrigger = false;
+  var hasCalendarTrigger = false;
   try {
     var triggers = ScriptApp.getProjectTriggers();
     for (var t = 0; t < triggers.length; t++) {
       var handler = triggers[t].getHandlerFunction();
-      if (handler === CDS_TRIGGER_HANDLER) hasDurationSyncTrigger = true;
+      if (handler === CDS_EDIT_TRIGGER_HANDLER) hasEditTrigger = true;
+      if (handler === CDS_CALENDAR_TRIGGER_HANDLER) hasCalendarTrigger = true;
       existingTriggers.push({
         handlerFunction: handler,
         eventType: String(triggers[t].getEventType()),
@@ -231,18 +365,10 @@ function auditCalendarDurationSyncConfig() {
   if (!spreadsheetCheck.scriptPropertyConfigured || !spreadsheetCheck.matchesTargetSpreadsheetId) {
     blockers.push(spreadsheetCheck.actionRequired || "Configurar SPREADSHEET_ID corretamente nas Script Properties.");
   }
-  if (!calendarCheck.accessible) {
-    blockers.push(calendarCheck.error || "Configurar GOOGLE_CALENDAR_ID e confirmar acesso da conta executora.");
-  }
-  if (!spreadsheetCheck.timeZoneIsSaoPaulo) {
-    blockers.push("Fuso horário da planilha (" + spreadsheetCheck.spreadsheetTimeZone + ") difere de America/Sao_Paulo.");
-  }
-  if (calendarCheck.accessible && !calendarCheck.timeZoneIsSaoPaulo) {
-    blockers.push("Fuso horário do calendário (" + calendarCheck.calendarTimeZone + ") difere de America/Sao_Paulo.");
-  }
-  if (!spreadsheetCheck.hasAgendamentosTab || !spreadsheetCheck.hasServicosTab) {
-    blockers.push("Abas obrigatórias 'Agendamentos' e/ou 'Serviços' não encontradas.");
-  }
+  if (!calendarCheck.accessible) blockers.push(calendarCheck.error || "Configurar GOOGLE_CALENDAR_ID.");
+  if (!spreadsheetCheck.timeZoneIsSaoPaulo) blockers.push("Fuso horário da planilha difere de America/Sao_Paulo.");
+  if (calendarCheck.accessible && !calendarCheck.timeZoneIsSaoPaulo) blockers.push("Fuso horário do calendário difere de America/Sao_Paulo.");
+  if (!spreadsheetCheck.hasAgendamentosTab || !spreadsheetCheck.hasServicosTab) blockers.push("Abas obrigatórias não encontradas.");
 
   var report = {
     status: "success",
@@ -254,39 +380,27 @@ function auditCalendarDurationSyncConfig() {
     calendar: calendarCheck,
     triggers: {
       total: existingTriggers.length,
-      hasDurationSyncTrigger: hasDurationSyncTrigger,
+      hasEditTrigger: hasEditTrigger,
+      hasCalendarTrigger: hasCalendarTrigger,
       items: existingTriggers
     },
     configReady: blockers.length === 0,
     blockers: blockers,
-    safety: "Somente leitura. Nenhum segredo foi exibido, nenhuma propriedade foi alterada e nenhum gatilho foi instalado."
+    safety: "Somente leitura. Nenhum segredo foi exposto, nenhuma propriedade foi alterada e nenhum gatilho foi instalado."
   };
-
   Logger.log(JSON.stringify(report, null, 2));
   return report;
 }
 
 /**
- * AUDITORIA DE CONCILIAÇÃO — DRY RUN OBRIGATÓRIO (100% SOMENTE LEITURA).
- *
- * NÃO cria, atualiza, exclui ou move eventos no Google Calendar.
- * NÃO preenche a Coluna T nem altera qualquer célula da planilha.
- *
- * Produz os 8 grupos exigidos antes de qualquer ativação:
- *   1. Total de agendamentos futuros
- *   2. Correspondências únicas
- *   3. Eventos sem correspondência
- *   4. Agendamentos sem evento
- *   5. Correspondências ambíguas
- *   6. Registros ignorados por exceções
- *   7. Registros que poderiam ser atualizados com segurança
- *   8. Registros que poderiam gerar duplicações
+ * 3. DRY-RUN ATUALIZADO (100% SOMENTE LEITURA).
+ * Reflete a regra definitiva de autoridade (Calendar = fonte oficial dos agendamentos;
+ * Sheets = catálogo + durações em Serviços!F + Coluna T) e todas as exceções autorizadas.
  */
 function runCalendarDurationSyncDryRun(options) {
   options = options || {};
   var configAudit = auditCalendarDurationSyncConfig();
   var tz = _cdsTimezone_();
-
   var today = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd");
   var daysAhead = Number(options.daysAhead || 365);
   var endDateObj = new Date();
@@ -296,7 +410,6 @@ function runCalendarDurationSyncDryRun(options) {
   var ss = _cdsOpenOfficialSpreadsheet_(true);
   var agSheet = ss.getSheetByName("Agendamentos");
   if (!agSheet) throw new Error("Aba 'Agendamentos' não encontrada.");
-
   var calendar = _cdsGetCalendar_();
   var catalog = _cdsReadServicesCatalog_(ss);
 
@@ -322,25 +435,12 @@ function runCalendarDurationSyncDryRun(options) {
     var evEndIso = Utilities.formatDate(ev.getEndTime(), tz, "yyyy-MM-dd'T'HH:mm:ss");
 
     if (ev.isAllDayEvent()) {
-      ignoredByExceptions.push({
-        source: "CALENDAR",
-        reason: "ALL_DAY_EVENT",
-        eventId: evId,
-        title: evTitle,
-        start: evStartIso
-      });
+      ignoredByExceptions.push({ source: "CALENDAR", reason: "ALL_DAY_EVENT", eventId: evId, title: evTitle, start: evStartIso });
       continue;
     }
-
     var normEvTitle = _cdsNormalize_(evTitle);
     if (/\bteste?\b|\bintegracao\b|\bintegration\b|\be2e\b/i.test(normEvTitle)) {
-      ignoredByExceptions.push({
-        source: "CALENDAR",
-        reason: "TEST_EVENT",
-        eventId: evId,
-        title: evTitle,
-        start: evStartIso
-      });
+      ignoredByExceptions.push({ source: "CALENDAR", reason: "TEST_EVENT", eventId: evId, title: evTitle, start: evStartIso });
       continue;
     }
 
@@ -365,6 +465,7 @@ function runCalendarDurationSyncDryRun(options) {
   var ambiguousMatches = [];
   var safeToUpdate = [];
   var duplicateRiskRecords = [];
+  var pendingHumanReview = [];
   var nowMs = new Date().getTime();
 
   for (var i = 1; i < values.length; i++) {
@@ -383,20 +484,17 @@ function runCalendarDurationSyncDryRun(options) {
 
     if (!client && !appointmentId && !procedure) continue;
 
-    // Coluna F de Agendamentos é DATA (nunca duração)
     var dateKey = _cdsDateKey_(r[5], d[5]);
     var timeKey = _cdsTimeKey_(r[6], d[6]);
     if (!dateKey || dateKey < today || dateKey > endKey) continue;
-
-    // Ignorar passados dentro do próprio dia de hoje
     if (timeKey) {
       var startCheck = new Date(dateKey + "T" + timeKey + ":00" + CDS_TZ_OFFSET);
       if (!isNaN(startCheck.getTime()) && startCheck.getTime() <= nowMs) continue;
     }
 
-    // Classificar exceções/cancelados/bloqueios/testes
+    // Classifica exceções de exclusão / cancelados / bloqueios
     var guard = _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm);
-    if (guard.skip) {
+    if (guard.skip && guard.reason !== "AUTHORIZED_DURATION_EXCEPTION" && guard.reason !== "PENDING_HUMAN_REVIEW") {
       ignoredByExceptions.push({
         source: "SHEET",
         row: rowNum,
@@ -412,14 +510,8 @@ function runCalendarDurationSyncDryRun(options) {
       continue;
     }
 
-    // Resolver duração oficial exclusivamente a partir de Serviços!F
     var durationRes = _cdsResolveServiceDuration_(catalog, serviceId, procedure, additionalIds);
-    var expectedEndTime = null;
-    if (durationRes.ok && timeKey) {
-      var startObj = new Date(dateKey + "T" + timeKey + ":00" + CDS_TZ_OFFSET);
-      var endObj = new Date(startObj.getTime() + durationRes.durationMinutes * 60000);
-      expectedEndTime = Utilities.formatDate(endObj, tz, "HH:mm");
-    }
+    var authorizedOverrideMin = _cdsGetDurationException_(appointmentId);
 
     var aptRecord = {
       row: rowNum,
@@ -433,28 +525,42 @@ function runCalendarDurationSyncDryRun(options) {
       status: statusRaw,
       hasColumnTId: !!colTEventId,
       columnTEventId: colTEventId || null,
-      officialDurationMinutes: durationRes.ok ? durationRes.durationMinutes : null,
-      expectedEndTime: expectedEndTime,
+      catalogDurationMinutes: durationRes.ok ? durationRes.durationMinutes : null,
+      authorizedDurationExceptionMin: authorizedOverrideMin,
       durationError: durationRes.ok ? null : durationRes.errorCode + ": " + durationRes.message
     };
     futureAppointments.push(aptRecord);
 
-    // Buscar eventos candidatos no calendário (ID na Col T, tag na descrição, ou data+horário+cliente/procedimento)
+    if (guard.reason === "PENDING_HUMAN_REVIEW") {
+      pendingHumanReview.push({
+        row: rowNum,
+        appointmentId: appointmentId,
+        client: client,
+        date: dateKey,
+        time: timeKey,
+        status: statusRaw,
+        reason: "BLOQUEADO_INDIVIDUALMENTE_AGUARDANDO_CONFIRMACAO_HUMANA"
+      });
+      appointmentsWithoutEvent.push(aptRecord);
+      continue;
+    }
+
     var candidates = _cdsFindMatchingCalendarEvents_(aptRecord, calendarEvents);
 
     if (candidates.length === 1) {
       var matchedEv = candidates[0].event;
-      matchedEv.matchedRows.push(rowNum);
-      var needsDurationUpdate = !!(durationRes.ok && matchedEv.durationMinutes !== durationRes.durationMinutes);
-      var exactStartMatch = matchedEv.dateKey === dateKey && matchedEv.timeKey === timeKey;
+      matchedEv.matchedRows.push({ row: rowNum, appointmentId: appointmentId, hasColumnTId: !!colTEventId });
+      var effectiveTargetDuration = authorizedOverrideMin !== null ? authorizedOverrideMin : (durationRes.ok ? durationRes.durationMinutes : null);
+      var needsDurationUpdate = !!(effectiveTargetDuration !== null && matchedEv.durationMinutes !== effectiveTargetDuration && authorizedOverrideMin === null);
+      var needsSheetTimeAlign = matchedEv.dateKey !== dateKey || matchedEv.timeKey !== timeKey;
 
       var matchEntry = {
         row: rowNum,
         appointmentId: appointmentId,
         client: client,
         procedure: procedure,
-        date: dateKey,
-        time: timeKey,
+        sheetDate: dateKey,
+        sheetTime: timeKey,
         hasColumnTId: !!colTEventId,
         columnTEventId: colTEventId || null,
         matchType: candidates[0].matchType,
@@ -463,13 +569,25 @@ function runCalendarDurationSyncDryRun(options) {
         calendarStart: matchedEv.startIso,
         calendarEnd: matchedEv.endIso,
         currentCalendarDurationMin: matchedEv.durationMinutes,
-        officialDurationMinutes: durationRes.ok ? durationRes.durationMinutes : null,
-        expectedEndTime: expectedEndTime,
-        exactStartMatch: exactStartMatch,
+        catalogDurationMinutes: aptRecord.catalogDurationMinutes,
+        authorizedDurationExceptionMin: authorizedOverrideMin,
         needsDurationUpdate: needsDurationUpdate,
-        durationError: aptRecord.durationError
+        needsSheetTimeAlignFromCalendar: needsSheetTimeAlign
       };
       uniqueMatches.push(matchEntry);
+
+      if (authorizedOverrideMin !== null) {
+        ignoredByExceptions.push({
+          source: "SHEET_LINKED_EXCEPTION",
+          row: rowNum,
+          appointmentId: appointmentId,
+          client: client,
+          columnTEventId: colTEventId || null,
+          calendarDurationMin: matchedEv.durationMinutes,
+          authorizedExceptionMin: authorizedOverrideMin,
+          reason: "AUTHORIZED_DURATION_EXCEPTION_PRESERVED"
+        });
+      }
 
       if (!colTEventId) {
         duplicateRiskRecords.push({
@@ -479,58 +597,42 @@ function runCalendarDurationSyncDryRun(options) {
           date: dateKey,
           time: timeKey,
           existingCalendarEventId: matchedEv.id,
-          riskReason: "Agendamento já possui evento no Calendar, mas Coluna T está vazia. Preencher/conciliar Coluna T antes de habilitar criação automática para evitar duplicação."
+          riskReason: "Coluna T vazia para evento já existente no Calendar."
         });
-      }
-
-      if (needsDurationUpdate && durationRes.ok && exactStartMatch && !!colTEventId) {
+      } else if (needsDurationUpdate && durationRes.ok) {
         safeToUpdate.push(matchEntry);
-      } else if (needsDurationUpdate && durationRes.ok && exactStartMatch && !colTEventId) {
-        matchEntry.pendingActionBeforeUpdate = "Conciliar e preencher Google Calendar Event ID na Coluna T antes da atualização.";
       }
     } else if (candidates.length > 1) {
       ambiguousMatches.push({
         row: rowNum,
         appointmentId: appointmentId,
         client: client,
-        procedure: procedure,
         date: dateKey,
         time: timeKey,
-        hasColumnTId: !!colTEventId,
-        reason: "MULTIPLOS_EVENTOS_CANDIDATOS_NO_CALENDAR",
         candidates: candidates.map(function(c) {
-          return {
-            matchType: c.matchType,
-            eventId: c.event.id,
-            title: c.event.title,
-            start: c.event.startIso,
-            end: c.event.endIso,
-            durationMinutes: c.event.durationMinutes
-          };
+          return { matchType: c.matchType, eventId: c.event.id, title: c.event.title, start: c.event.startIso, end: c.event.endIso };
         })
       });
       duplicateRiskRecords.push({
         row: rowNum,
         appointmentId: appointmentId,
         client: client,
-        date: dateKey,
-        time: timeKey,
-        riskReason: "Correspondência ambígua (" + candidates.length + " eventos candidatos no Calendar). Decisão humana obrigatória."
+        riskReason: "Múltiplos candidatos no Calendar (" + candidates.length + ")."
       });
     } else {
       appointmentsWithoutEvent.push(aptRecord);
     }
   }
 
-  // Verificar também se um mesmo evento do Calendar casou com mais de 1 linha da planilha (ambiguidade reversa)
+  // Detectar duplicidades na planilha (mais de 1 linha ativa apontando para o mesmo evento oficial do Calendar)
+  var duplicateSheetRows = [];
   for (var ce = 0; ce < calendarEvents.length; ce++) {
     if (calendarEvents[ce].matchedRows.length > 1) {
-      ambiguousMatches.push({
-        reason: "EVENTO_CALENDAR_VINCULADO_A_MULTIPLAS_LINHAS",
+      duplicateSheetRows.push({
         calendarEventId: calendarEvents[ce].id,
         calendarTitle: calendarEvents[ce].title,
         calendarStart: calendarEvents[ce].startIso,
-        sheetRows: calendarEvents[ce].matchedRows
+        rows: calendarEvents[ce].matchedRows
       });
     }
   }
@@ -538,31 +640,19 @@ function runCalendarDurationSyncDryRun(options) {
   var unmatchedCalendarEvents = calendarEvents
     .filter(function(ev) { return ev.matchedRows.length === 0; })
     .map(function(ev) {
-      return {
-        eventId: ev.id,
-        title: ev.title,
-        start: ev.startIso,
-        end: ev.endIso,
-        durationMinutes: ev.durationMinutes
-      };
+      return { eventId: ev.id, title: ev.title, start: ev.startIso, end: ev.endIso, durationMinutes: ev.durationMinutes };
     });
 
   var activationBlockers = configAudit.blockers.slice();
-  if (ambiguousMatches.length > 0) {
-    activationBlockers.push("Existem " + ambiguousMatches.length + " correspondência(s) ambígua(s) aguardando decisão humana.");
-  }
-  if (duplicateRiskRecords.length > 0) {
-    activationBlockers.push("Existem " + duplicateRiskRecords.length + " registro(s) com risco de duplicação (Coluna T vazia ou ambiguidade).");
-  }
-  var invalidDurationCount = futureAppointments.filter(function(a) { return !!a.durationError; }).length;
-  if (invalidDurationCount > 0) {
-    activationBlockers.push("Existem " + invalidDurationCount + " agendamento(s) futuro(s) com serviço não encontrado ou duração inválida em Serviços!F.");
-  }
+  if (ambiguousMatches.length > 0) activationBlockers.push("Há " + ambiguousMatches.length + " correspondência(s) ambígua(s).");
+  if (duplicateRiskRecords.length > 0) activationBlockers.push("Há " + duplicateRiskRecords.length + " registro(s) com risco de duplicação (Coluna T ausente).");
+  if (duplicateSheetRows.length > 0) activationBlockers.push("Há " + duplicateSheetRows.length + " duplicidade(s) na planilha para o mesmo evento do Calendar.");
 
   var result = {
     status: "success",
     readOnly: true,
     dryRun: true,
+    authorityRule: "GOOGLE_CALENDAR_OFFICIAL_APPOINTMENTS__SHEETS_OFFICIAL_SERVICES_AND_DURATIONS",
     timezone: tz,
     range: { start: today, end: endKey },
     configAudit: configAudit,
@@ -575,19 +665,22 @@ function runCalendarDurationSyncDryRun(options) {
       6_ignoredByExceptions: ignoredByExceptions.length,
       7_safeToUpdate: safeToUpdate.length,
       8_duplicateRiskRecords: duplicateRiskRecords.length,
+      duplicateSheetRowsDetected: duplicateSheetRows.length,
+      pendingHumanReviewCount: pendingHumanReview.length,
       withColumnTId: futureAppointments.filter(function(a) { return a.hasColumnTId; }).length,
       withoutColumnTId: futureAppointments.filter(function(a) { return !a.hasColumnTId; }).length
     },
     uniqueMatches: uniqueMatches,
-    unmatchedCalendarEvents: unmatchedCalendarEvents,
     appointmentsWithoutEvent: appointmentsWithoutEvent,
     ambiguousMatches: ambiguousMatches,
+    duplicateSheetRows: duplicateSheetRows,
     ignoredByExceptions: ignoredByExceptions,
+    pendingHumanReview: pendingHumanReview,
     safeToUpdate: safeToUpdate,
     duplicateRiskRecords: duplicateRiskRecords,
     readyForTriggerInstallation: activationBlockers.length === 0,
     activationBlockers: activationBlockers,
-    safety: "DRY RUN SOMENTE LEITURA: nenhum evento foi criado, atualizado, movido ou excluído; Coluna T não foi preenchida; gatilho não foi instalado."
+    safety: "DRY RUN SOMENTE LEITURA: nenhum evento ou célula alterado; nenhum gatilho instalado."
   };
 
   Logger.log(JSON.stringify(result, null, 2));
@@ -595,39 +688,170 @@ function runCalendarDurationSyncDryRun(options) {
 }
 
 /**
- * Instala o gatilho instalável onEdit (NÃO executar antes de aprovação final após dry-run).
- * Evita duplicação verificando todos os gatilhos existentes antes de criar.
+ * 4. SENTIDO CALENDAR -> SHEETS:
+ * Sincroniza alterações feitas diretamente no Google Calendar para a aba Agendamentos.
+ * - Atualiza Coluna F (Data) e Coluna G (Horário inicial) com a verdade oficial do Calendar.
+ * - Preserva cliente, pagamento, serviços e Coluna T.
+ * - NUNCA altera Serviços!F por causa de edição individual de evento.
+ * - Se um evento vinculado em Coluna T foi excluído/cancelado no Calendar, marca a linha como "cancelado"
+ *   preservando a linha e o histórico (nunca apaga linha; não cancela exceções autorizadas).
+ * - Detecta e cancela duplicidades inequívocas na planilha (Calendar prevalece; idempotente).
  */
-function installCalendarDurationSyncTrigger() {
-  var cfgAudit = auditCalendarDurationSyncConfig();
-  if (!cfgAudit.configReady) {
-    throw new Error("Instalação bloqueada: corrija os bloqueios de configuração antes: " + cfgAudit.blockers.join(" | "));
+function syncCalendarChangesToSheet(options) {
+  options = options || {};
+  var dryRun = options.dryRun === true || !_cdsIsWriteSyncEnabled_();
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return { status: "error", errorCode: "LOCK_TIMEOUT" }; }
+
+  try {
+    var tz = _cdsTimezone_();
+    var ss = _cdsOpenOfficialSpreadsheet_(dryRun);
+    var agSheet = ss.getSheetByName("Agendamentos");
+    if (!agSheet || agSheet.getLastRow() < 2) return { status: "success", dryRun: dryRun, updated: 0, cancelled: 0, duplicatesCancelled: 0, logs: [] };
+    var calendar = _cdsGetCalendar_();
+
+    var lastRow = agSheet.getLastRow();
+    var lastCol = Math.max(agSheet.getLastColumn(), 20);
+    var values = agSheet.getRange(1, 1, lastRow, lastCol).getValues();
+    var display = agSheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+    var nowMs = new Date().getTime();
+
+    var seenEventOwnerRow = {}; // eventId -> first authoritative active row
+    var updated = 0, cancelled = 0, duplicatesCancelled = 0, skipped = 0;
+    var logs = [];
+
+    if (!dryRun) _cdsMarkInternalSync_();
+
+    for (var i = 1; i < values.length; i++) {
+      var r = values[i];
+      var d = display[i];
+      var rowNum = i + 1;
+
+      var client = String(r[1] || "").trim();
+      var procedure = String(r[4] || "").trim();
+      var statusNorm = _cdsNormalize_(r[8]);
+      var appointmentId = String(r[9] || "").trim();
+      var colTEventId = String(r[19] || "").trim();
+
+      if (!colTEventId) continue; // Somente registros inequivocamente vinculados em Coluna T
+
+      var guard = _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm);
+      if (guard.skip && guard.reason !== "AUTHORIZED_DURATION_EXCEPTION") {
+        skipped++;
+        continue;
+      }
+
+      // 1. Duplicidade inequívoca na planilha (mais de uma linha ativa com o mesmo Event ID oficial)
+      if (seenEventOwnerRow[colTEventId]) {
+        if (guard.reason === "AUTHORIZED_DURATION_EXCEPTION") {
+          skipped++;
+          logs.push({ row: rowNum, appointmentId: appointmentId, status: "SKIPPED_EXCEPTION_NOT_CANCELLED", eventId: colTEventId });
+          continue;
+        }
+        if (!dryRun) {
+          agSheet.getRange(rowNum, 9).setValue("cancelado");
+        }
+        duplicatesCancelled++;
+        logs.push({
+          row: rowNum,
+          appointmentId: appointmentId,
+          status: dryRun ? "WOULD_CANCEL_DUPLICATE_IN_SHEET" : "CANCELLED_DUPLICATE_IN_SHEET",
+          eventId: colTEventId,
+          primaryRow: seenEventOwnerRow[colTEventId]
+        });
+        continue;
+      }
+      seenEventOwnerRow[colTEventId] = rowNum;
+
+      var sheetDate = _cdsDateKey_(r[5], d[5]);
+      var sheetTime = _cdsTimeKey_(r[6], d[6]);
+      var ev = calendar.getEventById(colTEventId);
+
+      // 2. Evento excluído/cancelado no Google Calendar -> refletir cancelamento na planilha preservando histórico
+      if (!ev) {
+        if (sheetDate && sheetTime) {
+          var sheetStart = new Date(sheetDate + "T" + sheetTime + ":00" + CDS_TZ_OFFSET);
+          if (!isNaN(sheetStart.getTime()) && sheetStart.getTime() <= nowMs) {
+            skipped++;
+            continue; // Não alterar passados
+          }
+        }
+        if (guard.reason === "AUTHORIZED_DURATION_EXCEPTION") {
+          skipped++;
+          continue;
+        }
+        if (!dryRun) {
+          agSheet.getRange(rowNum, 9).setValue("cancelado");
+        }
+        cancelled++;
+        logs.push({
+          row: rowNum,
+          appointmentId: appointmentId,
+          status: dryRun ? "WOULD_CANCEL_MISSING_IN_CALENDAR" : "CANCELLED_FROM_CALENDAR",
+          eventId: colTEventId
+        });
+        continue;
+      }
+
+      if (ev.isAllDayEvent()) { skipped++; continue; }
+      if (ev.getStartTime().getTime() <= nowMs) { skipped++; continue; } // Protege eventos passados
+
+      // 3. Refletir data (Col F) e horário inicial (Col G) oficiais do Calendar na planilha (sem alterar Serviços!F!)
+      var calDate = Utilities.formatDate(ev.getStartTime(), tz, "yyyy-MM-dd");
+      var calTime = Utilities.formatDate(ev.getStartTime(), tz, "HH:mm");
+
+      if (calDate === sheetDate && calTime === sheetTime) {
+        logs.push({ row: rowNum, appointmentId: appointmentId, status: "UNCHANGED", eventId: colTEventId });
+        continue;
+      }
+
+      if (!dryRun) {
+        if (calDate !== sheetDate) agSheet.getRange(rowNum, 6).setValue(calDate);
+        if (calTime !== sheetTime) agSheet.getRange(rowNum, 7).setValue(calTime);
+      }
+      updated++;
+      logs.push({
+        row: rowNum,
+        appointmentId: appointmentId,
+        status: dryRun ? "WOULD_UPDATE_SHEET_FROM_CALENDAR" : "UPDATED_SHEET_FROM_CALENDAR",
+        eventId: colTEventId,
+        before: { date: sheetDate, time: sheetTime },
+        after: { date: calDate, time: calTime }
+      });
+    }
+
+    if (!dryRun) SpreadsheetApp.flush();
+
+    var summary = {
+      status: "success",
+      dryRun: dryRun,
+      updated: updated,
+      cancelled: cancelled,
+      duplicatesCancelled: duplicatesCancelled,
+      skipped: skipped,
+      logs: logs
+    };
+    Logger.log(JSON.stringify(summary));
+    return summary;
+  } finally {
+    lock.releaseLock();
   }
-  if (!_cdsIsWriteSyncEnabled_()) {
-    throw new Error("Instalação bloqueada: habilite Script Property CALENDAR_DURATION_SYNC_ENABLED='true' somente após aprovar o dry-run.");
-  }
-  if (cfgAudit.triggers.hasDurationSyncTrigger) {
-    Logger.log("Gatilho " + CDS_TRIGGER_HANDLER + " já existe. Nenhuma duplicação criada.");
-    return { status: "already_installed", handler: CDS_TRIGGER_HANDLER };
-  }
-  var ss = _cdsOpenOfficialSpreadsheet_(false);
-  ScriptApp.newTrigger(CDS_TRIGGER_HANDLER)
-    .forSpreadsheet(ss)
-    .onEdit()
-    .create();
-  Logger.log("Gatilho instalável " + CDS_TRIGGER_HANDLER + " criado com sucesso.");
-  return { status: "installed", handler: CDS_TRIGGER_HANDLER };
 }
 
 /**
- * Gatilho instalável onEdit para alterações diretas em Serviços!F ou Agendamentos!E,F,G,N,P.
- * Usa LockService para evitar execuções simultâneas/duplicadas.
+ * 5. SENTIDO SHEETS (Serviços!F) -> CALENDAR:
+ * Gatilho instalável onEdit (NÃO instalar automaticamente nesta execução).
+ * - Quando Serviços!F mudar: encontra agendamentos futuros vinculados via Coluna T,
+ *   preserva data e horário inicial oficiais do Calendar e atualiza SOMENTE o horário final.
+ * - Preserva todas as exceções autorizadas (ex.: Linha 16 = 150 min, Linha 17 = 90 min).
+ * - Nunca cria evento substituto/duplicado.
+ * - Ignora edições internas feitas por Calendar -> Sheets (prevenção de loop infinito).
  */
 function handleSpreadsheetEditForCalendarSync(e) {
   if (!e || !e.range) return { status: "ignored", reason: "NO_EVENT_RANGE" };
-  if (!_cdsIsWriteSyncEnabled_()) {
-    return { status: "skipped_disabled", reason: "CALENDAR_DURATION_SYNC_ENABLED !== true" };
-  }
+  if (!_cdsIsWriteSyncEnabled_()) return { status: "skipped_disabled", reason: "CALENDAR_DURATION_SYNC_ENABLED !== true" };
+  if (_cdsIsInternalSyncActive_()) return { status: "ignored_loop_guard", reason: "INTERNAL_SYNC_IN_PROGRESS" };
 
   var range = e.range;
   var sheet = range.getSheet();
@@ -638,58 +862,34 @@ function handleSpreadsheetEditForCalendarSync(e) {
   var endCol = range.getLastColumn();
   if (endRow < 2) return { status: "ignored", reason: "HEADER_ONLY" };
 
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(15000);
-  } catch (lockErr) {
-    Logger.log("ERROR: Lock timeout em handleSpreadsheetEditForCalendarSync.");
-    return { status: "error", errorCode: "LOCK_TIMEOUT" };
+  // Somente mudanças em Serviços!F (ou Depilação!F) propagam duração para o Calendar
+  if (sheetName !== "servicos" && sheetName !== "depilacao") {
+    return { status: "ignored", reason: "CALENDAR_IS_AUTHORITATIVE_FOR_APPOINTMENTS" };
   }
+  if (startCol > 6 || endCol < 6) {
+    return { status: "ignored", reason: "NON_DURATION_COLUMN" };
+  }
+
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (err) { return { status: "error", errorCode: "LOCK_TIMEOUT" }; }
 
   try {
     var ss = _cdsOpenOfficialSpreadsheet_(false);
     var calendar = _cdsGetCalendar_();
-
-    // 1. Edição em Serviços!F (ou Depilação!F) — Coluna 6
-    if (sheetName === "servicos" || sheetName === "depilacao") {
-      if (startCol > 6 || endCol < 6) return { status: "ignored", reason: "NON_DURATION_COLUMN" };
-      var summaries = [];
-      for (var r = Math.max(2, startRow); r <= endRow; r++) {
-        var rowVals = sheet.getRange(r, 1, 1, 8).getValues()[0];
-        summaries.push(_cdsPropagateServiceDuration_(ss, calendar, {
-          rowIndex: r,
-          id: String(rowVals[0] || "").trim(),
-          title: String(rowVals[1] || "").trim(),
-          normalizedTitle: _cdsNormalize_(rowVals[1]),
-          rawDuration: rowVals[5],
-          durationMinutes: _cdsParseDurationMinutes_(rowVals[5])
-        }));
-      }
-      Logger.log(JSON.stringify({ action: "ON_SERVICES_F_EDIT", summaries: summaries }));
-      return { status: "success", summaries: summaries };
+    var summaries = [];
+    for (var r = Math.max(2, startRow); r <= endRow; r++) {
+      var rowVals = sheet.getRange(r, 1, 1, 8).getValues()[0];
+      summaries.push(_cdsPropagateServiceDurationToCalendar_(ss, calendar, {
+        rowIndex: r,
+        id: String(rowVals[0] || "").trim(),
+        title: String(rowVals[1] || "").trim(),
+        normalizedTitle: _cdsNormalize_(rowVals[1]),
+        rawDuration: rowVals[5],
+        durationMinutes: _cdsParseDurationMinutes_(rowVals[5])
+      }));
     }
-
-    // 2. Edição em Agendamentos!E(5), F(6), G(7), N(14), P(16)
-    if (sheetName === "agendamentos") {
-      var watched = [5, 6, 7, 14, 16];
-      var intersects = false;
-      for (var w = 0; w < watched.length; w++) {
-        if (watched[w] >= startCol && watched[w] <= endCol) { intersects = true; break; }
-      }
-      if (!intersects) return { status: "ignored", reason: "NON_SYNC_COLUMN" };
-
-      var results = [];
-      for (var ar = Math.max(2, startRow); ar <= endRow; ar++) {
-        results.push(_cdsSyncSingleAppointmentRow_(ss, calendar, ar, {
-          requireFuture: true,
-          preserveStartOnUpdate: false
-        }));
-      }
-      Logger.log(JSON.stringify({ action: "ON_AGENDAMENTOS_EDIT", results: results }));
-      return { status: "success", results: results };
-    }
-
-    return { status: "ignored", reason: "OTHER_SHEET" };
+    Logger.log(JSON.stringify({ action: "ON_SERVICES_F_EDIT", summaries: summaries }));
+    return { status: "success", summaries: summaries };
   } finally {
     lock.releaseLock();
   }
@@ -697,7 +897,6 @@ function handleSpreadsheetEditForCalendarSync(e) {
 
 /**
  * Hook chamado pelo Code.gs após saveService concluir com sucesso no painel administrativo.
- * Enquanto CALENDAR_DURATION_SYNC_ENABLED !== "true", retorna apenas status dry-run sem alterar eventos.
  */
 function syncFutureAppointmentsForServiceDurationChange(serviceId, serviceTitle, options) {
   options = options || {};
@@ -723,46 +922,37 @@ function syncFutureAppointmentsForServiceDurationChange(serviceId, serviceTitle,
   }
 
   if (!target) {
-    var msg = "Serviço não localizado na aba Serviços (ID=" + serviceId + ", Título=" + serviceTitle + ").";
+    var msg = "Serviço não encontrado na aba Serviços (ID=" + serviceId + ", Título=" + serviceTitle + ").";
     Logger.log("ERROR: " + msg);
     return { status: "error", errorCode: "SERVICE_NOT_FOUND", message: msg };
   }
 
-  return _cdsPropagateServiceDuration_(ss, calendar, target);
+  return _cdsPropagateServiceDurationToCalendar_(ss, calendar, target);
 }
 
 /**
- * Hook chamado pelo Code.gs após updateAppointment concluir com sucesso no painel administrativo.
- * Enquanto CALENDAR_DURATION_SYNC_ENABLED !== "true", não altera eventos.
+ * Hook chamado pelo Code.gs após updateAppointment no painel administrativo.
+ * Respeita a regra definitiva: se o procedimento mudar, atualiza SOMENTE o horário final do evento
+ * existente em Coluna T preservando data e horário inicial oficiais do Calendar (nunca cria duplicata).
  */
 function syncAppointmentRowAfterPanelUpdate_(rowIndex) {
   if (!_cdsIsWriteSyncEnabled_()) {
-    return {
-      status: "skipped_dry_run_mode",
-      executed: false,
-      rowIndex: rowIndex,
-      message: "Sincronização em modo de proteção (CALENDAR_DURATION_SYNC_ENABLED !== 'true'). Nenhum evento alterado."
-    };
+    return { status: "skipped_dry_run_mode", executed: false, rowIndex: rowIndex };
   }
   var ss = _cdsOpenOfficialSpreadsheet_(false);
   var calendar = _cdsGetCalendar_();
-  return _cdsSyncSingleAppointmentRow_(ss, calendar, rowIndex, {
-    requireFuture: true,
-    preserveStartOnUpdate: false
-  });
+  return _cdsUpdateExistingEventDurationOnly_(ss, calendar, rowIndex);
 }
 
-function _cdsPropagateServiceDuration_(ss, calendar, targetService) {
+function _cdsPropagateServiceDurationToCalendar_(ss, calendar, targetService) {
   if (!targetService || targetService.durationMinutes === null) {
-    var errMsg = "Duração inválida em Serviços!F (serviço: " + (targetService ? targetService.title : "desconhecido") + "). Nenhum evento alterado.";
+    var errMsg = "Duração inválida em Serviços!F para " + (targetService ? targetService.title : "desconhecido") + ". Nenhum evento alterado.";
     Logger.log("ERROR: " + errMsg);
     return { ok: false, errorCode: "INVALID_DURATION", updated: 0, errors: 1, message: errMsg };
   }
 
   var agSheet = ss.getSheetByName("Agendamentos");
-  if (!agSheet || agSheet.getLastRow() < 2) {
-    return { ok: true, updated: 0, unchanged: 0, skipped: 0, errors: 0, logs: [] };
-  }
+  if (!agSheet || agSheet.getLastRow() < 2) return { ok: true, updated: 0, unchanged: 0, skipped: 0, errors: 0, logs: [] };
 
   var rows = agSheet.getDataRange().getValues();
   var logs = [];
@@ -781,34 +971,26 @@ function _cdsPropagateServiceDuration_(ss, calendar, targetService) {
 
     if (!matches) continue;
 
-    var res = _cdsSyncSingleAppointmentRow_(ss, calendar, i + 1, {
-      requireFuture: true,
-      preserveStartOnUpdate: true
-    });
+    var res = _cdsUpdateExistingEventDurationOnly_(ss, calendar, i + 1);
     logs.push(res);
 
-    if (res.status === "UPDATED" || res.status === "CREATED") updated++;
+    if (res.status === "UPDATED") updated++;
     else if (res.status === "UNCHANGED") unchanged++;
     else if (res.status === "ERROR") errors++;
     else skipped++;
   }
 
-  var summary = {
-    ok: errors === 0,
-    service: targetService.title,
-    durationMinutes: targetService.durationMinutes,
-    updated: updated,
-    unchanged: unchanged,
-    skipped: skipped,
-    errors: errors,
-    logs: logs
-  };
+  var summary = { ok: errors === 0, service: targetService.title, durationMinutes: targetService.durationMinutes, updated: updated, unchanged: unchanged, skipped: skipped, errors: errors, logs: logs };
   Logger.log(JSON.stringify(summary));
   return summary;
 }
 
-function _cdsSyncSingleAppointmentRow_(ss, calendar, rowIndex, options) {
-  options = options || {};
+/**
+ * Atualiza SOMENTE o horário final de um evento existente localizado pelo ID em Agendamentos!T,
+ * preservando a data e o horário inicial oficiais do Google Calendar e todas as exceções autorizadas.
+ * Nunca cria novo evento para substituir um evento existente.
+ */
+function _cdsUpdateExistingEventDurationOnly_(ss, calendar, rowIndex) {
   var agSheet = ss.getSheetByName("Agendamentos");
   if (!agSheet || rowIndex < 2 || rowIndex > agSheet.getLastRow()) {
     return { status: "ERROR", errorCode: "ROW_NOT_FOUND", rowIndex: rowIndex };
@@ -816,7 +998,6 @@ function _cdsSyncSingleAppointmentRow_(ss, calendar, rowIndex, options) {
 
   var lastCol = Math.max(agSheet.getLastColumn(), 20);
   var row = agSheet.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
-  var display = agSheet.getRange(rowIndex, 1, 1, lastCol).getDisplayValues()[0];
 
   var client = String(row[1] || "").trim();
   var procedure = String(row[4] || "").trim();
@@ -824,90 +1005,101 @@ function _cdsSyncSingleAppointmentRow_(ss, calendar, rowIndex, options) {
   var appointmentId = String(row[9] || "").trim();
   var additionalIds = _cdsParseAdditionalIds_(row[13]);
   var serviceId = String(row[15] || "").trim();
-  var storedEventId = String(row[19] || "").trim();
+  var colTEventId = String(row[19] || "").trim();
 
   var guard = _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm);
   if (guard.skip) {
-    return { status: guard.reason, rowIndex: rowIndex, appointmentId: appointmentId };
+    return { status: guard.reason, rowIndex: rowIndex, appointmentId: appointmentId, eventId: colTEventId || null };
   }
 
-  // Agendamentos!F = Data, Agendamentos!G = Horário inicial (NUNCA duração)
-  var dateKey = _cdsDateKey_(row[5], display[5]);
-  var timeKey = _cdsTimeKey_(row[6], display[6]);
-  if (!dateKey || !timeKey) {
-    return { status: "ERROR", errorCode: "INVALID_DATE_OR_TIME", rowIndex: rowIndex, appointmentId: appointmentId };
+  if (!colTEventId) {
+    return {
+      status: "SKIPPED_NO_COLUMN_T_ID",
+      rowIndex: rowIndex,
+      appointmentId: appointmentId,
+      message: "Coluna T vazia: nenhum evento criado automaticamente para evitar duplicação."
+    };
   }
 
-  var startDate = new Date(dateKey + "T" + timeKey + ":00" + CDS_TZ_OFFSET);
-  if (options.requireFuture && startDate.getTime() <= new Date().getTime()) {
-    return { status: "SKIPPED_PAST", rowIndex: rowIndex, appointmentId: appointmentId };
+  var existingEvent = calendar.getEventById(colTEventId);
+  if (!existingEvent) {
+    return {
+      status: "SKIPPED_EVENT_NOT_FOUND_IN_CALENDAR",
+      rowIndex: rowIndex,
+      appointmentId: appointmentId,
+      eventId: colTEventId,
+      message: "Evento não encontrado no Google Calendar (não recriado automaticamente)."
+    };
+  }
+  if (existingEvent.isAllDayEvent()) {
+    return { status: "SKIPPED_ALL_DAY_EVENT", rowIndex: rowIndex, appointmentId: appointmentId, eventId: colTEventId };
   }
 
-  // Duração lida fresca exclusivamente de Serviços!F
+  // Protege eventos passados com base no horário oficial do Calendar
+  var officialStart = existingEvent.getStartTime();
+  if (officialStart.getTime() <= new Date().getTime()) {
+    return { status: "SKIPPED_PAST", rowIndex: rowIndex, appointmentId: appointmentId, eventId: colTEventId };
+  }
+
   var catalog = _cdsReadServicesCatalog_(ss);
   var lookup = _cdsResolveServiceDuration_(catalog, serviceId, procedure, additionalIds);
   if (!lookup.ok) {
     Logger.log("ERROR row " + rowIndex + ": " + lookup.message);
-    return { status: "ERROR", errorCode: lookup.errorCode, rowIndex: rowIndex, appointmentId: appointmentId, message: lookup.message };
+    return { status: "ERROR", errorCode: lookup.errorCode, rowIndex: rowIndex, appointmentId: appointmentId, eventId: colTEventId, message: lookup.message };
   }
 
-  var endDate = new Date(startDate.getTime() + lookup.durationMinutes * 60000);
-  var title = client ? client + " — " + lookup.service.title : lookup.service.title;
-  var existingEvent = storedEventId ? calendar.getEventById(storedEventId) : null;
-
-  if (!existingEvent && appointmentId) {
-    var dayEvents = calendar.getEvents(
-      new Date(dateKey + "T00:00:00" + CDS_TZ_OFFSET),
-      new Date(dateKey + "T23:59:59" + CDS_TZ_OFFSET)
-    );
-    var tag = CDS_APT_TAG_PREFIX + appointmentId + "]";
-    for (var eIdx = 0; eIdx < dayEvents.length; eIdx++) {
-      if (String(dayEvents[eIdx].getDescription() || "").indexOf(tag) >= 0) {
-        existingEvent = dayEvents[eIdx];
-        break;
-      }
-    }
+  // Preserva data e horário inicial oficiais do Calendar; atualiza SOMENTE o horário final
+  var targetEnd = new Date(officialStart.getTime() + lookup.durationMinutes * 60000);
+  if (existingEvent.getEndTime().getTime() === targetEnd.getTime()) {
+    return { status: "UNCHANGED", rowIndex: rowIndex, appointmentId: appointmentId, eventId: colTEventId, durationMinutes: lookup.durationMinutes };
   }
 
-  if (existingEvent) {
-    if (existingEvent.isAllDayEvent()) {
-      return { status: "SKIPPED_ALL_DAY_EVENT", rowIndex: rowIndex, appointmentId: appointmentId, eventId: existingEvent.getId() };
-    }
-    var targetStart = options.preserveStartOnUpdate ? existingEvent.getStartTime() : startDate;
-    var targetEnd = new Date(targetStart.getTime() + lookup.durationMinutes * 60000);
-
-    if (!storedEventId) agSheet.getRange(rowIndex, 20).setValue(existingEvent.getId());
-    if (lookup.resolvedBy === "TITLE_OVERRIDE_AFTER_PROCEDURE_EDIT" && lookup.service.id) {
-      agSheet.getRange(rowIndex, 16).setValue(lookup.service.id);
-    }
-
-    if (existingEvent.getStartTime().getTime() === targetStart.getTime() &&
-        existingEvent.getEndTime().getTime() === targetEnd.getTime() &&
-        existingEvent.getTitle() === title) {
-      return { status: "UNCHANGED", rowIndex: rowIndex, appointmentId: appointmentId, eventId: existingEvent.getId() };
-    }
-
-    existingEvent.setTime(targetStart, targetEnd);
-    if (existingEvent.getTitle() !== title) existingEvent.setTitle(title);
-    return {
-      status: "UPDATED",
-      rowIndex: rowIndex,
-      appointmentId: appointmentId,
-      eventId: existingEvent.getId(),
-      durationMinutes: lookup.durationMinutes
-    };
-  }
-
-  var desc = "Procedimento: " + lookup.service.title + (appointmentId ? "\n" + CDS_APT_TAG_PREFIX + appointmentId + "]" : "");
-  var created = calendar.createEvent(title, startDate, endDate, { description: desc });
-  agSheet.getRange(rowIndex, 20).setValue(created.getId());
+  _cdsMarkInternalSync_();
+  existingEvent.setTime(officialStart, targetEnd);
   return {
-    status: "CREATED",
+    status: "UPDATED",
     rowIndex: rowIndex,
     appointmentId: appointmentId,
-    eventId: created.getId(),
+    eventId: colTEventId,
     durationMinutes: lookup.durationMinutes
   };
+}
+
+/**
+ * Instala os gatilhos bidirecionais SOMENTE quando o proprietário autorizar ativação final.
+ * Verifica todos os gatilhos existentes antes para garantir zero duplicações.
+ */
+function installBidirectionalCalendarSyncTriggers() {
+  var cfgAudit = auditCalendarDurationSyncConfig();
+  if (!cfgAudit.configReady) {
+    throw new Error("Instalação bloqueada: corrija os bloqueios de configuração antes: " + cfgAudit.blockers.join(" | "));
+  }
+  if (!_cdsIsWriteSyncEnabled_()) {
+    throw new Error("Instalação bloqueada: defina CALENDAR_DURATION_SYNC_ENABLED='true' somente após aprovação final.");
+  }
+
+  var installed = [];
+  var ss = _cdsOpenOfficialSpreadsheet_(false);
+
+  if (!cfgAudit.triggers.hasEditTrigger) {
+    ScriptApp.newTrigger(CDS_EDIT_TRIGGER_HANDLER).forSpreadsheet(ss).onEdit().create();
+    installed.push(CDS_EDIT_TRIGGER_HANDLER);
+  }
+  if (!cfgAudit.triggers.hasCalendarTrigger) {
+    var calId = String(PropertiesService.getScriptProperties().getProperty("GOOGLE_CALENDAR_ID") || "").trim();
+    ScriptApp.newTrigger(CDS_CALENDAR_TRIGGER_HANDLER).forUserCalendar(calId).onEventUpdated().create();
+    installed.push(CDS_CALENDAR_TRIGGER_HANDLER);
+  }
+
+  Logger.log("Gatilhos instalados: " + JSON.stringify(installed));
+  return { status: "success", installed: installed };
+}
+
+function _cdsGetDurationException_(appointmentId) {
+  if (appointmentId && Object.prototype.hasOwnProperty.call(CDS_AUTHORIZED_EXCEPTIONS.durationOverrideByAppointmentId, appointmentId)) {
+    return CDS_AUTHORIZED_EXCEPTIONS.durationOverrideByAppointmentId[appointmentId];
+  }
+  return null;
 }
 
 function _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm) {
@@ -921,8 +1113,11 @@ function _cdsClassifyGuard_(appointmentId, client, procedure, statusNorm) {
   if (CDS_AUTHORIZED_EXCEPTIONS.excludeAppointmentIds.indexOf(appointmentId) >= 0 || statusNorm === "teste sistema" || appointmentId.indexOf("test-") === 0) {
     return { skip: true, reason: "SKIPPED_AUTHORIZED_EXCLUSION" };
   }
-  if (appointmentId && Object.prototype.hasOwnProperty.call(CDS_AUTHORIZED_EXCEPTIONS.durationOverrideByAppointmentId, appointmentId)) {
-    return { skip: true, reason: "SKIPPED_AUTHORIZED_DURATION_EXCEPTION" };
+  if (CDS_AUTHORIZED_EXCEPTIONS.pendingReviewAppointmentIds.indexOf(appointmentId) >= 0) {
+    return { skip: true, reason: "PENDING_HUMAN_REVIEW" };
+  }
+  if (_cdsGetDurationException_(appointmentId) !== null) {
+    return { skip: true, reason: "AUTHORIZED_DURATION_EXCEPTION" };
   }
   return { skip: false };
 }
@@ -934,7 +1129,6 @@ function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
   var clientTokens = clientNorm.split(" ").filter(function(t) { return t.length >= 3; });
   var tag = apt.appointmentId ? CDS_APT_TAG_PREFIX + apt.appointmentId + "]" : "";
 
-  // 1. Match direto pelo Google Calendar Event ID salvo em Agendamentos!T
   if (apt.columnTEventId) {
     for (var i = 0; i < calendarEvents.length; i++) {
       if (calendarEvents[i].id === apt.columnTEventId) {
@@ -943,8 +1137,6 @@ function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
     }
     if (matches.length > 0) return matches;
   }
-
-  // 2. Match direto pela tag de idempotência [ESPACO_ANGELICA_APT_ID:...]
   if (tag) {
     for (var j = 0; j < calendarEvents.length; j++) {
       if (calendarEvents[j].description.indexOf(tag) >= 0) {
@@ -953,8 +1145,6 @@ function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
     }
     if (matches.length > 0) return matches;
   }
-
-  // 3. Match conservador por Data + Horário inicial + sinal de Cliente ou Procedimento
   for (var k = 0; k < calendarEvents.length; k++) {
     var ev = calendarEvents[k];
     if (ev.dateKey !== apt.date) continue;
@@ -962,7 +1152,6 @@ function _cdsFindMatchingCalendarEvents_(apt, calendarEvents) {
     var overlap = clientTokens.filter(function(tok) { return ev.normalizedTitle.indexOf(tok) >= 0; }).length;
     var clientMatches = clientTokens.length > 0 && overlap >= Math.min(2, clientTokens.length);
     var procMatches = procNorm.length >= 5 && ev.normalizedTitle.indexOf(procNorm) >= 0;
-
     if (exactStart && (clientMatches || procMatches)) {
       matches.push({ event: ev, matchType: "EXACT_DATE_TIME_AND_TEXT" });
     } else if (!exactStart && clientMatches) {
@@ -998,14 +1187,8 @@ function _cdsReadServicesCatalog_(ss) {
         rawDuration: values[i][5],
         durationMinutes: _cdsParseDurationMinutes_(values[i][5])
       };
-      if (id) {
-        byId[id] = byId[id] || [];
-        byId[id].push(entry);
-      }
-      if (entry.normalizedTitle) {
-        byTitle[entry.normalizedTitle] = byTitle[entry.normalizedTitle] || [];
-        byTitle[entry.normalizedTitle].push(entry);
-      }
+      if (id) { byId[id] = byId[id] || []; byId[id].push(entry); }
+      if (entry.normalizedTitle) { byTitle[entry.normalizedTitle] = byTitle[entry.normalizedTitle] || []; byTitle[entry.normalizedTitle].push(entry); }
     }
   }
   return { byId: byId, byTitle: byTitle };

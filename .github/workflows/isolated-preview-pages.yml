@@ -30,8 +30,15 @@ jobs:
       - name: Validate preview remains independent from production services
         run: |
           node -e "const p=require('./package.json'); if (p.dependencies?.firebase || p.dependencies?.express || p.dependencies?.dotenv) process.exit(1); console.log('Static preview dependency check passed')"
+      - name: Run unit tests (catalog, read-only guards, calendar sync preservation)
+        run: npm test
+      - name: Run live read-only catalog integration test (getServices)
+        run: npm run test:integration
       - name: Build read-only preview
         run: npm run build
+      - name: Verify built dist artifact
+        run: |
+          node -e "const fs=require('fs'); if (!fs.existsSync('dist/index.html')) process.exit(1); const assets=fs.readdirSync('dist/assets'); if (!assets.some(f=>f.endsWith('.js'))) process.exit(1); console.log('Verified dist/index.html and JS bundle:', assets.join(', '));"
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:

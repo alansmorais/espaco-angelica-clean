@@ -218,7 +218,26 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
   const isDurationValid = procedureDuration.isValid && combinedDurationMinutes > 0;
 
+  // Use the studio's local clock so a same-day slot cannot remain bookable after it has started.
+  const getStudioNowMinutes = (): number => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(new Date());
+    const part = (type: string) => Number(parts.find(item => item.type === type)?.value || 0);
+    return part('hour') * 60 + part('minute');
+  };
+
+  const isPastTimeSlot = (slotTime: string, dateKey: string = selectedDate): boolean => {
+    if (dateKey !== toDateKey(getStudioToday())) return false;
+    const start = timeToMinutes(slotTime);
+    return start === null || start <= getStudioNowMinutes();
+  };
+
   const isSlotUnavailable = (slotTime: string, dateKey: string = selectedDate): boolean => {
+    if (isPastTimeSlot(slotTime, dateKey)) return true;
     const start = timeToMinutes(slotTime);
     if (start === null) return true;
     if (!isDurationValid || !procedureDuration.totalMinutes) return true;
@@ -1060,7 +1079,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                         >
                           <span className="font-syne text-sm font-bold block">{slot.time}</span>
                           <span className="text-[10px] block font-jakarta truncate max-w-full px-1">
-                            {isBlocked ? (slot.note?.slice(0, 10) || (isSlotUnavailable(slot.time) ? 'Ocupado' : 'Bloqueado')) : 'Disponível'}
+                            {isBlocked ? (slot.note?.slice(0, 10) || (isPastTimeSlot(slot.time) ? 'Encerrado' : (isSlotUnavailable(slot.time) ? 'Ocupado' : 'Bloqueado'))) : 'Disponível'}
                           </span>
                         </button>
                       );

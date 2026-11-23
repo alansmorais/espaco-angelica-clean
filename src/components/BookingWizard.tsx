@@ -212,12 +212,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     const hours = Number(match[1]), minutes = Number(match[2]);
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
-  const normalizeServiceText = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+  const normalizeServiceText = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const primarySupportsNailAddons = (() => {
     const category = normalizeServiceText(selectedService.category);
     const title = normalizeServiceText(selectedService.title);
     return ['alongamento', 'blindagem'].some(term => category.includes(term)) ||
-      /alongamento|blindagem|fibra|\\bgel\\b|manutencao de crescimento|manutencao em gel/.test(title);
+      /alongamento|blindagem|fibra|\bgel\b|manutencao de crescimento|manutencao em gel/.test(title);
   })();
   // Only Nail Art and francesinha are compatible nail-design add-ons.
   const eligibleAdditionalServices = primarySupportsNailAddons
@@ -225,7 +225,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
         if (service.active === false || service.id === selectedService.id) return false;
         const category = normalizeServiceText(service.category);
         const title = normalizeServiceText(service.title);
-        return category.includes('nailart') || /nail\\s*art|francesinha/.test(title);
+        return category.includes('nailart') || /nail\s*art|francesinha/.test(title);
       })
     : [];
 
@@ -930,7 +930,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                 <div className="space-y-5">
                   {(() => {
                     const classifyService = (service: any) => {
-                      const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+                      const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
                       const category = normalize(service.category);
                       const title = normalize(service.title);
                       const combined = category + ' ' + title;

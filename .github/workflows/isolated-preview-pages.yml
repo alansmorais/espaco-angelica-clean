@@ -1,4 +1,4 @@
-name: Isolated visual preview
+name: Authorized admin preview
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
         run: node --test tests/unit/preview-safety-and-sync.test.mjs tests/unit/recurrence-and-catalog.test.mjs
       - name: Run live read-only catalog integration test (getServices)
         run: npm run test:integration
-      - name: Build read-only preview
+      - name: Build authorized admin preview
         run: npm run build
       - name: Verify built dist artifact
         run: |

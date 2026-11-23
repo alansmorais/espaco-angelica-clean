@@ -10,6 +10,18 @@ export { AUTHORIZED_SENDER_EMAIL, TARGET_NOTIFICATION_EMAIL };
 export const DEFAULT_APPS_SCRIPT_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbysNBMLthA_GvAZJR1irBGcS-3Lspbfz0NIsvz0P2ax6jzE4M01RwVJ0za6zFsq8bGojw/exec';
 
+// Isolated preview protection: allow ONLY read-only public catalogue/address queries and
+// block every write, booking creation, calendar mutation, or administrative action.
+export const READ_ONLY_PREVIEW: boolean = true;
+
+const READ_ONLY_PREVIEW_BLOCK_MESSAGE =
+  'Operação bloqueada: esta prévia está em modo somente leitura (READ_ONLY_PREVIEW = true) e não altera dados oficiais.';
+
+function getReadOnlyPublicCatalogEndpoint(): string {
+  const envUrl = String((import.meta as any).env?.VITE_NOTIFICATION_WEBHOOK_URL || '').trim();
+  return envUrl || DEFAULT_APPS_SCRIPT_WEBHOOK_URL;
+}
+
 export interface EmailNotificationPayload {
   from: string;
   to: string;
@@ -236,6 +248,9 @@ export async function sendWebhookNotification(
   payload: EmailNotificationPayload,
   token?: string
 ): Promise<{ success: boolean; delivered: boolean; message: string; rawResponse?: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, delivered: false, message: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   const authToken = token !== undefined ? token : getNotificationWebhookToken();
   const requestBody = {
     ...payload,
@@ -327,6 +342,9 @@ export async function testNotificationWebhook(
   webhookUrl?: string,
   token?: string
 ): Promise<{ success: boolean; message: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, message: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   const url = webhookUrl || getNotificationWebhookUrl();
   if (!url) {
     return { success: false, message: 'Nenhuma URL de webhook configurada.' };
@@ -376,6 +394,16 @@ export async function triggerNewPreBookingEmailNotification(
   _authToken?: string
 ): Promise<EmailDispatchResult> {
   const payload = buildPreBookingEmailPayload(apt);
+  if (READ_ONLY_PREVIEW) {
+    return {
+      success: false,
+      persisted: false,
+      appointmentId: apt.id,
+      mode: 'webhook_rejected',
+      message: READ_ONLY_PREVIEW_BLOCK_MESSAGE,
+      payload
+    };
+  }
   const url = getNotificationWebhookUrl();
 
   // GitHub Pages is explicitly configured to call the official Apps Script endpoint.
@@ -468,6 +496,9 @@ export interface AdminSessionResult {
 }
 
 export async function createAdminSession(password: string): Promise<AdminSessionResult> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE, statusCode: 403 };
+  }
   try {
     const url = getNotificationWebhookUrl();
     if (!url) return { success: false, error: 'URL do Google Apps Script não configurada.' };
@@ -487,7 +518,7 @@ export async function createAdminSession(password: string): Promise<AdminSession
 }
 
 export async function revokeAdminSession(token: string): Promise<void> {
-  if (!token) return;
+  if (READ_ONLY_PREVIEW || !token) return;
   try {
     const url = getNotificationWebhookUrl();
     if (!url) return;
@@ -576,6 +607,9 @@ export interface FetchAppointmentsDetailedResult {
  * erros de credencial e lista vazia no painel administrativo).
  */
 export async function fetchRemoteAppointmentsDetailed(authToken?: string): Promise<FetchAppointmentsDetailedResult> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, appointments: [], error: READ_ONLY_PREVIEW_BLOCK_MESSAGE, statusCode: 403 };
+  }
   try {
     const endpoint = getNotificationWebhookUrl();
     if (!endpoint) return { success: false, appointments: [], error: 'URL do Google Apps Script não configurada.' };
@@ -603,6 +637,9 @@ export async function deleteRemoteAppointment(
   appointmentId: string,
   authToken?: string
 ): Promise<DeleteAppointmentResult> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE, statusCode: 403 };
+  }
   try {
     const endpoint = getNotificationWebhookUrl();
     const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '')).trim();
@@ -652,6 +689,9 @@ export async function submitBlockSchedule(
   blockApt: Appointment,
   authToken?: string
 ): Promise<BlockScheduleResult> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, persisted: false, appointmentId: blockApt.id, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   try {
     const endpoint = getNotificationWebhookUrl();
     const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '')).trim();
@@ -692,6 +732,9 @@ export async function updateRemoteAppointment(
   appointment: Partial<Appointment> & { id: string },
   authToken?: string
 ): Promise<UpdateAppointmentResult> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, persisted: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE, statusCode: 403 };
+  }
   try {
     const endpoint = getNotificationWebhookUrl();
     const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '')).trim();
@@ -730,6 +773,9 @@ export interface RemoteScheduleConfig {
 }
 
 async function callScheduleAction(action: string, extra: Record<string, unknown> = {}, authToken?: string): Promise<any> {
+  if (READ_ONLY_PREVIEW) {
+    throw new Error(READ_ONLY_PREVIEW_BLOCK_MESSAGE);
+  }
   const url = getNotificationWebhookUrl();
   const token = getAdminSessionToken(authToken);
   if (!url) throw new Error('URL do Google Apps Script não configurada.');
@@ -838,7 +884,7 @@ export async function saveRemoteAppSetting(
 
 export async function fetchPublicStudioAddress(): Promise<{ success: boolean; address?: StudioAddressConfig | null; error?: string }> {
   try {
-    const endpoint = getNotificationWebhookUrl();
+    const endpoint = getReadOnlyPublicCatalogEndpoint();
     if (!endpoint) return { success: false, error: 'URL do Google Apps Script não configurada.' };
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -886,6 +932,9 @@ export async function fetchPublicPaymentConfig(): Promise<{ success: boolean; co
 }
 
 export async function lookupPublicClientByPhone(phone: string): Promise<{ success: boolean; found: boolean; isComplete?: boolean; clientName?: string; clientEmail?: string; clientBirthDate?: string; error?: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, found: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   const url = getNotificationWebhookUrl();
   if (!url) return { success: false, found: false, error: 'Consulta de cadastro indisponível neste ambiente.' };
   try {
@@ -942,14 +991,9 @@ export async function deleteRemoteClient(
 }
 
 export async function fetchRemoteServices(): Promise<Service[]> {
-  // The GitHub Pages preview may read the public catalogue from the existing
-  // Apps Script deployment. This is a read-only action; do not relax the URL
-  // guard used by admin or booking mutations.
-  const isGitHubPagesPreview = typeof window !== 'undefined' &&
-    (window.location.hostname === 'github.io' || window.location.hostname.endsWith('.github.io'));
-  const endpoint = isGitHubPagesPreview
-    ? DEFAULT_APPS_SCRIPT_WEBHOOK_URL
-    : getNotificationWebhookUrl();
+  // Strictly read-only public catalogue query (`getServices`). Works reliably across
+  // GitHub Pages, custom preview domains, and local previews without relaxing write guards.
+  const endpoint = getReadOnlyPublicCatalogEndpoint();
   if (!endpoint) throw new Error('URL do Google Apps Script não configurada.');
   const data = await postAppsScriptAction(endpoint, 'getServices');
   if (!Array.isArray(data.services)) throw new Error('Resposta do Apps Script sem catálogo oficial de serviços.');
@@ -960,6 +1004,9 @@ export async function saveRemoteService(
   service: Service,
   authToken?: string
 ): Promise<{ success: boolean; saved?: boolean; error?: string; service?: Service }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, saved: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   try {
     const endpoint = getNotificationWebhookUrl();
     const token = (authToken || getNotificationWebhookToken()).trim();
@@ -984,6 +1031,9 @@ export async function deleteRemoteService(
   serviceId: string,
   authToken?: string
 ): Promise<{ success: boolean; deleted?: boolean; error?: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, deleted: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   // Never delete catalog rows. Retire the service by setting active=false in the official sheet.
   try {
     const services = await fetchRemoteServices();
@@ -1008,6 +1058,9 @@ export interface DrivePhoto {
 
 /** Lista fotos da pasta oficial via Apps Script, protegendo a ação com o token administrativo configurado. */
 export async function listDrivePhotos(authToken?: string): Promise<{ success: boolean; photos?: DrivePhoto[]; error?: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   const endpoint = getNotificationWebhookUrl();
   const token = (authToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '') || getNotificationWebhookToken()).trim();
   if (!endpoint) return { success: false, error: 'Configure o URL do Google Apps Script nas definições antes de selecionar fotos.' };
@@ -1069,6 +1122,9 @@ export async function uploadServicePhoto(
   file: File,
   authToken?: string
 ): Promise<{ success: boolean; url?: string; error?: string }> {
+  if (READ_ONLY_PREVIEW) {
+    return { success: false, error: READ_ONLY_PREVIEW_BLOCK_MESSAGE };
+  }
   const validMimes = ['image/jpeg', 'image/png', 'image/webp'];
   if (!validMimes.includes(file.type)) {
     return { success: false, error: 'Formato não suportado. Por favor utilize JPEG, PNG ou WebP.' };

@@ -1,5 +1,4 @@
 import React from 'react';
-import { BRAND_ASSETS } from '../../data/mockData';
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -53,11 +52,12 @@ export const AboutModal: React.FC<AboutModalProps> = ({
         </button>
 
         <div className="flex flex-col items-center text-center mb-6 pt-2">
-          <div className="p-2 rounded-2xl bg-[#0B0A0A] border border-[#E8D9B5] inline-flex shadow-sm mb-4">
+          <div className="mb-4">
             <img
-              src={BRAND_ASSETS.logoGold}
-              alt="Logo Angélica do Carmo"
-              className="h-16 w-auto object-contain"
+              src="https://raw.githubusercontent.com/alansmorais/espaco-angelica-clean/refs/heads/main/src/IMG-20261123-WA0048.jpg"
+              alt="Angélica do Carmo"
+              className="h-28 w-28 sm:h-32 sm:w-32 rounded-full object-cover object-center border-4 border-[#E8D9B5] shadow-md"
+              loading="lazy"
             />
           </div>
           <span className="font-jakarta text-[10px] text-[#D4AF37] uppercase tracking-[0.22em] font-bold mb-2">

@@ -165,3 +165,12 @@ test('Same-day booking slots that have already started are unavailable in Sao Pa
   assert.ok(bookingCode.includes('if (isPastTimeSlot(slotTime, dateKey)) return true'));
   assert.ok(bookingCode.includes("isPastTimeSlot(slot.time) ? 'Encerrado'"));
 });
+
+test('BookingWizard offers only compatible Nail Art and francesinha add-ons in the final summary', () => {
+  const bookingCode = readRepoFile('src/components/BookingWizard.tsx');
+  assert.match(bookingCode, /primarySupportsNailAddons/);
+  assert.match(bookingCode, /category\.includes\('nailart'\)\s*\|\|\s*\/nail\\s\*art\|francesinha\//);
+  assert.match(bookingCode, /\+ Adicionar serviço/);
+  assert.match(bookingCode, /eligibleAdditionalServices\.length > 0 && <button[\s\S]*?setShowAdditionalServices\(true\)/);
+  assert.match(bookingCode, /Adicione Nail Art ou francesinha ao procedimento/);
+});

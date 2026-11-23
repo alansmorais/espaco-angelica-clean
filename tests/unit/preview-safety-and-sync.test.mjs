@@ -159,9 +159,9 @@ test('Google Calendar synchronization files and core rules remain preserved in a
 
 test('Same-day booking slots that have already started are unavailable in Sao Paulo time', () => {
   const bookingCode = readRepoFile('src/components/BookingWizard.tsx');
-  assert.match(bookingCode, /timeZone:\s*['"]America\\/Sao_Paulo['"]/);
-  assert.match(bookingCode, /const isPastTimeSlot = \\(slotTime: string, dateKey: string = selectedDate\\): boolean =>/);
-  assert.match(bookingCode, /return start === null \\|\\| start <= getStudioNowMinutes\\(\\)/);
-  assert.match(bookingCode, /if \\(isPastTimeSlot\\(slotTime, dateKey\\)\\) return true/);
-  assert.match(bookingCode, /isPastTimeSlot\\(slot.time\\) \\? 'Encerrado'/);
+  assert.ok(bookingCode.includes("timeZone: 'America/Sao_Paulo'"));
+  assert.ok(bookingCode.includes('const isPastTimeSlot = (slotTime: string, dateKey: string = selectedDate): boolean =>'));
+  assert.ok(bookingCode.includes('return start === null || start <= getStudioNowMinutes()'));
+  assert.ok(bookingCode.includes('if (isPastTimeSlot(slotTime, dateKey)) return true'));
+  assert.ok(bookingCode.includes("isPastTimeSlot(slot.time) ? 'Encerrado'"));
 });

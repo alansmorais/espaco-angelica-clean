@@ -6,28 +6,24 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const readRepoFile = (relPath) => fs.readFileSync(path.join(ROOT, relPath), 'utf8');
 
-test('READ_ONLY_PREVIEW remains strictly true in service layer and App.tsx', () => {
+test('Authorized admin preview enables authenticated booking and admin operations', () => {
   const svcCode = readRepoFile('src/services/emailNotificationService.ts');
   const appCode = readRepoFile('src/App.tsx');
 
   assert.match(
     svcCode,
-    /export\s+const\s+READ_ONLY_PREVIEW(?:\s*:\s*boolean)?\s*=\s*true\s*;/,
-    'emailNotificationService.ts must export READ_ONLY_PREVIEW = true'
+    /export\s+const\s+READ_ONLY_PREVIEW(?:\s*:\s*boolean)?\s*=\s*false\s*;/,
+    'emailNotificationService.ts must export READ_ONLY_PREVIEW = false for the authorized admin branch'
   );
   assert.match(
     appCode,
     /import\s*\{[\s\S]*\bREAD_ONLY_PREVIEW\b[\s\S]*\}\s*from\s*['"]\.\/services\/emailNotificationService['"]/,
     'App.tsx must import READ_ONLY_PREVIEW from emailNotificationService.ts'
   );
-  assert.doesNotMatch(
-    appCode,
-    /\bREAD_ONLY_PREVIEW\s*=\s*false\b/,
-    'App.tsx must never set READ_ONLY_PREVIEW = false'
-  );
+  assert.match(appCode, /!READ_ONLY_PREVIEW\s*&&\s*bookingModalOpen/, 'Live booking wizard must be enabled when preview protection is false');
 });
 
-test('All remote write and admin functions in emailNotificationService.ts are blocked by READ_ONLY_PREVIEW', () => {
+test('All remote write and admin functions retain the centralized READ_ONLY_PREVIEW safety switch', () => {
   const svcCode = readRepoFile('src/services/emailNotificationService.ts');
   const guardedFunctions = [
     'sendWebhookNotification',
@@ -59,7 +55,7 @@ test('All remote write and admin functions in emailNotificationService.ts are bl
   }
 });
 
-test('All App.tsx write handlers enforce READ_ONLY_PREVIEW and BookingWizard is never mounted in preview', () => {
+test('App.tsx handlers retain the safety switch and live BookingWizard is enabled', () => {
   const appCode = readRepoFile('src/App.tsx');
   const handlers = [
     'handleAdminLogin',
@@ -98,12 +94,12 @@ test('All App.tsx write handlers enforce READ_ONLY_PREVIEW and BookingWizard is 
   assert.match(
     appCode,
     /!READ_ONLY_PREVIEW\s*&&\s*bookingModalOpen[\s\S]*?<BookingWizard/,
-    'BookingWizard must be gated by !READ_ONLY_PREVIEW'
+    'BookingWizard must be available when READ_ONLY_PREVIEW is false'
   );
   assert.match(
     appCode,
     /bookingModalOpen\s*&&\s*READ_ONLY_PREVIEW/,
-    'Read-only preview booking modal must be rendered when CTA is clicked in preview'
+    'Read-only fallback remains available if the safety switch is re-enabled'
   );
 });
 

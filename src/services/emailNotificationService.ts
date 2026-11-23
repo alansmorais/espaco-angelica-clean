@@ -10,9 +10,9 @@ export { AUTHORIZED_SENDER_EMAIL, TARGET_NOTIFICATION_EMAIL };
 export const DEFAULT_APPS_SCRIPT_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbysNBMLthA_GvAZJR1irBGcS-3Lspbfz0NIsvz0P2ax6jzE4M01RwVJ0za6zFsq8bGojw/exec';
 
-// Isolated preview protection: allow ONLY read-only public catalogue/address queries and
-// block every write, booking creation, calendar mutation, or administrative action.
-export const READ_ONLY_PREVIEW: boolean = true;
+// This branch is the authorized live admin preview: allow authenticated booking/admin CRUD.
+// The Apps Script backend remains responsible for session validation and protected operations.
+export const READ_ONLY_PREVIEW: boolean = false;
 
 const READ_ONLY_PREVIEW_BLOCK_MESSAGE =
   'Operação bloqueada: esta prévia está em modo somente leitura (READ_ONLY_PREVIEW = true) e não altera dados oficiais.';

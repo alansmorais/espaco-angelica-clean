@@ -30,8 +30,8 @@ jobs:
       - name: Validate preview remains independent from production services
         run: |
           node -e "const p=require('./package.json'); if (p.dependencies?.firebase || p.dependencies?.express || p.dependencies?.dotenv) process.exit(1); console.log('Static preview dependency check passed')"
-      - name: Run unit tests (catalog, read-only guards, calendar sync preservation)
-        run: npm test
+      - name: Run preview safety, catalog, and Calendar sync preservation tests
+        run: node --test tests/unit/preview-safety-and-sync.test.mjs tests/unit/recurrence-and-catalog.test.mjs
       - name: Run live read-only catalog integration test (getServices)
         run: npm run test:integration
       - name: Build read-only preview

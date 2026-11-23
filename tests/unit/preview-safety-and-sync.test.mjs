@@ -156,3 +156,12 @@ test('Google Calendar synchronization files and core rules remain preserved in a
   assert.match(durSync, /Depilação|Depilacao/);
   assert.match(durSync, /COLUMN_T_EVENT_ID/);
 });
+
+test('Same-day booking slots that have already started are unavailable in Sao Paulo time', () => {
+  const bookingCode = readRepoFile('src/components/BookingWizard.tsx');
+  assert.match(bookingCode, /timeZone:\s*['"]America\\/Sao_Paulo['"]/);
+  assert.match(bookingCode, /const isPastTimeSlot = \\(slotTime: string, dateKey: string = selectedDate\\): boolean =>/);
+  assert.match(bookingCode, /return start === null \\|\\| start <= getStudioNowMinutes\\(\\)/);
+  assert.match(bookingCode, /if \\(isPastTimeSlot\\(slotTime, dateKey\\)\\) return true/);
+  assert.match(bookingCode, /isPastTimeSlot\\(slot.time\\) \\? 'Encerrado'/);
+});

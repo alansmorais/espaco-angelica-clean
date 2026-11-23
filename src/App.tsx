@@ -19,6 +19,7 @@ import {
 import { playDiscreteAdminNotificationSound, registerUserInteraction } from './services/soundNotificationService';
 import { calculateDeposit40, formatBRL } from './services/notificationTemplates';
 import {
+  READ_ONLY_PREVIEW,
   deleteRemoteAppointment,
   updateRemoteAppointment,
   fetchRemoteAppointments,
@@ -86,7 +87,8 @@ export {
 };
 
 
-const READ_ONLY_PREVIEW = true; // Isolated preview: disable all booking/admin writes until a dedicated staging backend is configured.
+// READ_ONLY_PREVIEW is imported from emailNotificationService.ts (strictly true in preview)
+export { READ_ONLY_PREVIEW };
 
 export default function App() {
   // The isolated preview must never write to the official spreadsheet or expose admin controls.
@@ -111,6 +113,10 @@ export default function App() {
   const [remoteAppointmentsError, setRemoteAppointmentsError] = useState<string | null>(null);
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (READ_ONLY_PREVIEW) {
+      setAdminLoginError('Acesso administrativo desativado na pré-visualização somente leitura. Nenhuma operação é executada na produção.');
+      return;
+    }
     // A autenticação pode ser testada em modo de pré-visualização.
     // As operações administrativas só são habilitadas após autenticação; gravações usam o Apps Script oficial.
     // nos respetivos handlers; o login só cria sessão e lê agendamentos.
@@ -795,6 +801,10 @@ export default function App() {
   };
 
   const handleNewClientSave = async (newClient: ClientProfile) => {
+    if (READ_ONLY_PREVIEW) {
+      window.alert('Cadastro de clientes desativado na pré-visualização somente leitura.');
+      return;
+    }
     const result = await saveRemoteClient(newClient, adminSessionToken);
     if (!result.success) {
       window.alert('Não foi possível cadastrar a cliente na planilha oficial. ' + (result.error || ''));
@@ -805,6 +815,9 @@ export default function App() {
   };
 
   const handleBlockConfirm = async (data: BlockScheduleData): Promise<{ success: boolean; error?: string }> => {
+    if (READ_ONLY_PREVIEW) {
+      return { success: false, error: 'Bloqueios de agenda estão desativados na pré-visualização somente leitura.' };
+    }
     const startDate = String(data.date || '').trim();
     const endDate = String(data.endDate || data.date || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < startDate) {
@@ -873,6 +886,10 @@ export default function App() {
   };
 
   const handleExtraEncaixeConfirm = (name: string, procedure: string, dateTime: string, feeApplied: boolean) => {
+    if (READ_ONLY_PREVIEW) {
+      window.alert('Encaixes desativados na pré-visualização somente leitura.');
+      return;
+    }
     const encaixePrice = feeApplied ? 265 : 220;
     const encaixeApt: Appointment = {
       id: `encaixe-${Date.now()}`,
@@ -944,7 +961,7 @@ export default function App() {
             />
 
             {/* Booking form is opened as a focused modal from the public CTAs. */}
-            {bookingModalOpen && activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured && (
+            {!READ_ONLY_PREVIEW && bookingModalOpen && activeServices.length > 0 && publicAvailabilityLoaded && paymentConfigLoaded && paymentConfigConfigured && (
               <BookingWizard
                 selectedService={activeServices.find(s => s.id === selectedService?.id) || activeServices[0]}
                 onBookingConfirmed={handleBookingConfirmed}
@@ -960,7 +977,65 @@ export default function App() {
                 daySchedules={publicScheduleLoaded ? daySchedules : undefined}
               />
             )}
-            {bookingModalOpen && (!publicAvailabilityLoaded || !paymentConfigLoaded || !paymentConfigConfigured || activeServices.length === 0) && (
+            {bookingModalOpen && READ_ONLY_PREVIEW && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#49382E]/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-labelledby="preview-booking-modal-title">
+                <div className="w-full max-w-lg rounded-3xl border border-[#E8D9B5] bg-white p-6 sm:p-8 text-center shadow-2xl relative">
+                  <button
+                    type="button"
+                    onClick={() => setBookingModalOpen(false)}
+                    aria-label="Fechar pré-visualização de agendamento"
+                    className="absolute top-4 right-4 w-10 h-10 rounded-full bg-[#F7EFEA] border border-[#E8D9B5] flex items-center justify-center text-[#786C63] hover:text-[#49382E] cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FBF2D5] text-[#D4AF37] border border-[#E8D9B5]">
+                    <span className="material-symbols-outlined text-[28px]">calendar_month</span>
+                  </div>
+                  <span className="inline-block px-3 py-1 rounded-full bg-[#F7EFEA] border border-[#E8D9B5] font-jakarta text-[10px] font-bold uppercase tracking-widest text-[#9A7B20] mb-2">
+                    Prévia Visual • Somente Leitura
+                  </span>
+                  <h2 id="preview-booking-modal-title" className="font-syne text-xl sm:text-2xl font-bold text-[#49382E]">
+                    Agendamento protegido na prévia
+                  </h2>
+                  {selectedService && (
+                    <div className="mt-4 p-4 rounded-2xl bg-[#FDFBF8] border border-[#E8D9B5] text-left">
+                      <span className="font-jakarta text-[10px] uppercase tracking-wider text-[#9A7B20] font-bold block">
+                        Procedimento selecionado
+                      </span>
+                      <p className="font-syne text-base font-bold text-[#49382E] mt-0.5">{selectedService.title}</p>
+                      <div className="mt-1.5 flex items-center justify-between font-jakarta text-xs text-[#786C63]">
+                        <span>{selectedService.priceFormatted}</span>
+                        <span>{selectedService.duration}</span>
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-4 font-jakarta text-xs sm:text-sm text-[#786C63] leading-relaxed">
+                    Esta é a prévia visual do Espaço Angélica em modo somente leitura (<code>READ_ONLY_PREVIEW</code>). Você pode consultar toda a vitrine real de procedimentos, mas nenhum agendamento, alteração de serviço ou evento no Google Agenda será gravado por aqui.
+                  </p>
+                  <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBookingModalOpen(false);
+                        const el = document.getElementById('catalogo-vitrine');
+                        el?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="w-full sm:w-auto px-5 py-3 rounded-full bg-[#D4AF37] hover:bg-[#E5C158] text-[#3C2F00] font-jakarta text-xs font-bold cursor-pointer transition-all min-h-[44px]"
+                    >
+                      Ver Vitrine de Procedimentos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookingModalOpen(false)}
+                      className="w-full sm:w-auto px-5 py-3 rounded-full bg-[#F7EFEA] hover:bg-[#E8D3C7] text-[#49382E] border border-[#E8D9B5] font-jakarta text-xs font-semibold cursor-pointer transition-all min-h-[44px]"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!READ_ONLY_PREVIEW && bookingModalOpen && (!publicAvailabilityLoaded || !paymentConfigLoaded || !paymentConfigConfigured || activeServices.length === 0) && (
               <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#49382E]/60 p-4" role="dialog" aria-modal="true">
                 <div className="w-full max-w-lg rounded-2xl border border-[#E8D9B5] bg-white p-6 text-center shadow-2xl">
                   <button type="button" onClick={() => setBookingModalOpen(false)} className="mb-4 ml-auto block rounded-full border border-[#E8D9B5] px-4 py-2 text-sm">Fechar</button>
@@ -1316,8 +1391,7 @@ export default function App() {
         isOpen={aboutModalOpen}
         onClose={() => setAboutModalOpen(false)}
         onBookNow={() => {
-          const el = document.getElementById('wizard-agendamento');
-          el?.scrollIntoView({ behavior: 'smooth' });
+          setBookingModalOpen(true);
         }}
       />
 
@@ -1325,8 +1399,7 @@ export default function App() {
         isOpen={faqModalOpen}
         onClose={() => setFaqModalOpen(false)}
         onBookNow={() => {
-          const el = document.getElementById('wizard-agendamento');
-          el?.scrollIntoView({ behavior: 'smooth' });
+          setBookingModalOpen(true);
         }}
       />
 

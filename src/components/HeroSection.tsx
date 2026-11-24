@@ -10,7 +10,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   onViewServices
 }) => {
   return (
-    <section className="relative w-full px-4 sm:px-8 lg:px-12 pt-6 sm:pt-10 pb-10 sm:pb-16 overflow-hidden bg-gradient-to-b from-[#FBF7F2] via-[#FDFBF9] to-[#F7EFEA]/40">
+    <section className="relative w-full px-4 sm:px-8 lg:px-12 pt-12 sm:pt-16 pb-10 sm:pb-16 overflow-hidden bg-gradient-to-b from-[#FBF7F2] via-[#FDFBF9] to-[#F7EFEA]/40">
       {/* Ambient Glows */}
       <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] sm:w-[780px] h-[360px] sm:h-[480px] rounded-full bg-[#D4AF37]/10 blur-[100px] sm:blur-[130px] -z-10" />
       <div className="pointer-events-none absolute top-[400px] -left-48 w-[400px] sm:w-[520px] h-[400px] sm:h-[520px] rounded-full bg-[#E8D3C7]/40 blur-[100px] sm:blur-[140px] -z-10" />

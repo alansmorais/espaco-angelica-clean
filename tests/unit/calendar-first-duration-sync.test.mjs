@@ -531,3 +531,52 @@ test('a cancelled Calendar appointment marks its matched Sheet row cancelled wit
   assert.equal(fixture.appointments.getLastRow(), 2);
   assert.equal(fixture.patches.length, 0);
 });
+
+
+test('known calendar titles resolve approved aliases to official catalog IDs and full client names', () => {
+  const services = [
+    { id: 'manicure-tradicional', title: 'Manicure Tradicional', normalizedTitle: 'manicure tradicional', durationMinutes: 45, sheetName: 'Serviços', row: 2 },
+    { id: 'pedicure-tradicional', title: 'Pedicure Tradicional', normalizedTitle: 'pedicure tradicional', durationMinutes: 45, sheetName: 'Serviços', row: 3 },
+    { id: 'manicure-pedicure-tradicional', title: 'Manicure e Pedicure Tradicional', normalizedTitle: 'manicure e pedicure tradicional', durationMinutes: 90, sheetName: 'Serviços', row: 4 },
+    { id: 'manutencao-fibra-vidro', title: 'Manutenção Fibra de Vidro', normalizedTitle: 'manutencao fibra de vidro', durationMinutes: 90, sheetName: 'Serviços', row: 5 }
+  ];
+  const aliasCatalog = {
+    byId: Object.fromEntries(services.map(service => [service.id, [service]])),
+    byTitle: Object.fromEntries(services.map(service => [service.normalizedTitle, [service]]))
+  };
+  const knownClients = [
+    { normalized: 'kristine', name: 'Kristine' },
+    { normalized: 'kristine sorensen', name: 'Kristine Sorensen' },
+    { normalized: 'josefina calderon', name: 'Josefina Calderón' },
+    { normalized: 'mirian helena goldschmidt', name: 'Mirian Helena Goldschmidt' },
+    { normalized: 'eliana', name: 'Eliana' }
+  ];
+
+  const kristine = context.cfsMatchTitleToCatalog_('Kristine - mão', aliasCatalog, knownClients);
+  assert.equal(kristine.ok, true);
+  assert.equal(kristine.clientName, 'Kristine Sorensen');
+  assert.equal(kristine.service.id, 'manicure-tradicional');
+
+  const josefina = context.cfsMatchTitleToCatalog_('Josefina Calderón Mão', aliasCatalog, knownClients);
+  assert.equal(josefina.ok, true);
+  assert.equal(josefina.clientName, 'Josefina Calderón');
+  assert.equal(josefina.service.id, 'manicure-tradicional');
+
+  const mirian = context.cfsMatchTitleToCatalog_('Mirian Helena Goldschmidt pé e mão', aliasCatalog, knownClients);
+  assert.equal(mirian.ok, true);
+  assert.equal(mirian.clientName, 'Mirian Helena Goldschmidt');
+  assert.equal(mirian.service.id, 'manicure-pedicure-tradicional');
+
+  const eliana = context.cfsMatchTitleToCatalog_('Eliana - manutenção e pé', aliasCatalog, knownClients);
+  assert.equal(eliana.ok, true);
+  assert.equal(eliana.clientName, 'Eliana');
+  assert.equal(eliana.service.id, 'manutencao-fibra-vidro');
+  assert.deepEqual(Array.from(eliana.additionalServices, service => service.id), ['pedicure-tradicional']);
+});
+
+test('training and course events are protected from client appointment import', () => {
+  const course = apiEvent({ summary: 'Curso Molde F1 Jessica' });
+  const training = apiEvent({ summary: 'Treinamento interno da equipe' });
+  assert.equal(context.cfsProtectedReason_(course), 'PROTECTED_OR_TEST_EVENT');
+  assert.equal(context.cfsProtectedReason_(training), 'PROTECTED_OR_TEST_EVENT');
+});

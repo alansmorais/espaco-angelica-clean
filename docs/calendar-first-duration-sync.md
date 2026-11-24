@@ -46,7 +46,9 @@ The module is deliberately disabled by default. Do not activate it until the own
    - Keep CALENDAR_FIRST_SYNC_ENABLED unset or false while auditing.
 4. Run auditCalendarFirstSyncConfig(); it is read-only.
 5. Run runCalendarFirstSyncDryRun({ daysAhead: 365 }); it is read-only. Inspect every needsAdminReview and durationResults entry before enabling writes.
-6. Only after a separate explicit approval, set CALENDAR_FIRST_SYNC_ENABLED=true and manually run installCalendarFirstSyncTriggers(). This only adds missing Calendar/Sheet triggers and does not remove existing triggers.
+6. Review the trigger list returned by auditCalendarFirstSyncConfig(). If legacy handlers are present (syncCalendarBookingsToSheet, syncCalendarChangesToSheet, handleSpreadsheetEditForCalendarSync), do not install the new triggers. The audit blocks activation while those old handlers or the legacy CALENDAR_DURATION_SYNC_ENABLED=true flag remain active.
+7. If an old trigger is listed, inspect its owner, purpose and current behavior manually. Do not delete it as part of this change. Disable an old trigger only after a separate explicit decision and only once the new sync has passed its dry-run.
+8. Only after the old-trigger audit is clean and a separate explicit approval, set CALENDAR_FIRST_SYNC_ENABLED=true and manually run installCalendarFirstSyncTriggers(). The installer refuses to proceed if it detects legacy or duplicate handlers. It only adds missing new Calendar/Sheet triggers and never deletes existing triggers.
 
 syncCalendarBookingsAndDurations() defaults to dry-run. Calling it with dryRun:false still stays read-only unless the Script Property is exactly true.
 
@@ -57,3 +59,8 @@ The existing public website booking path currently writes a booking through crea
 ## Validation scope
 
 The accompanying unit tests validate duration parsing, strict service/add-on resolution, title classification, recurrence instance identity, cancelled rows, conflict detection, write-disable defaults and the absence of Calendar create/delete/title/description mutations. They do not replace the Apps Script dry-run against the live project, nor do they authorize production activation.
+
+
+## Calendar titles and approved aliases
+
+The parser uses known full names from the existing Agendamentos and Clientes sheets. It supports a limited list of legacy service labels already used by the previous sync implementation (for example, mão, pé, pé e mão, manutenção e pé). Each alias maps to explicit service IDs, and every mapped ID must exist exactly once in the current official catalogue before the appointment can be imported or its duration calculated. If an ID is missing/duplicated, the event is sent to human review without a Calendar update. Course/training/workshop/holiday/blocking events are protected and are never treated as customer bookings.

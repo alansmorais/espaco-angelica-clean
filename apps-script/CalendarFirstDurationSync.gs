@@ -228,7 +228,7 @@ function cfsProtectedReason_(event) {
   if (event.eventType && event.eventType !== "default") return "NON_STANDARD_EVENT_TYPE";
   var title = cfsNormalize_(event.summary || "");
   if (!title) return "EMPTY_TITLE";
-  if (/\b(bloqueio|bloqueado|bloqueada|folga|ferias|feriado|almoco|reuniao|reunioes|pessoal|administrativo|indisponivel|indisponibilidade|compromisso|teste|integracao|integration|e2e)\b/.test(title)) {
+  if (/\b(bloqueio|bloqueado|bloqueada|folga|ferias|feriado|almoco|reuniao|reunioes|pessoal|administrativo|indisponivel|indisponibilidade|compromisso|curso|treinamento|capacitacao|workshop|viagem|teste|integracao|integration|e2e)\b/.test(title)) {
     return "PROTECTED_OR_TEST_EVENT";
   }
   return "";
@@ -239,7 +239,7 @@ function cfsReadKnownClients_(spreadsheet, appointmentRows) {
   function addName(value) {
     var raw = String(value || "").trim();
     var normalized = cfsNormalize_(raw);
-    if (normalized.length < 3 || /\\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\\b/.test(normalized)) return;
+    if (normalized.length < 3 || /\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\b/.test(normalized)) return;
     names[normalized] = raw;
   }
   (appointmentRows || []).forEach(function(row) {
@@ -303,13 +303,13 @@ function cfsResolveCatalogAlias_(rawService, catalog) {
 
 function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
   var rawTitle = String(title || "").trim();
-  var rawParts = rawTitle.split(/\\s*[-–—:|]\\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+  var rawParts = rawTitle.split(/\s*[-–—:|]\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
   var candidatePairs = [];
 
   // First support titles with a clear separator, for example "Client - Service".
   for (var p = 0; p < rawParts.length; p++) {
     var serviceText = rawParts[p];
-    var servicePieces = serviceText.split(/\\s*(?:\\+|&)\\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+    var servicePieces = serviceText.split(/\s*(?:\+|&)\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
     if (!servicePieces.length) continue;
     var resolved = [];
     var valid = true;
@@ -360,7 +360,7 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
     (knownClients || []).forEach(function(client) {
       var first = client.normalized.split(" ")[0];
       if (first && normalizedTitle.indexOf(first) === 0) {
-        var remainder = normalizedTitle.slice(first.length).replace(/^[\\s\\-–—:|]+/, "").trim();
+        var remainder = normalizedTitle.slice(first.length).replace(/^[\s\-–—:|]+/, "").trim();
         firstNameCandidates.push({ client: client, remainder: remainder });
       }
     });
@@ -389,7 +389,7 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
   });
   if (!uniqueServices.length) return { ok: false, reason: "SERVICE_ID_MISSING_OR_DUPLICATE" };
   var clientNorm = cfsNormalize_(selected.clientName);
-  if (clientNorm.length < 3 || /\\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\\b/.test(clientNorm)) {
+  if (clientNorm.length < 3 || /\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\b/.test(clientNorm)) {
     return { ok: false, reason: "CLIENT_NAME_NOT_CONFIRMED" };
   }
   return {

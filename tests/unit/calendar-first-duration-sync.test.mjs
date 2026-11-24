@@ -580,3 +580,21 @@ test('training and course events are protected from client appointment import', 
   assert.equal(context.cfsProtectedReason_(course), 'PROTECTED_OR_TEST_EVENT');
   assert.equal(context.cfsProtectedReason_(training), 'PROTECTED_OR_TEST_EVENT');
 });
+
+
+test('trigger audit detects legacy and duplicate synchronization triggers without deleting anything', () => {
+  context.ScriptApp = {
+    getProjectTriggers: () => [
+      { getHandlerFunction: () => 'syncCalendarBookingsToSheet' },
+      { getHandlerFunction: () => 'handleCalendarFirstSyncCalendarEventUpdated' },
+      { getHandlerFunction: () => 'handleCalendarFirstSyncCalendarEventUpdated' },
+      { getHandlerFunction: () => 'handleCalendarFirstSyncServiceDurationEdit' }
+    ]
+  };
+  const result = context.cfsGetTriggerAudit_();
+  assert.equal(result.available, true);
+  assert.deepEqual(Array.from(result.legacyHandlers), ['syncCalendarBookingsToSheet']);
+  assert.equal(result.calendarTriggerCount, 2);
+  assert.equal(result.sheetEditTriggerCount, 1);
+  assert.equal(source.includes('ScriptApp.deleteTrigger'), false);
+});

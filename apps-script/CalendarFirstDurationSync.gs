@@ -211,7 +211,7 @@ function cfsEventIdEqual_(left, right) {
   var a = String(left || "").trim();
   var b = String(right || "").trim();
   if (a === b) return true;
-  return a.replace(/@google\\.com$/i, "") === b.replace(/@google\\.com$/i, "");
+  return a.replace(/@google\.com$/i, "") === b.replace(/@google\.com$/i, "");
 }
 function cfsDeterministicAppointmentId_(eventId, occurrenceKey) {
   var source = String(eventId || "") + "|" + String(occurrenceKey || "");

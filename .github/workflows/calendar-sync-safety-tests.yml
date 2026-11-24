@@ -1,0 +1,30 @@
+name: Calendar-first sync safety tests
+
+on:
+  push:
+    branches:
+      - fix/calendar-to-sheets-duration-sync
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run unit tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build

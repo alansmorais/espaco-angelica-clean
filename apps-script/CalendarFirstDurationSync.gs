@@ -328,9 +328,14 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
       var first = c.normalized.split(" ")[0];
       return first && first === clientNorm;
     });
-    var resolvedClient = knownExact.length === 1 ? knownExact[0].name :
-      (knownFirst.length === 1 ? knownFirst[0].name : clientText);
-    if ((knownExact.length > 1) || (knownFirst.length > 1)) continue;
+    // If old rows contain only "Kristine" but the official Clients tab has
+    // "Kristine Sorensen", prefer the unique full official name.
+    var knownFullFirst = knownFirst.filter(function(c) { return c.normalized.split(" ").length > 1; });
+    var resolvedClient = knownFullFirst.length === 1 ? knownFullFirst[0].name :
+      (knownFullFirst.length > 1 ? "" :
+        (knownExact.length === 1 ? knownExact[0].name :
+          (knownFirst.length === 1 ? knownFirst[0].name : clientText)));
+    if ((knownExact.length > 1) || (knownFullFirst.length > 1) || !resolvedClient) continue;
     candidatePairs.push({ clientName: resolvedClient, resolved: resolved, method: "SEPARATED_TITLE" });
   }
 

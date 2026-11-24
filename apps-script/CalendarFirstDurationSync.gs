@@ -350,13 +350,14 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
       if (!before || !after) knownMatches.push({ client: client, serviceText: after || before });
     }
   });
-  if (knownMatches.length === 1) {
-    var serviceMatchNoSeparator = cfsResolveCatalogAlias_(knownMatches[0].serviceText, catalog);
+  if (knownMatches.length > 0) {
+    var longestNameLength = Math.max.apply(null, knownMatches.map(function(match) { return match.client.normalized.length; }));
+    var longestMatches = knownMatches.filter(function(match) { return match.client.normalized.length === longestNameLength; });
+    if (longestMatches.length !== 1) return { ok: false, reason: "AMBIGUOUS_KNOWN_CLIENT_IN_TITLE" };
+    var serviceMatchNoSeparator = cfsResolveCatalogAlias_(longestMatches[0].serviceText, catalog);
     if (serviceMatchNoSeparator.ok) {
-      candidatePairs.push({ clientName: knownMatches[0].client.name, resolved: [serviceMatchNoSeparator], method: "KNOWN_CLIENT_AND_ALIAS" });
+      candidatePairs.push({ clientName: longestMatches[0].client.name, resolved: [serviceMatchNoSeparator], method: "KNOWN_CLIENT_AND_ALIAS" });
     }
-  } else if (knownMatches.length > 1) {
-    return { ok: false, reason: "AMBIGUOUS_KNOWN_CLIENT_IN_TITLE" };
   }
 
   // A single first-name hit may be promoted to the unique full official name.

@@ -402,11 +402,10 @@ function getBookingCalendar_() {
 }
 
 function isCalendarEventBusy_(event) {
-  try {
-    return String(event.getTransparency() || "").toLowerCase() !== "transparent";
-  } catch (e) {
-    return true;
-  }
+  // Studio policy: every event on the official calendar blocks availability,
+  // including events marked transparent/free. Do not infer availability from
+  // the event's transparency setting; only absence of an event is available.
+  return true;
 }
 
 function getCalendarBusySlotsForPublic_() {

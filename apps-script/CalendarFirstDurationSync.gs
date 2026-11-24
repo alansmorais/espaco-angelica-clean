@@ -614,6 +614,37 @@ function cfsOpenContext_() {
   return { spreadsheet: spreadsheet, appointmentsSheet: appointmentsSheet, catalog: catalog, calendarId: calendarId };
 }
 
+function cfsGetTriggerAudit_() {
+  var result = {
+    available: false,
+    activeHandlers: [],
+    legacyHandlers: [],
+    calendarTriggerCount: 0,
+    sheetEditTriggerCount: 0
+  };
+  if (typeof ScriptApp === "undefined" || !ScriptApp.getProjectTriggers) return result;
+  try {
+    var triggers = ScriptApp.getProjectTriggers();
+    result.available = true;
+    var legacy = {
+      "syncCalendarBookingsToSheet": true,
+      "syncCalendarChangesToSheet": true,
+      "handleSpreadsheetEditForCalendarSync": true,
+      "installBidirectionalCalendarSyncTriggers": false
+    };
+    triggers.forEach(function(trigger) {
+      var handler = String(trigger.getHandlerFunction() || "");
+      result.activeHandlers.push(handler);
+      if (legacy[handler] === true) result.legacyHandlers.push(handler);
+      if (handler === "handleCalendarFirstSyncCalendarEventUpdated") result.calendarTriggerCount++;
+      if (handler === "handleCalendarFirstSyncServiceDurationEdit") result.sheetEditTriggerCount++;
+    });
+  } catch (error) {
+    result.error = String(error.message || error);
+  }
+  return result;
+}
+
 function auditCalendarFirstSyncConfig() {
   var props = PropertiesService.getScriptProperties();
   var report = {
@@ -630,6 +661,11 @@ function auditCalendarFirstSyncConfig() {
     serviceTabs: [],
     advancedCalendarApiEnabled: cfsHasAdvancedCalendarApi_(),
     calendarAccessible: false,
+    existingTriggers: [],
+    legacySyncTriggers: [],
+    newCalendarTriggerCount: 0,
+    newSheetEditTriggerCount: 0,
+    legacyWriteSyncEnabled: String(props.getProperty("CALENDAR_DURATION_SYNC_ENABLED") || "").trim().toLowerCase() === "true",
     blockers: []
   };
   var configuredId = String(props.getProperty("SPREADSHEET_ID") || "").trim();
@@ -656,6 +692,12 @@ function auditCalendarFirstSyncConfig() {
     }
   }
   if (!report.appointmentsTabFound) report.blockers.push("Aba Agendamentos não encontrada.");
+  if (report.eventIdHeader && cfsNormalize_(report.eventIdHeader).indexOf("event id") < 0 && cfsNormalize_(report.eventIdHeader).indexOf("google calendar") < 0) {
+    report.blockers.push("A coluna T possui cabeçalho diferente do ID do Google Calendar.");
+  }
+  if (report.originalStartHeader && cfsNormalize_(report.originalStartHeader).indexOf("original start") < 0) {
+    report.blockers.push("A coluna U já possui outro cabeçalho; não será sobrescrita.");
+  }
   if (!report.serviceTabs.length) report.blockers.push("Abas oficiais de serviços não encontradas.");
   if (!report.advancedCalendarApiEnabled) report.blockers.push("Ativar o serviço avançado Google Calendar API v3 no Apps Script.");
   var calendarId = String(props.getProperty("GOOGLE_CALENDAR_ID") || "").trim();
@@ -669,7 +711,18 @@ function auditCalendarFirstSyncConfig() {
       report.blockers.push("Calendário inacessível pela Calendar API: " + String(e2.message || e2));
     }
   }
+  var triggerAudit = cfsGetTriggerAudit_();
+  report.existingTriggers = triggerAudit.activeHandlers;
+  report.legacySyncTriggers = triggerAudit.legacyHandlers;
+  report.newCalendarTriggerCount = triggerAudit.calendarTriggerCount;
+  report.newSheetEditTriggerCount = triggerAudit.sheetEditTriggerCount;
+  if (!triggerAudit.available) report.blockers.push("Não foi possível auditar os gatilhos ativos do projeto Apps Script.");
+  if (triggerAudit.error) report.blockers.push("Erro ao auditar gatilhos: " + triggerAudit.error);
+  if (triggerAudit.legacyHandlers.length) report.blockers.push("Há gatilhos antigos de sincronização ativos: " + triggerAudit.legacyHandlers.join(", ") + ". Desative-os manualmente somente após revisão.");
+  if (triggerAudit.calendarTriggerCount > 1 || triggerAudit.sheetEditTriggerCount > 1) report.blockers.push("Há gatilhos duplicados da nova sincronização; revisar antes de instalar.");
+  if (report.legacyWriteSyncEnabled) report.blockers.push("CALENDAR_DURATION_SYNC_ENABLED=true mantém o sincronizador antigo habilitado; revisar antes de continuar.");
   report.readyForDryRun = report.blockers.length === 0;
+  report.readyForTriggerInstallation = report.blockers.length === 0 && report.writeEnabled;
   report.safety = "Somente leitura: nenhuma célula, propriedade, trigger ou evento foi alterado.";
   Logger.log(JSON.stringify(report, null, 2));
   return report;
@@ -975,24 +1028,37 @@ function handleCalendarFirstSyncServiceDurationEdit(e) {
  */
 function installCalendarFirstSyncTriggers() {
   if (!cfsGetWriteEnabled_()) throw new Error("Ative CALENDAR_FIRST_SYNC_ENABLED=true somente após aprovação da operação.");
+  var audit = auditCalendarFirstSyncConfig();
+  if (!audit.readyForTriggerInstallation) {
+    throw new Error("Instalação bloqueada pela auditoria: " + audit.blockers.join(" | "));
+  }
   var ctx = cfsOpenContext_();
   var triggers = ScriptApp.getProjectTriggers();
-  var hasCalendar = false, hasSheetEdit = false;
+  var legacy = {
+    "syncCalendarBookingsToSheet": true,
+    "syncCalendarChangesToSheet": true,
+    "handleSpreadsheetEditForCalendarSync": true
+  };
+  var calendarCount = 0, sheetCount = 0, legacyFound = [];
   triggers.forEach(function(trigger) {
-    var handler = trigger.getHandlerFunction();
-    if (handler === "handleCalendarFirstSyncCalendarEventUpdated") hasCalendar = true;
-    if (handler === "handleCalendarFirstSyncServiceDurationEdit") hasSheetEdit = true;
+    var handler = String(trigger.getHandlerFunction() || "");
+    if (legacy[handler]) legacyFound.push(handler);
+    if (handler === "handleCalendarFirstSyncCalendarEventUpdated") calendarCount++;
+    if (handler === "handleCalendarFirstSyncServiceDurationEdit") sheetCount++;
   });
+  if (legacyFound.length) throw new Error("Gatilhos antigos ativos; instalação cancelada sem remover nada: " + legacyFound.join(", "));
+  if (calendarCount > 1 || sheetCount > 1) throw new Error("Gatilhos duplicados; instalação cancelada sem remover nada.");
+
   var installed = [];
-  if (!hasCalendar) {
+  if (calendarCount === 0) {
     ScriptApp.newTrigger("handleCalendarFirstSyncCalendarEventUpdated")
       .forUserCalendar(ctx.calendarId).onEventUpdated().create();
     installed.push("handleCalendarFirstSyncCalendarEventUpdated");
   }
-  if (!hasSheetEdit) {
+  if (sheetCount === 0) {
     ScriptApp.newTrigger("handleCalendarFirstSyncServiceDurationEdit")
       .forSpreadsheet(ctx.spreadsheet).onEdit().create();
     installed.push("handleCalendarFirstSyncServiceDurationEdit");
   }
-  return { status: "success", installed: installed, safety: "Nenhum gatilho existente foi removido." };
+  return { status: "success", installed: installed, safety: "Nenhum gatilho antigo ou duplicado foi removido." };
 }

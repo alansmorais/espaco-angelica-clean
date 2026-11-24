@@ -302,3 +302,232 @@ test('sync source requires Advanced Calendar API and never creates/deletes/relab
   assert.doesNotMatch(source, /\.setDescription\s*\(/);
   assert.match(source, /Agendamentos!U/);
 });
+
+
+function makeFakeSheet(initialRows, columnCount = 21) {
+  const rows = initialRows.map(row => {
+    const values = Array(columnCount).fill('');
+    for (let i = 0; i < Math.min(row.length, columnCount); i++) values[i] = row[i] ?? '';
+    return values;
+  });
+  function ensureRow(rowNumber) {
+    while (rows.length < rowNumber) rows.push(Array(columnCount).fill(''));
+  }
+  return {
+    _rows: rows,
+    getLastRow() { return rows.length; },
+    getLastColumn() { return columnCount; },
+    getDataRange() { return this.getRange(1, 1, Math.max(1, rows.length), columnCount); },
+    getRange(row, column, numRows = 1, numColumns = 1) {
+      return {
+        getValues() {
+          const result = [];
+          for (let r = 0; r < numRows; r++) {
+            const line = [];
+            for (let c = 0; c < numColumns; c++) {
+              line.push(rows[row - 1 + r]?.[column - 1 + c] ?? '');
+            }
+            result.push(line);
+          }
+          return result;
+        },
+        getDisplayValues() {
+          return this.getValues().map(line => line.map(value => value instanceof Date ? value.toISOString() : String(value ?? '')));
+        },
+        getValue() { return this.getValues()[0][0]; },
+        getDisplayValue() { return this.getDisplayValues()[0][0]; },
+        setValue(value) {
+          ensureRow(row);
+          rows[row - 1][column - 1] = value;
+        },
+        setValues(values) {
+          for (let r = 0; r < values.length; r++) {
+            ensureRow(row + r);
+            for (let c = 0; c < values[r].length; c++) {
+              rows[row - 1 + r][column - 1 + c] = values[r][c];
+            }
+          }
+        }
+      };
+    }
+  };
+}
+
+function makeCalendarSyncFixture({ appointmentRows, events, writeEnabled = false, beforePatch } = {}) {
+  const headers = Array(21).fill('');
+  headers[1] = 'Cliente';
+  headers[4] = 'Procedimento';
+  headers[5] = 'Data';
+  headers[6] = 'Horário';
+  headers[8] = 'Status';
+  headers[9] = 'ID Agendamento';
+  headers[13] = 'IDs Serviços Adicionais';
+  headers[15] = 'ID Serviço Principal';
+  headers[19] = 'Google Calendar Event ID';
+  headers[20] = 'Google Calendar Original Start';
+  const appointments = makeFakeSheet(appointmentRows || [headers]);
+  const services = makeFakeSheet([
+    ['ID', 'Nome', 'Categoria', 'Preço', 'Preço formatado', 'Duração'],
+    ['manicure-tradicional', 'Manicure Tradicional', 'Unhas', 100, 'R$ 100,00', 45],
+    ['pedicure-tradicional', 'Pedicure Tradicional', 'Unhas', 80, 'R$ 80,00', 50]
+  ]);
+  const spreadsheet = {
+    getSheetByName(name) {
+      if (name === 'Agendamentos') return appointments;
+      if (name === 'Serviços') return services;
+      return null;
+    }
+  };
+  const cache = new Map();
+  const patches = [];
+  const listCalls = [];
+  context.TARGET_SPREADSHEET_ID = 'fixture-spreadsheet';
+  context.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty(name) {
+        if (name === 'SPREADSHEET_ID') return 'fixture-spreadsheet';
+        if (name === 'GOOGLE_CALENDAR_ID') return 'fixture-calendar';
+        if (name === 'CALENDAR_FIRST_SYNC_ENABLED') return writeEnabled ? 'true' : '';
+        return '';
+      }
+    })
+  };
+  context.SpreadsheetApp = { openById: () => spreadsheet, flush() {} };
+  context.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+  context.CacheService = {
+    getScriptCache: () => ({
+      get: key => cache.get(key),
+      put: (key, value) => cache.set(key, value)
+    })
+  };
+  context.Logger = { log() {} };
+  context.Calendar = {
+    Events: {
+      list(_calendarId, params) {
+        listCalls.push(params);
+        return { items: events || [] };
+      },
+      patch(body, calendarId, eventId) {
+        if (beforePatch) beforePatch({ body, calendarId, eventId, appointments });
+        patches.push({ body, calendarId, eventId });
+        return {};
+      }
+    }
+  };
+  return { appointments, services, patches, listCalls, spreadsheet, headers };
+}
+
+test('dry-run imports and calculates an appointment without writing Sheets or Calendar', () => {
+  const event = apiEvent({
+    id: 'new-calendar-event',
+    summary: 'Maria Silva - Manicure Tradicional + Pedicure Tradicional'
+  });
+  const fixture = makeCalendarSyncFixture({ events: [event], writeEnabled: false });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: true,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+  assert.equal(result.dryRun, true);
+  assert.equal(result.counts.rowsImported, 1);
+  assert.equal(result.durationResults[0].status, 'WOULD_UPDATE_END_ONLY');
+  assert.equal(result.durationResults[0].durationMinutes, 95);
+  assert.equal(fixture.appointments.getLastRow(), 1);
+  assert.equal(fixture.patches.length, 0);
+  assert.equal(fixture.listCalls[0].singleEvents, true);
+  assert.equal(fixture.listCalls[0].showDeleted, true);
+});
+
+test('write mode persists the Sheet event link before patching only Calendar end', () => {
+  const event = apiEvent({
+    id: 'linked-calendar-event',
+    summary: 'Maria Silva - Manicure Tradicional + Pedicure Tradicional'
+  });
+  const row = Array(21).fill('');
+  row[1] = 'Maria Silva';
+  row[4] = 'Manicure Tradicional';
+  row[5] = '2027-01-12';
+  row[6] = '10:00';
+  row[8] = 'confirmado';
+  row[9] = 'apt-existing';
+  row[13] = JSON.stringify(['pedicure-tradicional']);
+  row[15] = 'manicure-tradicional';
+  const headerFixture = makeCalendarSyncFixture({});
+  const fixture = makeCalendarSyncFixture({
+    appointmentRows: [headerFixture.headers, row],
+    events: [event],
+    writeEnabled: true,
+    beforePatch({ body, calendarId, eventId, appointments }) {
+      assert.equal(appointments.getRange(2, 20).getValue(), eventId);
+      assert.deepEqual(Object.keys(body), ['end']);
+      assert.equal(calendarId, 'fixture-calendar');
+    }
+  });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: false,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+  assert.equal(result.dryRun, false);
+  assert.equal(result.durationResults[0].status, 'UPDATED_END_ONLY');
+  assert.equal(result.durationResults[0].durationMinutes, 95);
+  assert.equal(fixture.appointments.getRange(2, 20).getValue(), 'linked-calendar-event');
+  assert.equal(fixture.patches.length, 1);
+  assert.equal(fixture.patches[0].body.end.timeZone, 'America/Sao_Paulo');
+  assert.equal(fixture.patches[0].eventId, 'linked-calendar-event');
+});
+
+test('write mode imports a recurring instance with individual ID and original start key', () => {
+  const originalStart = '2027-01-12T10:00:00-03:00';
+  const event = apiEvent({
+    id: 'recurring-instance-12',
+    recurringEventId: 'recurring-series',
+    originalStartTime: { dateTime: originalStart },
+    summary: 'Maria Silva - Manicure Tradicional + Pedicure Tradicional'
+  });
+  const fixture = makeCalendarSyncFixture({
+    events: [event],
+    writeEnabled: true,
+    beforePatch({ eventId, appointments }) {
+      assert.equal(appointments.getRange(2, 20).getValue(), eventId);
+      assert.equal(appointments.getRange(2, 21).getValue(), originalStart);
+    }
+  });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: false,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+  assert.equal(result.counts.rowsImported, 1);
+  assert.equal(fixture.appointments.getRange(2, 20).getValue(), 'recurring-instance-12');
+  assert.equal(fixture.appointments.getRange(2, 21).getValue(), originalStart);
+  assert.equal(fixture.patches.length, 1);
+});
+
+test('a cancelled Calendar appointment marks its matched Sheet row cancelled without recreating anything', () => {
+  const headerFixture = makeCalendarSyncFixture({});
+  const row = Array(21).fill('');
+  row[1] = 'Maria Silva';
+  row[4] = 'Manicure Tradicional';
+  row[5] = '2027-01-12';
+  row[6] = '10:00';
+  row[8] = 'confirmado';
+  row[9] = 'apt-existing';
+  row[15] = 'manicure-tradicional';
+  row[19] = 'cancelled-calendar-event';
+  const cancelled = { id: 'cancelled-calendar-event', status: 'cancelled' };
+  const fixture = makeCalendarSyncFixture({
+    appointmentRows: [headerFixture.headers, row],
+    events: [cancelled],
+    writeEnabled: true
+  });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: false,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+  assert.equal(result.counts.cancelledRowsMarked, 1);
+  assert.equal(fixture.appointments.getRange(2, 9).getValue(), 'cancelado');
+  assert.equal(fixture.appointments.getLastRow(), 2);
+  assert.equal(fixture.patches.length, 0);
+});

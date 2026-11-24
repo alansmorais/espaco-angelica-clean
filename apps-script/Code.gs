@@ -386,6 +386,118 @@ function getPublicScheduleData() {
   }
 }
 
+
+/**
+ * Google Calendar is the final source of truth for busy intervals.
+ * The calendar ID is configurable; the verified studio calendar is the fallback.
+ * Any read/permission failure is treated as unavailable (fail closed).
+ */
+function getBookingCalendar_() {
+  var props = PropertiesService.getScriptProperties();
+  var calendarId = String(props.getProperty("GOOGLE_CALENDAR_ID") || "angelikm19@gmail.com").trim();
+  if (!calendarId) throw new Error("GOOGLE_CALENDAR_ID não configurado.");
+  var calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) throw new Error("Calendário oficial indisponível: " + calendarId);
+  return calendar;
+}
+
+function isCalendarEventBusy_(event) {
+  try {
+    return String(event.getTransparency() || "").toLowerCase() !== "transparent";
+  } catch (e) {
+    return true;
+  }
+}
+
+function getCalendarBusySlotsForPublic_() {
+  var calendar = getBookingCalendar_();
+  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var rangeStart = new Date();
+  rangeStart.setHours(0, 0, 0, 0);
+  var rangeEnd = new Date(rangeStart.getTime());
+  rangeEnd.setDate(rangeEnd.getDate() + 366);
+  var events = calendar.getEvents(rangeStart, rangeEnd);
+  var slots = [];
+  var blockedDates = [];
+
+  events.forEach(function(event) {
+    if (!isCalendarEventBusy_(event)) return;
+    var eventStart = event.getStartTime();
+    var eventEnd = event.getEndTime();
+    if (!eventStart || !eventEnd || eventEnd <= eventStart) return;
+
+    var dayCursor = new Date(eventStart.getTime());
+    dayCursor.setHours(0, 0, 0, 0);
+    while (dayCursor < eventEnd && dayCursor < rangeEnd) {
+      var nextDay = new Date(dayCursor.getTime());
+      nextDay.setDate(nextDay.getDate() + 1);
+      var dateKey = Utilities.formatDate(dayCursor, tz, "yyyy-MM-dd");
+      if (event.isAllDayEvent && event.isAllDayEvent()) {
+        blockedDates.push(dateKey);
+      } else {
+        var clippedStart = new Date(Math.max(eventStart.getTime(), dayCursor.getTime()));
+        var clippedEnd = new Date(Math.min(eventEnd.getTime(), nextDay.getTime()));
+        var startText = Utilities.formatDate(clippedStart, tz, "HH:mm");
+        var endText = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+        if (startText !== endText) {
+          slots.push({
+            id: "gcal-busy-" + String(event.getId ? event.getId() : Utilities.getUuid()) + "-" + dateKey,
+            date: dateKey,
+            time: startText + " às " + endText,
+            status: "bloqueado",
+            serviceDuration: "30 min"
+          });
+        }
+      }
+      dayCursor = nextDay;
+    }
+  });
+
+  return { slots: slots, blockedDates: blockedDates };
+}
+
+function validateAgainstGoogleCalendar(dateKey, timeKey, durationMinutes) {
+  try {
+    var calendar = getBookingCalendar_();
+    var parts = String(dateKey || "").split("-");
+    if (parts.length !== 3) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
+    var dayStart = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
+    if (isNaN(dayStart.getTime())) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
+    var dayEnd = new Date(dayStart.getTime());
+    dayEnd.setDate(dayEnd.getDate() + 1);
+
+    var startMinutes = timeToMinutes(timeKey);
+    var duration = Number(durationMinutes);
+    if (startMinutes === null || !duration || duration <= 0) {
+      return { allowed: false, message: "Horário ou duração inválidos para validar a disponibilidade." };
+    }
+    var requestedStart = new Date(dayStart.getTime() + startMinutes * 60000);
+    var requestedEnd = new Date(requestedStart.getTime() + duration * 60000);
+    var events = calendar.getEvents(dayStart, dayEnd);
+
+    for (var i = 0; i < events.length; i++) {
+      var event = events[i];
+      if (!isCalendarEventBusy_(event)) continue;
+      var eventStart = event.getStartTime();
+      var eventEnd = event.getEndTime();
+      if (!eventStart || !eventEnd) continue;
+      if (event.isAllDayEvent && event.isAllDayEvent()) {
+        return { allowed: false, message: "Esta data está bloqueada no Google Agenda. Escolha outro dia." };
+      }
+      if (intervalsOverlap(
+        requestedStart.getTime(), requestedEnd.getTime(),
+        eventStart.getTime(), eventEnd.getTime()
+      )) {
+        return { allowed: false, message: "Este horário conflita com um compromisso ou bloqueio no Google Agenda. Escolha outro horário." };
+      }
+    }
+    return { allowed: true };
+  } catch (error) {
+    console.error("Google Calendar availability validation failed: " + error);
+    return { allowed: false, message: "Não foi possível confirmar a disponibilidade no Google Agenda. Tente novamente ou entre em contato com o atelier." };
+  }
+}
+
 function getPublicAvailabilityData() {
   var sheet = getOfficialSheet();
   if (!sheet) return { status: "error", success: false, message: "Aba 'Agendamentos' não encontrada na planilha oficial." };
@@ -427,6 +539,17 @@ function getPublicAvailabilityData() {
       status: status,
       serviceDuration: totalDuration + " min"
     });
+  }
+
+  // Merge Google Calendar busy events into the same public availability feed.
+  // Do not expose event titles/details; only publish occupied intervals.
+  try {
+    var calendarBusy = getCalendarBusySlotsForPublic_();
+    slots = slots.concat(calendarBusy.slots || []);
+    blockedDates = blockedDates.concat(calendarBusy.blockedDates || []);
+  } catch (calendarError) {
+    console.error("Unable to read Google Calendar for public availability: " + calendarError);
+    return { status: "error", success: false, message: "Não foi possível confirmar a disponibilidade no Google Agenda. Tente novamente mais tarde." };
   }
 
   var schedule = getPublicScheduleData();
@@ -1910,6 +2033,23 @@ function doPost(e) {
           message: savedScheduleValidation.message
         });
       }
+
+      // Final server-side check against the real Google Calendar immediately
+      // before persistence. This prevents a booking even if the UI is stale.
+      var googleCalendarValidation = validateAgainstGoogleCalendar(
+        requestedDateKey, requestedTimeKey, requestedServiceDuration
+      );
+      if (!googleCalendarValidation.allowed) {
+        return responseJSON({
+          status: "error",
+          success: false,
+          persisted: false,
+          conflict: true,
+          code: "SLOT_UNAVAILABLE",
+          message: googleCalendarValidation.message
+        });
+      }
+
       var location = data.appointmentLocation === undefined ? "salon" : String(data.appointmentLocation).trim();
       if (location !== "salon" && location !== "home") {
         return responseJSON({ status: "error", message: "Local de atendimento inválido." });

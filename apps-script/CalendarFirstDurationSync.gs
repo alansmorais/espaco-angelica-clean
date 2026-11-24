@@ -503,6 +503,7 @@ function syncCalendarBookingsAndDurations(options) {
     var needsReview = [];
     var protectedEvents = [];
     var durationResults = [];
+    var calendarUpdates = [];
     var imported = 0, linked = 0, dateTimeUpdates = 0;
 
     for (var i = 0; i < allEvents.length; i++) {
@@ -645,13 +646,14 @@ function syncCalendarBookingsAndDurations(options) {
           durationMinutes: lookup.durationMinutes, importedInThisRun: isNew
         });
       } else {
-        try {
-          cache.put(CFS_LOOP_GUARD_KEY, String(new Date().getTime()), CFS_LOOP_GUARD_SECONDS);
-          event.setTime(eventStart, targetEnd);
-          durationResults.push({ eventId: eventId, row: row.row, status: "UPDATED_END_ONLY", durationMinutes: lookup.durationMinutes });
-        } catch (updateError) {
-          durationResults.push({ eventId: eventId, row: row.row, status: "CALENDAR_UPDATE_ERROR", message: String(updateError.message || updateError) });
-        }
+        var pendingUpdate = {
+          event: event,
+          start: eventStart,
+          end: targetEnd,
+          result: { eventId: eventId, row: row.row, status: "PENDING_CALENDAR_UPDATE", durationMinutes: lookup.durationMinutes }
+        };
+        calendarUpdates.push(pendingUpdate);
+        durationResults.push(pendingUpdate.result);
       }
     }
 
@@ -672,6 +674,19 @@ function syncCalendarBookingsAndDurations(options) {
         sheet.getRange(rowData.lastRow + 1, 1, rowsToAppend.length, rowData.lastCol).setValues(rowsToAppend);
       }
       SpreadsheetApp.flush();
+
+      // Calendar is changed only after the Sheet link/record is safely persisted.
+      for (var cu = 0; cu < calendarUpdates.length; cu++) {
+        var update = calendarUpdates[cu];
+        try {
+          cache.put(CFS_LOOP_GUARD_KEY, String(new Date().getTime()), CFS_LOOP_GUARD_SECONDS);
+          update.event.setTime(update.start, update.end);
+          update.result.status = "UPDATED_END_ONLY";
+        } catch (updateError) {
+          update.result.status = "CALENDAR_UPDATE_ERROR";
+          update.result.message = String(updateError.message || updateError);
+        }
+      }
     }
 
     var result = {

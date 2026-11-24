@@ -426,7 +426,7 @@ function getCalendarBusySlotsForPublic_() {
     var eventEnd = event.getEndTime();
     if (!eventStart || !eventEnd || eventEnd <= eventStart) return;
 
-    var dayCursor = new Date(eventStart.getTime());
+    var dayCursor = new Date(Math.max(eventStart.getTime(), rangeStart.getTime()));
     dayCursor.setHours(0, 0, 0, 0);
     while (dayCursor < eventEnd && dayCursor < rangeEnd) {
       var nextDay = new Date(dayCursor.getTime());

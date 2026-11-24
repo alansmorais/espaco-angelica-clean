@@ -212,6 +212,42 @@ test('recurring instances are matched by unique instance ID and immutable origin
   assert.equal(direct.method, 'INSTANCE_EVENT_ID_AND_ORIGINAL_START');
 });
 
+
+test('a unique same-day client row is matched when Calendar changed the start time before linking', () => {
+  const row = {
+    row: 12,
+    client: 'Maria Silva',
+    dateKey: '2027-01-12',
+    timeKey: '10:00',
+    eventId: '',
+    appointmentId: 'apt-existing',
+    status: 'confirmado'
+  };
+  const event = apiEvent({ start: '2027-01-12T11:00:00-03:00' });
+  const match = context.cfsFindRowForEvent_(event, '2027-01-12', '11:00', [row]);
+  assert.equal(match.row.row, 12);
+  assert.equal(match.method, 'UNIQUE_DATE_AND_CLIENT_START_TIME_CHANGED');
+});
+
+test('an appointment ID tag links a moved Calendar event without fuzzy matching', () => {
+  const row = {
+    row: 13,
+    client: 'Maria Silva',
+    dateKey: '2027-01-05',
+    timeKey: '10:00',
+    eventId: '',
+    appointmentId: 'apt-tagged',
+    status: 'confirmado'
+  };
+  const event = apiEvent({
+    start: '2027-01-12T11:00:00-03:00',
+    description: '[ESPACO_ANGELICA_APT_ID:apt-tagged]'
+  });
+  const match = context.cfsFindRowForEvent_(event, '2027-01-12', '11:00', [row]);
+  assert.equal(match.row.row, 13);
+  assert.equal(match.method, 'DESCRIPTION_APPOINTMENT_ID_TAG');
+});
+
 test('cancelled, protected, and human-review sheet rows are not synchronized', () => {
   assert.equal(context.cfsRowGuard_({ status: 'cancelado', appointmentId: 'apt-1' }), 'CANCELLED_ROW');
   assert.equal(context.cfsRowGuard_({ status: 'confirmado', appointmentId: 'apt-1793903805661' }), 'PENDING_HUMAN_REVIEW');

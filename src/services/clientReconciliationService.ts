@@ -92,12 +92,22 @@ export function mergeClients(
     };
 
     if (existingIndex >= 0) {
-      // Mescla os dados mantendo o nome mais completo e preservando campos já preenchidos
+      // Prefer the profile with the fuller official name and richer verified fields.
+      // A partial duplicate must never overwrite a complete profile with weaker data.
       const current = list[existingIndex];
+      const profileCompleteness = (profile: ClientProfile) =>
+        [profile.phone, profile.email, profile.birthDate, profile.lastVisit, profile.lastService, profile.privateNotes]
+          .filter(value => String(value || '').trim()).length;
+      const incomingPreferred =
+        resolvedName.length > current.name.length ||
+        (resolvedName.length === current.name.length &&
+          profileCompleteness(normalizedProfile) > profileCompleteness(current));
+      const primary = incomingPreferred ? normalizedProfile : current;
+      const secondary = incomingPreferred ? current : normalizedProfile;
       const bestName = resolvedName.length > current.name.length ? resolvedName : current.name;
       list[existingIndex] = {
-        ...current,
-        ...normalizedProfile,
+        ...secondary,
+        ...primary,
         name: bestName,
         initials: bestName
           .split(/\s+/)
@@ -105,12 +115,12 @@ export function mergeClients(
           .slice(0, 2)
           .join('')
           .toUpperCase(),
-        phone: normalizedProfile.phone || current.phone,
-        email: normalizedProfile.email || current.email,
-        birthDate: normalizedProfile.birthDate || current.birthDate,
-        lastVisit: normalizedProfile.lastVisit || current.lastVisit,
-        lastService: normalizedProfile.lastService || current.lastService,
-        privateNotes: normalizedProfile.privateNotes || current.privateNotes
+        phone: primary.phone || secondary.phone,
+        email: primary.email || secondary.email,
+        birthDate: primary.birthDate || secondary.birthDate,
+        lastVisit: primary.lastVisit || secondary.lastVisit,
+        lastService: primary.lastService || secondary.lastService,
+        privateNotes: primary.privateNotes || secondary.privateNotes
       };
     } else {
       list.push(normalizedProfile);

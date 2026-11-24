@@ -336,11 +336,10 @@ function cfsFindRowForEvent_(event, eventDate, eventTime, rows) {
   if (sameDate.length > 1) return { error: "DUPLICATE_EVENT_ID_AND_DATE_ROWS" };
 
   if (recurring && byId.length) {
-    var tagRows = rows.filter(function(row) {
-      return row.appointmentId && String(event.getDescription() || "").indexOf(CFS_APPOINTMENT_TAG_PREFIX + row.appointmentId + "]") >= 0;
-    });
-    if (tagRows.length === 1) return { row: tagRows[0], method: "RECURRING_OCCURRENCE_APPOINTMENT_TAG" };
-    return { error: "RECURRING_OCCURRENCE_DATE_MISMATCH_REVIEW" };
+    // CalendarApp returns the recurring series ID for its occurrences.
+    // The stable occurrence key is therefore Event ID + the actual occurrence date.
+    // A different date is a distinct occurrence; never attach it to another occurrence's row.
+    return { row: null, method: "NEW_RECURRING_OCCURRENCE" };
   }
 
   if (!recurring && byId.length === 1) return { row: byId[0], method: "UNIQUE_NON_RECURRING_EVENT_ID" };

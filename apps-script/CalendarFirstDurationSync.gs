@@ -207,6 +207,12 @@ function cfsOriginalDateTime_(event) {
   return { date: String(original.date || ""), time: "" };
 }
 
+function cfsEventIdEqual_(left, right) {
+  var a = String(left || "").trim();
+  var b = String(right || "").trim();
+  if (a === b) return true;
+  return a.replace(/@google\\.com$/i, "") === b.replace(/@google\\.com$/i, "");
+}
 function cfsDeterministicAppointmentId_(eventId, occurrenceKey) {
   var source = String(eventId || "") + "|" + String(occurrenceKey || "");
   var hash = 2166136261;

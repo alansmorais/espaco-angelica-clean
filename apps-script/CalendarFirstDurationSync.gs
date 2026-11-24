@@ -217,17 +217,6 @@ function cfsDeterministicAppointmentId_(eventId, occurrenceKey) {
   return "apt-gcal-" + (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function cfsParseAdditionalIds_(value) {
-  if (Array.isArray(value)) return value.map(function(v) { return String(v || "").trim(); }).filter(Boolean);
-  var raw = String(value || "").trim();
-  if (!raw) return [];
-  try {
-    var parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed.map(function(v) { return String(v || "").trim(); }).filter(Boolean);
-  } catch (e) {}
-  return null;
-}
-
 function cfsProtectedReason_(event) {
   if (!event || !event.start || event.start.date || !event.start.dateTime) return "ALL_DAY_OR_MISSING_START";
   if (event.eventType && event.eventType !== "default") return "NON_STANDARD_EVENT_TYPE";
@@ -334,7 +323,8 @@ function cfsFindRowForEvent_(event, eventDate, eventTime, rows) {
     });
     if (exact.length === 1) return { row: exact[0], method: recurringId ? "INSTANCE_EVENT_ID_AND_ORIGINAL_START" : "UNIQUE_EVENT_ID" };
     if (exact.length > 1) return { error: "DUPLICATE_EVENT_ID_AND_OCCURRENCE_ROWS" };
-    if (!recurringId) return { error: "DUPLICATE_NON_RECURRING_EVENT_ID_ROWS" };
+    if (recurringId) return { error: "INSTANCE_EVENT_ID_ORIGINAL_START_MISMATCH" };
+    return { error: "DUPLICATE_NON_RECURRING_EVENT_ID_ROWS" };
   }
 
   if (recurringId) {

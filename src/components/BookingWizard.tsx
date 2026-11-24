@@ -88,6 +88,9 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     } catch {}
   }, []);
   const [additionalServiceIds, setAdditionalServiceIds] = useState<string[]>([]);
+  const [draftAdditionalServiceIds, setDraftAdditionalServiceIds] = useState<string[]>([]);
+  const [reversa3dQuantity, setReversa3dQuantity] = useState<number>(1);
+  const [draftReversa3dQuantity, setDraftReversa3dQuantity] = useState<number>(1);
   const [showAdditionalServices, setShowAdditionalServices] = useState(false);
   const [showAddAnotherPrompt, setShowAddAnotherPrompt] = useState(false);
   const [customRequest, setCustomRequest] = useState<string>('');
@@ -213,23 +216,90 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
     return hours <= 23 && minutes <= 59 ? hours * 60 + minutes : null;
   };
   const normalizeServiceText = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const isReversa3DAddon = (service: Pick<Service, 'id' | 'title'>) => {
+    const idNorm = normalizeServiceText(service.id);
+    const titleNorm = normalizeServiceText(service.title);
+    return /reversa[\s_-]*3d/.test(titleNorm) || /reversa[\s_-]*3d/.test(idNorm);
+  };
+  const primarySupportsReversa3D = (() => {
+    const category = normalizeServiceText(selectedService.category);
+    const title = normalizeServiceText(selectedService.title);
+    return category.includes('alongamento') || /alongamento|fibra/.test(title);
+  })();
   const primarySupportsNailAddons = (() => {
     const category = normalizeServiceText(selectedService.category);
     const title = normalizeServiceText(selectedService.title);
     return ['alongamento', 'blindagem'].some(term => category.includes(term)) ||
       /alongamento|blindagem|fibra|\bgel\b|manutencao de crescimento|manutencao em gel/.test(title);
   })();
-  // Only Nail Art and francesinha are compatible nail-design add-ons.
+  // Only compatible nail-design add-ons from the official catalog (plus Reversa 3D when primary is alongamento/fibra).
   const eligibleAdditionalServices = primarySupportsNailAddons
     ? services.filter(service => {
         if (service.active === false || service.id === selectedService.id) return false;
         const category = normalizeServiceText(service.category);
         const title = normalizeServiceText(service.title);
-        return category.includes('nailart') || /nail\s*art|francesinha/.test(title);
+        const isReversa = isReversa3DAddon(service);
+        if (isReversa && !primarySupportsReversa3D) return false;
+        return category.includes('nailart') || /nail\s*art|francesinha/.test(title) || (primarySupportsReversa3D && isReversa);
       })
     : [];
 
+  useEffect(() => {
+    const eligibleIds = new Set(eligibleAdditionalServices.map(service => service.id));
+    setAdditionalServiceIds(current => {
+      const next = current.filter(id => eligibleIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+    setDraftAdditionalServiceIds(current => {
+      const next = current.filter(id => eligibleIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+    if (!primarySupportsReversa3D) {
+      setReversa3dQuantity(1);
+      setDraftReversa3dQuantity(1);
+    }
+  }, [selectedService.id, primarySupportsReversa3D, services.length]);
+
   const additionalServices = eligibleAdditionalServices.filter(service => additionalServiceIds.includes(service.id));
+  const getAddonQuantity = (service: Service): number => (isReversa3DAddon(service) ? Math.max(1, Math.min(10, reversa3dQuantity)) : 1);
+  const getAddonTotalPrice = (service: Service): number => service.price * getAddonQuantity(service);
+  const formatAddonDisplayTitle = (service: Service): string => (
+    isReversa3DAddon(service) && getAddonQuantity(service) > 1
+      ? `${service.title} (${getAddonQuantity(service)}x)`
+      : service.title
+  );
+  const openAdditionalServicesSelector = () => {
+    const eligibleIds = new Set(eligibleAdditionalServices.map(service => service.id));
+    setDraftAdditionalServiceIds(additionalServiceIds.filter(id => eligibleIds.has(id)));
+    setDraftReversa3dQuantity(reversa3dQuantity);
+    setShowAdditionalServices(true);
+  };
+  const confirmAdditionalServicesSelection = () => {
+    const eligibleIds = new Set(eligibleAdditionalServices.map(service => service.id));
+    const confirmedIds = draftAdditionalServiceIds.filter(id => eligibleIds.has(id));
+    const hasConfirmedReversa = confirmedIds.some(id => {
+      const found = eligibleAdditionalServices.find(service => service.id === id);
+      return found ? isReversa3DAddon(found) : false;
+    });
+    setAdditionalServiceIds(confirmedIds);
+    setReversa3dQuantity(hasConfirmedReversa ? Math.max(1, Math.min(10, draftReversa3dQuantity)) : 1);
+    setShowAdditionalServices(false);
+  };
+  const collapseAdditionalServicesSelector = () => {
+    const eligibleIds = new Set(eligibleAdditionalServices.map(service => service.id));
+    setDraftAdditionalServiceIds(additionalServiceIds.filter(id => eligibleIds.has(id)));
+    setDraftReversa3dQuantity(reversa3dQuantity);
+    setShowAdditionalServices(false);
+  };
+  const removeConfirmedAdditionalService = (serviceId: string) => {
+    setAdditionalServiceIds(current => current.filter(id => id !== serviceId));
+    setDraftAdditionalServiceIds(current => current.filter(id => id !== serviceId));
+    const removed = eligibleAdditionalServices.find(service => service.id === serviceId);
+    if (removed && isReversa3DAddon(removed)) {
+      setReversa3dQuantity(1);
+      setDraftReversa3dQuantity(1);
+    }
+  };
   const procedureDuration = calculateProcedureDuration(selectedService, additionalServices);
   const combinedDurationMinutes = procedureDuration.totalMinutes || 0;
   const isDurationValid = procedureDuration.isValid && combinedDurationMinutes > 0;
@@ -353,7 +423,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
   };
 
   // Price calculations (40% deposit or 100% full prepayment of selected procedure's official price)
-  const servicePrice = selectedService.price + additionalServices.reduce((sum, service) => sum + service.price, 0);
+  const servicePrice = selectedService.price + additionalServices.reduce((sum, service) => sum + getAddonTotalPrice(service), 0);
   const fullPrepayment = calculateFullPrepayment(servicePrice);
   const standardDeposit = calculateDeposit40(servicePrice, paymentConfig.depositAmount);
   const standardBalance = calculateRemainingBalance(servicePrice, standardDeposit);
@@ -538,7 +608,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
       customRequest: customRequest.trim() || undefined,
       appointmentLocation,
       homeAddress: appointmentLocation === 'home' ? homeAddress.trim() : undefined,
-      serviceTitle: [selectedService.title, ...additionalServices.map(service => service.title)].join(' + '),
+      serviceTitle: [selectedService.title, ...additionalServices.map(service => formatAddonDisplayTitle(service))].join(' + '),
       servicePrice: `R$ ${formatBRL(servicePrice)}`,
       serviceDuration: procedureDuration.formatted,
       date: selectedDate,
@@ -951,7 +1021,7 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       const groupServices = activeServices.filter(service => classifyService(service) === group);
                       return <section key={group} className="space-y-2">
                         <h4 className="font-syne font-semibold text-sm text-[#49382E]">{group}</h4>
-                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
+                        {groupServices.length === 0 ? <p className="px-3 py-2 text-xs text-[#786C63]">Serviços desta categoria serão exibidos aqui.</p> : groupServices.map(service => <button key={service.id} type="button" onClick={() => { onSelectService?.(service); setAdditionalServiceIds([]); setDraftAdditionalServiceIds([]); setReversa3dQuantity(1); setDraftReversa3dQuantity(1); setShowAdditionalServices(false); setShowAddAnotherPrompt(true); }}
                           className={`w-full rounded-xl border p-4 text-left ${selectedService.id === service.id ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#E8D9B5] bg-[#FDFBF9]'}`}>
                           <span className="block font-semibold text-[#49382E]">{service.title}</span>
                           <span className="block text-xs text-[#786C63]">{service.duration} · {service.priceFormatted}</span>
@@ -967,11 +1037,12 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
                       <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
                       <p className="text-[11px] text-[#786C63]">Adicione um ou mais serviços do catálogo ao mesmo agendamento.</p>
                     </div>
-                    <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">
+                    <button type="button" disabled={eligibleAdditionalServices.length === 0} onClick={openAdditionalServicesSelector} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] disabled:opacity-40 disabled:cursor-not-allowed">
                       {additionalServiceIds.length ? `Revisar (${additionalServiceIds.length})` : 'Ver opções'}
                     </button>
                   </div>
-                  {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
+                  {eligibleAdditionalServices.length === 0 && <p className="text-[11px] text-[#786C63]">Não há serviços adicionais compatíveis com este procedimento.</p>}
+                  {additionalServices.map(service => <div key={service.id} className="flex items-center justify-between gap-2 text-xs"><span>{formatAddonDisplayTitle(service)}</span><div className="flex items-center gap-2"><span className="font-semibold">R$ {formatBRL(getAddonTotalPrice(service))}</span><button type="button" onClick={() => removeConfirmedAdditionalService(service.id)} aria-label={`Remover ${service.title}`} className="text-[11px] font-bold text-rose-700 hover:underline cursor-pointer">Remover</button></div></div>)}
                 </div>
                 <div className="pt-2 space-y-2">
                   {!isDurationValid && (
@@ -1400,18 +1471,80 @@ export const BookingWizard: React.FC<BookingWizardProps> = ({
               <div className="py-4 border-b border-[#E8D9B5] space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="font-syne font-semibold text-sm text-[#49382E]">Serviços adicionais</h4>
-                  {eligibleAdditionalServices.length > 0 && <button type="button" onClick={() => setShowAdditionalServices(true)} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E]">{additionalServiceIds.length ? 'Alterar adicionais' : '+ Adicionar serviço'}</button>}
+                  {eligibleAdditionalServices.length > 0 && <button type="button" aria-expanded={showAdditionalServices} onClick={() => { openAdditionalServicesSelector(); setShowAdditionalServices(true); }} className="shrink-0 rounded-full border border-[#D4AF37] px-3 py-2 text-xs font-bold text-[#49382E] cursor-pointer">{additionalServiceIds.length ? 'Alterar adicionais' : '+ Adicionar serviço'}</button>}
                 </div>
                 <p className="text-[10px] text-[#786C63]">{eligibleAdditionalServices.length > 0 ? 'Adicione Nail Art ou francesinha ao procedimento, se desejar. Valores oficiais do catálogo.' : 'Não há serviços adicionais compatíveis com este procedimento.'}</p>
-                {additionalServices.map(service => <div key={service.id} className="flex justify-between gap-2 text-xs"><span>{service.title}</span><span className="font-semibold">{service.priceFormatted}</span></div>)}
-                {showAddAnotherPrompt && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[125] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Adicionar outro serviço" className="w-full max-w-sm rounded-2xl bg-white border border-[#E8D9B5] p-6 shadow-2xl text-center space-y-3"><h4 className="font-syne text-lg font-semibold text-[#49382E]">Deseja adicionar outro serviço?</h4><p className="text-sm text-[#786C63]">Você pode combinar mais de um procedimento no mesmo agendamento.</p><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setShowAdditionalServices(true); }} className="w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#3C2F00]">Sim, adicionar outro serviço</button><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full border border-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Não, continuar</button></div></div>, document.body)}
-                {showAdditionalServices && bookingStep === 3 && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
+                {additionalServices.map(service => (
+                  <div key={service.id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 truncate">{formatAddonDisplayTitle(service)}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-semibold">R$ {formatBRL(getAddonTotalPrice(service))}</span>
+                      <button type="button" onClick={() => removeConfirmedAdditionalService(service.id)} aria-label={`Remover ${service.title}`} className="text-[11px] font-bold text-rose-700 hover:underline cursor-pointer">Remover</button>
+                    </div>
+                  </div>
+                ))}
+                {showAddAnotherPrompt && bookingStep === 3 && eligibleAdditionalServices.length > 0 && createPortal(<div className="fixed inset-0 z-[125] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4"><div role="dialog" aria-modal="true" aria-label="Adicionar outro serviço" className="w-full max-w-sm rounded-2xl bg-white border border-[#E8D9B5] p-6 shadow-2xl text-center space-y-3"><h4 className="font-syne text-lg font-semibold text-[#49382E]">Deseja adicionar outro serviço?</h4><p className="text-sm text-[#786C63]">Você pode combinar mais de um procedimento no mesmo agendamento.</p><button type="button" onClick={() => { setShowAddAnotherPrompt(false); openAdditionalServicesSelector(); }} className="w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#3C2F00]">Sim, adicionar outro serviço</button><button type="button" onClick={() => { setShowAddAnotherPrompt(false); setBookingStep(4); }} className="w-full rounded-full border border-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Não, continuar</button></div></div>, document.body)}
+                {showAdditionalServices && createPortal(<div className="fixed inset-0 z-[120] bg-[#49382E]/60 backdrop-blur-sm flex items-center justify-center p-4">
                   <div role="dialog" aria-modal="true" aria-label="Serviços adicionais" className="w-full max-w-md max-h-[80vh] overflow-y-auto rounded-2xl bg-white border border-[#E8D9B5] p-5 shadow-2xl">
-                    <div className="flex items-center justify-between gap-3 mb-3"><h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4><button type="button" onClick={() => setShowAdditionalServices(false)} className="rounded-full border border-[#E8D9B5] px-3 py-2">Fechar</button></div>
-                    <p className="text-xs text-[#786C63] mb-3">Adicionais compatíveis: escolha Nail Art ou francesinha, se desejar. Os valores oficiais vêm do catálogo e são cobrados à parte.</p>
-                    {eligibleAdditionalServices.map(service => <label key={service.id} className="flex items-start gap-2 py-3 border-b border-[#E8D9B5] text-xs"><input type="checkbox" checked={additionalServiceIds.includes(service.id)} onChange={event => setAdditionalServiceIds(current => event.target.checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id))} className="accent-[#D4AF37]" /><span className="flex-1"><span className="block font-semibold">{service.title}</span><span className="block text-[#786C63]">{service.description}</span><span className="block text-[10px] text-[#9A7A28]">Opcional · adicional ao procedimento principal</span></span><span className="font-semibold whitespace-nowrap">{/nail\s*art|francesinha/i.test(service.title) ? `A partir de ${service.priceFormatted}` : service.priceFormatted}</span></label>)}
-                    {eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há outros serviços ativos cadastrados.</p>}
-                    <button type="button" onClick={() => setShowAdditionalServices(false)} className="mt-4 w-full rounded-full bg-[#D4AF37] px-4 py-3 font-bold text-[#49382E]">Confirmar seleção</button>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h4 className="font-bold text-sm text-[#49382E]">Adicionar serviços ao agendamento</h4>
+                      <button type="button" onClick={collapseAdditionalServicesSelector} className="rounded-full border border-[#E8D9B5] px-3 py-1.5 text-xs font-semibold text-[#49382E] cursor-pointer">Recolher</button>
+                    </div>
+                    <p className="text-xs text-[#786C63] mb-3">Adicionais compatíveis com <strong>{selectedService.title}</strong>. Os valores oficiais vêm do catálogo e são somados ao total.</p>
+                    {eligibleAdditionalServices.map(service => {
+                      const isChecked = draftAdditionalServiceIds.includes(service.id);
+                      const isReversa = isReversa3DAddon(service);
+                      return (
+                        <div key={service.id} className="py-3 border-b border-[#E8D9B5] text-xs last:border-0">
+                          <label className="flex items-start gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={event => {
+                                const checked = event.target.checked;
+                                setDraftAdditionalServiceIds(current => checked ? Array.from(new Set([...current, service.id])) : current.filter(id => id !== service.id));
+                                if (isReversa && !checked) setDraftReversa3dQuantity(1);
+                              }}
+                              className="mt-0.5 accent-[#D4AF37]"
+                            />
+                            <span className="flex-1">
+                              <span className="block font-semibold text-[#49382E]">{service.title}</span>
+                              {service.description && <span className="block text-[#786C63]">{service.description}</span>}
+                              <span className="block text-[10px] text-[#9A7A28]">Opcional · adicional ao procedimento principal</span>
+                            </span>
+                            <span className="font-semibold whitespace-nowrap text-[#49382E]">
+                              {isReversa && isChecked ? `R$ ${formatBRL(service.price * Math.max(1, Math.min(10, draftReversa3dQuantity)))}` : (/nail\s*art|francesinha/i.test(service.title) ? `A partir de ${service.priceFormatted}` : service.priceFormatted)}
+                            </span>
+                          </label>
+                          {isReversa && isChecked && (
+                            <div className="mt-2 ml-6 flex items-center justify-between gap-2 rounded-lg bg-[#FDFBF9] border border-[#E8D9B5] px-3 py-2">
+                              <span className="text-[11px] font-semibold text-[#49382E]">Quantidade de Reversa 3D</span>
+                              <div className="flex items-center gap-2">
+                                <button type="button" aria-label="Diminuir quantidade de Reversa 3D" onClick={() => setDraftReversa3dQuantity(q => Math.max(1, q - 1))} className="w-7 h-7 rounded-full border border-[#D4AF37] font-bold text-[#49382E] cursor-pointer">-</button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={10}
+                                  aria-label="Quantidade de Reversa 3D"
+                                  value={draftReversa3dQuantity}
+                                  onChange={event => {
+                                    const parsed = Number(event.target.value);
+                                    setDraftReversa3dQuantity(Number.isFinite(parsed) ? Math.max(1, Math.min(10, Math.floor(parsed))) : 1);
+                                  }}
+                                  className="w-12 text-center rounded-md border border-[#E8D9B5] bg-white py-1 text-xs font-bold text-[#49382E]"
+                                />
+                                <button type="button" aria-label="Aumentar quantidade de Reversa 3D" onClick={() => setDraftReversa3dQuantity(q => Math.min(10, q + 1))} className="w-7 h-7 rounded-full border border-[#D4AF37] font-bold text-[#49382E] cursor-pointer">+</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {eligibleAdditionalServices.length === 0 && <p className="text-xs text-[#786C63] py-3">Não há serviços adicionais compatíveis cadastrados.</p>}
+                    <div className="mt-4 flex items-center gap-2">
+                      <button type="button" onClick={collapseAdditionalServicesSelector} className="flex-1 rounded-full border border-[#E8D9B5] px-4 py-3 text-xs font-semibold text-[#49382E] cursor-pointer">Recolher</button>
+                      <button type="button" onClick={confirmAdditionalServicesSelection} className="flex-1 rounded-full bg-[#D4AF37] px-4 py-3 text-xs font-bold text-[#3C2F00] cursor-pointer">Confirmar seleção</button>
+                    </div>
                   </div>
                 </div>, document.body)}
                 <label className="block text-xs font-semibold text-[#49382E]">Pedido personalizado (opcional)

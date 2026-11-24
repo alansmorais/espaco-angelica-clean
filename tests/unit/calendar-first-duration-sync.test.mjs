@@ -547,6 +547,7 @@ test('known calendar titles resolve approved aliases to official catalog IDs and
   const knownClients = [
     { normalized: 'kristine', name: 'Kristine' },
     { normalized: 'kristine sorensen', name: 'Kristine Sorensen' },
+    { normalized: 'josefina', name: 'Josefina' },
     { normalized: 'josefina calderon', name: 'Josefina Calderón' },
     { normalized: 'mirian helena goldschmidt', name: 'Mirian Helena Goldschmidt' },
     { normalized: 'eliana', name: 'Eliana' }

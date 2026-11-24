@@ -319,6 +319,22 @@ function cfsFindRowForEvent_(event, eventDate, eventTime, rows) {
   var recurringId = String(event.recurringEventId || "");
   var originalRaw = cfsOriginalStartRaw_(event);
   var original = cfsOriginalDateTime_(event);
+
+  // A pre-existing appointment ID tag is the strongest migration key when a Calendar
+  // event was moved before its first sync and the Sheet had no event ID yet.
+  var description = String(event.description || "");
+  var taggedRows = rows.filter(function(row) {
+    return row.appointmentId && description.indexOf(CFS_APPOINTMENT_TAG_PREFIX + row.appointmentId + "]") >= 0;
+  });
+  if (taggedRows.length > 1) return { error: "AMBIGUOUS_APPOINTMENT_ID_DESCRIPTION_TAG" };
+  if (taggedRows.length === 1) {
+    var taggedRow = taggedRows[0];
+    if (taggedRow.eventId && !cfsEventIdEqual_(taggedRow.eventId, id) && !cfsEventIdEqual_(taggedRow.eventId, recurringId)) {
+      return { error: "DESCRIPTION_TAG_ROW_LINKED_TO_DIFFERENT_EVENT" };
+    }
+    return { row: taggedRow, method: "DESCRIPTION_APPOINTMENT_ID_TAG" };
+  }
+
   var byId = rows.filter(function(row) { return row.eventId && cfsEventIdEqual_(row.eventId, id); });
 
   if (byId.length) {
@@ -345,17 +361,28 @@ function cfsFindRowForEvent_(event, eventDate, eventTime, rows) {
   }
 
   var titleNorm = cfsNormalize_(event.summary || "");
-  var candidates = rows.filter(function(row) {
-    if (row.eventId || row.dateKey !== eventDate || row.timeKey !== eventTime || cfsRowGuard_(row)) return false;
+  function rowClientMatches(row) {
+    if (row.eventId || cfsRowGuard_(row)) return false;
     var client = cfsNormalize_(row.client);
     if (!client) return false;
     if (titleNorm.indexOf(client) >= 0) return true;
     var tokens = client.split(" ").filter(function(token) { return token.length >= 3; });
     if (tokens.length >= 2) return tokens.filter(function(token) { return titleNorm.indexOf(token) >= 0; }).length >= 2;
     return tokens.length === 1 && tokens[0].length >= 5 && titleNorm.indexOf(tokens[0]) >= 0;
+  }
+  var exactStartCandidates = rows.filter(function(row) {
+    return row.dateKey === eventDate && row.timeKey === eventTime && rowClientMatches(row);
   });
-  if (candidates.length === 1) return { row: candidates[0], method: "UNIQUE_DATE_TIME_AND_CLIENT" };
-  if (candidates.length > 1) return { error: "AMBIGUOUS_DATE_TIME_AND_CLIENT_MATCH" };
+  if (exactStartCandidates.length === 1) return { row: exactStartCandidates[0], method: "UNIQUE_DATE_TIME_AND_CLIENT" };
+  if (exactStartCandidates.length > 1) return { error: "AMBIGUOUS_DATE_TIME_AND_CLIENT_MATCH" };
+
+  // Calendar owns the start time. If there is exactly one unlinked appointment for
+  // this client on this date, link it and let Calendar overwrite the old Sheet time.
+  var sameDayClientCandidates = rows.filter(function(row) {
+    return row.dateKey === eventDate && rowClientMatches(row);
+  });
+  if (sameDayClientCandidates.length === 1) return { row: sameDayClientCandidates[0], method: "UNIQUE_DATE_AND_CLIENT_START_TIME_CHANGED" };
+  if (sameDayClientCandidates.length > 1) return { error: "AMBIGUOUS_DATE_AND_CLIENT_MATCH" };
 
   var occurrenceKey = originalRaw || (event.start && (event.start.dateTime || event.start.date)) || eventDate;
   var newId = cfsDeterministicAppointmentId_(id, occurrenceKey);

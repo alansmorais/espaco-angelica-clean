@@ -234,37 +234,171 @@ function cfsProtectedReason_(event) {
   return "";
 }
 
-function cfsMatchTitleToCatalog_(title, catalog) {
-  var rawParts = String(title || "").split(/\s*[-–—:|]\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
-  var serviceParts = [], clientParts = [];
+function cfsReadKnownClients_(spreadsheet, appointmentRows) {
+  var names = {};
+  function addName(value) {
+    var raw = String(value || "").trim();
+    var normalized = cfsNormalize_(raw);
+    if (normalized.length < 3 || /\\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\\b/.test(normalized)) return;
+    names[normalized] = raw;
+  }
+  (appointmentRows || []).forEach(function(row) {
+    if (!cfsRowGuard_(row)) addName(row.client);
+  });
+  var clientsSheet = spreadsheet.getSheetByName("Clientes");
+  if (clientsSheet && clientsSheet.getLastRow() >= 2) {
+    var clientValues = clientsSheet.getRange(2, 1, clientsSheet.getLastRow() - 1, 3).getValues();
+    clientValues.forEach(function(row) { addName(row[1] || row[0]); });
+  }
+  return Object.keys(names).map(function(key) { return { normalized: key, name: names[key] }; });
+}
+
+function cfsResolveCatalogAlias_(rawService, catalog) {
+  var normalized = cfsNormalize_(rawService);
+  var exact = catalog.byTitle[normalized] || [];
+  if (exact.length === 1) return { ok: true, main: exact[0], additional: [], matchedBy: "EXACT_CATALOG_TITLE" };
+  if (exact.length > 1) return { ok: false, reason: "AMBIGUOUS_EXACT_CATALOG_TITLE" };
+
+  var aliases = {
+    "mao": { main: "manicure-tradicional", additional: [] },
+    "manicure": { main: "manicure-tradicional", additional: [] },
+    "manicure tradicional": { main: "manicure-tradicional", additional: [] },
+    "pe": { main: "pedicure-tradicional", additional: [] },
+    "pedicure": { main: "pedicure-tradicional", additional: [] },
+    "pedicure tradicional": { main: "pedicure-tradicional", additional: [] },
+    "pe e mao": { main: "manicure-pedicure-tradicional", additional: [] },
+    "mao e pe": { main: "manicure-pedicure-tradicional", additional: [] },
+    "manicure e pedicure": { main: "manicure-pedicure-tradicional", additional: [] },
+    "pedicure e manicure": { main: "manicure-pedicure-tradicional", additional: [] },
+    "manutencao e pe": { main: "manutencao-fibra-vidro", additional: ["pedicure-tradicional"] },
+    "manutencao de crescimento e pe": { main: "manutencao-fibra-vidro", additional: ["pedicure-tradicional"] },
+    "manutencao": { main: "manutencao-fibra-vidro", additional: [] },
+    "manutencao de crescimento": { main: "manutencao-fibra-vidro", additional: [] },
+    "manutencao fibra de vidro": { main: "manutencao-fibra-vidro", additional: [] },
+    "alongamento": { main: "alongamento-fibra-slim", additional: [] },
+    "fibra de vidro": { main: "alongamento-fibra-slim", additional: [] },
+    "fibra slim": { main: "alongamento-fibra-slim", additional: [] },
+    "blindagem": { main: "blindagem-homens-incolor", additional: [] },
+    "banho de gel": { main: "banho-em-gel", additional: [] },
+    "banho em gel": { main: "banho-em-gel", additional: [] },
+    "esmaltacao em gel": { main: "esmaltacao-gel-premium", additional: [] }
+  };
+  var mapping = aliases[normalized];
+  if (!mapping) return { ok: false, reason: "SERVICE_ALIAS_NOT_RECOGNIZED" };
+
+  function uniqueService(id) {
+    var matches = catalog.byId[id] || [];
+    return matches.length === 1 ? matches[0] : null;
+  }
+  var main = uniqueService(mapping.main);
+  if (!main) return { ok: false, reason: "SERVICE_ALIAS_ID_NOT_UNIQUE_IN_OFFICIAL_CATALOG", serviceId: mapping.main };
+  var additional = [];
+  for (var i = 0; i < mapping.additional.length; i++) {
+    var item = uniqueService(mapping.additional[i]);
+    if (!item) return { ok: false, reason: "ADDITIONAL_ALIAS_ID_NOT_UNIQUE_IN_OFFICIAL_CATALOG", serviceId: mapping.additional[i] };
+    additional.push(item);
+  }
+  return { ok: true, main: main, additional: additional, matchedBy: "APPROVED_LEGACY_ALIAS" };
+}
+
+function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
+  var rawTitle = String(title || "").trim();
+  var rawParts = rawTitle.split(/\\s*[-–—:|]\\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+  var candidatePairs = [];
+
+  // First support titles with a clear separator, for example "Client - Service".
   for (var p = 0; p < rawParts.length; p++) {
-    var subParts = rawParts[p].split(/\s*(?:\+|&)\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
-    var allServices = subParts.length > 0, localMatches = [];
-    for (var s = 0; s < subParts.length; s++) {
-      var list = catalog.byTitle[cfsNormalize_(subParts[s])] || [];
-      if (list.length !== 1) { allServices = false; break; }
-      localMatches.push(list[0]);
+    var serviceText = rawParts[p];
+    var servicePieces = serviceText.split(/\\s*(?:\\+|&)\\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+    if (!servicePieces.length) continue;
+    var resolved = [];
+    var valid = true;
+    for (var q = 0; q < servicePieces.length; q++) {
+      var serviceMatch = cfsResolveCatalogAlias_(servicePieces[q], catalog);
+      if (!serviceMatch.ok) { valid = false; break; }
+      resolved.push(serviceMatch);
     }
-    if (allServices && localMatches.length) localMatches.forEach(function(item) { serviceParts.push(item); });
-    else clientParts.push(rawParts[p]);
+    if (!valid) continue;
+    var clientParts = rawParts.filter(function(_, index) { return index !== p; });
+    if (!clientParts.length) continue;
+    var clientText = clientParts.join(" - ").trim();
+    var clientNorm = cfsNormalize_(clientText);
+    var knownExact = (knownClients || []).filter(function(c) { return c.normalized === clientNorm; });
+    var knownFirst = (knownClients || []).filter(function(c) {
+      var first = c.normalized.split(" ")[0];
+      return first && first === clientNorm;
+    });
+    var resolvedClient = knownExact.length === 1 ? knownExact[0].name :
+      (knownFirst.length === 1 ? knownFirst[0].name : clientText);
+    if ((knownExact.length > 1) || (knownFirst.length > 1)) continue;
+    candidatePairs.push({ clientName: resolvedClient, resolved: resolved, method: "SEPARATED_TITLE" });
   }
-  if (!serviceParts.length || !clientParts.length) return { ok: false, reason: "TITLE_MUST_CONTAIN_CLIENT_AND_EXACT_CATALOG_SERVICE" };
 
-  var uniqueServices = [], seenIds = {};
-  for (var i = 0; i < serviceParts.length; i++) {
-    var service = serviceParts[i];
-    if (!service.id || seenIds[service.id]) continue;
-    seenIds[service.id] = true;
-    uniqueServices.push(service);
+  // Also support historical titles without separators, such as "Josefina Calderón Mão".
+  var normalizedTitle = cfsNormalize_(rawTitle);
+  var knownMatches = [];
+  (knownClients || []).forEach(function(client) {
+    var at = normalizedTitle.indexOf(client.normalized);
+    if (at >= 0) {
+      var before = normalizedTitle.slice(0, at).trim();
+      var after = normalizedTitle.slice(at + client.normalized.length).trim();
+      if (!before || !after) knownMatches.push({ client: client, serviceText: after || before });
+    }
+  });
+  if (knownMatches.length === 1) {
+    var serviceMatchNoSeparator = cfsResolveCatalogAlias_(knownMatches[0].serviceText, catalog);
+    if (serviceMatchNoSeparator.ok) {
+      candidatePairs.push({ clientName: knownMatches[0].client.name, resolved: [serviceMatchNoSeparator], method: "KNOWN_CLIENT_AND_ALIAS" });
+    }
+  } else if (knownMatches.length > 1) {
+    return { ok: false, reason: "AMBIGUOUS_KNOWN_CLIENT_IN_TITLE" };
   }
+
+  // A single first-name hit may be promoted to the unique full official name.
+  if (!candidatePairs.length) {
+    var firstNameCandidates = [];
+    (knownClients || []).forEach(function(client) {
+      var first = client.normalized.split(" ")[0];
+      if (first && normalizedTitle.indexOf(first) === 0) {
+        var remainder = normalizedTitle.slice(first.length).replace(/^[\\s\\-–—:|]+/, "").trim();
+        firstNameCandidates.push({ client: client, remainder: remainder });
+      }
+    });
+    if (firstNameCandidates.length === 1) {
+      var firstAlias = cfsResolveCatalogAlias_(firstNameCandidates[0].remainder, catalog);
+      if (firstAlias.ok) {
+        candidatePairs.push({ clientName: firstNameCandidates[0].client.name, resolved: [firstAlias], method: "UNIQUE_FIRST_NAME_AND_ALIAS" });
+      }
+    } else if (firstNameCandidates.length > 1) {
+      return { ok: false, reason: "AMBIGUOUS_FIRST_NAME_IN_TITLE" };
+    }
+  }
+
+  if (candidatePairs.length !== 1) {
+    return { ok: false, reason: candidatePairs.length ? "AMBIGUOUS_CLIENT_SERVICE_TITLE" : "TITLE_MUST_CONTAIN_KNOWN_CLIENT_AND_APPROVED_SERVICE" };
+  }
+  var selected = candidatePairs[0];
+  var serviceItems = [];
+  selected.resolved.forEach(function(match) {
+    serviceItems.push(match.main);
+    (match.additional || []).forEach(function(item) { serviceItems.push(item); });
+  });
+  var uniqueServices = [], seen = {};
+  serviceItems.forEach(function(item) {
+    if (item.id && !seen[item.id]) { seen[item.id] = true; uniqueServices.push(item); }
+  });
   if (!uniqueServices.length) return { ok: false, reason: "SERVICE_ID_MISSING_OR_DUPLICATE" };
-
-  var clientName = clientParts.join(" - ").trim();
-  var clientNorm = cfsNormalize_(clientName);
-  if (clientNorm.length < 3 || /\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo)\b/.test(clientNorm)) {
+  var clientNorm = cfsNormalize_(selected.clientName);
+  if (clientNorm.length < 3 || /\\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\\b/.test(clientNorm)) {
     return { ok: false, reason: "CLIENT_NAME_NOT_CONFIRMED" };
   }
-  return { ok: true, clientName: clientName, service: uniqueServices[0], additionalServices: uniqueServices.slice(1) };
+  return {
+    ok: true,
+    clientName: selected.clientName,
+    service: uniqueServices[0],
+    additionalServices: uniqueServices.slice(1),
+    matchedBy: selected.method
+  };
 }
 
 function cfsReadRows_(sheet) {
@@ -557,6 +691,7 @@ function syncCalendarBookingsAndDurations(options) {
     var ctx = cfsOpenContext_();
     var sheet = ctx.appointmentsSheet;
     var rowData = cfsReadRows_(sheet);
+    var knownClients = cfsReadKnownClients_(ctx.spreadsheet, rowData.rows);
     var now = new Date();
     var startKey = options.startDate || Utilities.formatDate(now, CFS_TIME_ZONE, "yyyy-MM-dd");
     var endDate = new Date(now.getTime());
@@ -638,7 +773,7 @@ function syncCalendarBookingsAndDurations(options) {
           row.originalStartKey = originalStart;
         }
       } else {
-        var classification = cfsMatchTitleToCatalog_(event.summary || "", ctx.catalog);
+        var classification = cfsMatchTitleToCatalog_(event.summary || "", ctx.catalog, knownClients);
         if (!classification.ok) {
           needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: classification.reason });
           continue;

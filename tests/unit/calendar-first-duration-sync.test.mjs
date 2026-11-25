@@ -650,7 +650,7 @@ test('unclassified Calendar events remain visible to admin as blocked rows, not 
   assert.equal(result.plannedRows[0][1], 'Compromisso externo');
   assert.equal(result.plannedRows[0][8], 'bloqueado');
   assert.equal(result.plannedRows[0][4], 'Bloqueio do Google Agenda');
-  assert.equal(result.needsAdminReview.length, 1);
+  assert.equal(result.protectedEvents.length, 1);
 });
 
 test('an existing Sheet row linked to a Calendar block is changed to blocked without duplication', () => {

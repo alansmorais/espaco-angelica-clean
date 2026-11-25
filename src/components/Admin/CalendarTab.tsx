@@ -232,7 +232,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           <div className="flex flex-col font-jakarta">
             <span className="text-[10px] text-[#786C63] uppercase font-bold">Bloqueios</span>
             <span className="text-xs text-[#49382E] font-bold">
-              {appointments.filter(a => a.status === 'bloqueado' && a.status !== 'cancelado').length} registros
+              {appointments.filter(a => a.status === 'bloqueado').length} registros
             </span>
           </div>
         </div>

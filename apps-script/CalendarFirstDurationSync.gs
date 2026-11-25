@@ -760,6 +760,81 @@ function syncCalendarBookingsAndDurations(options) {
 
     var claimedRows = {}, rowsToAppend = [], rowUpdates = [], needsReview = [], protectedEvents = [];
     var durationResults = [], calendarUpdates = [], imported = 0, linked = 0, dateTimeUpdates = 0, cancelledRows = 0;
+    var blockedRowsImported = 0, blockedRowsUpdated = 0;
+
+    function queueCalendarBlock_(blockedEvent, reason) {
+      var blockStart = cfsEventStart_(blockedEvent);
+      var blockEnd = cfsEventEnd_(blockedEvent);
+      if (!blockStart || !blockEnd || blockEnd <= blockStart) {
+        needsReview.push({ eventId: blockedEvent.id || "", title: blockedEvent.summary || "", reason: "BLOCK_EVENT_MISSING_VALID_INTERVAL:" + reason });
+        return;
+      }
+      var blockDate = Utilities.formatDate(blockStart, CFS_TIME_ZONE, "yyyy-MM-dd");
+      var allDay = !!(blockedEvent.start && blockedEvent.start.date);
+      var blockTime = allDay ? "Dia inteiro" : Utilities.formatDate(blockStart, CFS_TIME_ZONE, "HH:mm");
+      var blockTitle = String(blockedEvent.summary || "Evento do Google Agenda").trim();
+      var blockOriginalStart = cfsOriginalStartRaw_(blockedEvent);
+      var blockMatch = cfsFindRowForEvent_(blockedEvent, blockDate, allDay ? "00:00" : blockTime, rowData.rows);
+      if (blockMatch.error) {
+        needsReview.push({ eventId: blockedEvent.id || "", title: blockTitle, date: blockDate, time: blockTime, reason: blockMatch.error });
+        return;
+      }
+      var blockRow = blockMatch.row || null;
+      if (blockRow) {
+        if (claimedRows[blockRow.row]) {
+          needsReview.push({ eventId: blockedEvent.id || "", title: blockTitle, date: blockDate, time: blockTime, reason: "SHEET_ROW_ALREADY_MATCHED_TO_ANOTHER_CALENDAR_EVENT", row: blockRow.row });
+          return;
+        }
+        claimedRows[blockRow.row] = true;
+        rowUpdates.push({ row: blockRow.row, values: {
+          date: blockDate, time: blockTime, status: "bloqueado",
+          client: blockTitle, procedure: "Bloqueio do Google Agenda",
+          eventId: String(blockedEvent.id || ""), originalStart: blockOriginalStart
+        }});
+        blockRow.dateKey = blockDate;
+        blockRow.timeKey = allDay ? "" : blockTime;
+        blockRow.status = "bloqueado";
+        blockRow.client = blockTitle;
+        blockRow.procedure = "Bloqueio do Google Agenda";
+        blockRow.eventId = String(blockedEvent.id || "");
+        blockRow.originalStartKey = blockOriginalStart;
+        blockedRowsUpdated++;
+        return;
+      }
+
+      var occurrence = blockOriginalStart || (blockedEvent.start && (blockedEvent.start.dateTime || blockedEvent.start.date)) || blockDate;
+      var blockAptId = cfsDeterministicAppointmentId_(blockedEvent.id, occurrence);
+      var duplicateBlock = rowData.rows.some(function(existing) {
+        return existing.appointmentId === blockAptId || (existing.eventId && cfsEventIdEqual_(existing.eventId, blockedEvent.id));
+      });
+      if (duplicateBlock) {
+        needsReview.push({ eventId: blockedEvent.id || "", title: blockTitle, date: blockDate, time: blockTime, reason: "BLOCK_EVENT_ALREADY_PRESENT_WITHOUT_UNIQUE_MATCH" });
+        return;
+      }
+      var blockValues = new Array(rowData.lastCol);
+      for (var bc = 0; bc < rowData.lastCol; bc++) blockValues[bc] = "";
+      blockValues[0] = new Date();
+      blockValues[1] = blockTitle;
+      blockValues[4] = "Bloqueio do Google Agenda";
+      blockValues[5] = blockDate;
+      blockValues[6] = blockTime;
+      blockValues[8] = "bloqueado";
+      blockValues[9] = blockAptId;
+      blockValues[10] = "Importado do Google Calendar — " + reason;
+      blockValues[19] = String(blockedEvent.id || "");
+      blockValues[20] = blockOriginalStart;
+      var newBlockRow = {
+        row: rowData.lastRow + rowsToAppend.length + 1, values: blockValues,
+        client: blockTitle, procedure: "Bloqueio do Google Agenda",
+        dateKey: blockDate, timeKey: allDay ? "" : blockTime,
+        status: "bloqueado", appointmentId: blockAptId, additionalIds: [],
+        serviceId: "", eventId: String(blockedEvent.id || ""), originalStartKey: blockOriginalStart
+      };
+      rowsToAppend.push(blockValues);
+      rowData.rows.push(newBlockRow);
+      claimedRows[newBlockRow.row] = true;
+      blockedRowsImported++;
+    }
 
     for (var i = 0; i < allEvents.length; i++) {
       var event = allEvents[i];
@@ -783,6 +858,7 @@ function syncCalendarBookingsAndDurations(options) {
       var protectedReason = cfsProtectedReason_(event);
       if (protectedReason) {
         protectedEvents.push({ eventId: eventId, title: event.summary || "", reason: protectedReason });
+        queueCalendarBlock_(event, protectedReason);
         continue;
       }
       var eventStart = cfsEventStart_(event);
@@ -834,7 +910,9 @@ function syncCalendarBookingsAndDurations(options) {
       } else {
         var classification = cfsMatchTitleToCatalog_(event.summary || "", ctx.catalog, knownClients);
         if (!classification.ok) {
+          // Unknown Calendar items remain visible in admin as blocked, never as fictitious clients.
           needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: classification.reason });
+          queueCalendarBlock_(event, "UNCLASSIFIED_CALENDAR_EVENT:" + classification.reason);
           continue;
         }
         var occurrenceKey = originalStart || (event.start && (event.start.dateTime || event.start.date)) || eventDate;
@@ -949,6 +1027,8 @@ function syncCalendarBookingsAndDurations(options) {
         if (update.values.date) sheet.getRange(update.row, 6).setValue(update.values.date);
         if (update.values.time) sheet.getRange(update.row, 7).setValue(update.values.time);
         if (update.values.status) sheet.getRange(update.row, 9).setValue(update.values.status);
+        if (update.values.client !== undefined) sheet.getRange(update.row, 2).setValue(update.values.client);
+        if (update.values.procedure !== undefined) sheet.getRange(update.row, 5).setValue(update.values.procedure);
         if (update.values.eventId) sheet.getRange(update.row, CFS_EVENT_ID_COLUMN).setValue(update.values.eventId);
         if (update.values.originalStart) sheet.getRange(update.row, CFS_ORIGINAL_START_COLUMN).setValue(update.values.originalStart);
       });
@@ -984,6 +1064,8 @@ function syncCalendarBookingsAndDurations(options) {
         calendarEventsScanned: allEvents.length,
         existingRowsLinked: linked,
         rowsImported: imported,
+        blockedRowsImported: blockedRowsImported,
+        blockedRowsUpdated: blockedRowsUpdated,
         existingRowsUpdatedFromCalendar: dateTimeUpdates,
         cancelledRowsMarked: cancelledRows,
         calendarEndsWouldBeUpdatedOrUpdated: durationResults.filter(function(x) { return x.status === "WOULD_UPDATE_END_ONLY" || x.status === "UPDATED_END_ONLY"; }).length,
@@ -997,8 +1079,8 @@ function syncCalendarBookingsAndDurations(options) {
       needsAdminReview: needsReview,
       durationResults: durationResults,
       safety: dryRun
-        ? "DRY RUN: nenhuma linha foi criada/alterada e nenhum evento do Calendar foi modificado."
-        : "Calendar -> Sheets -> catálogo Serviços!F -> PATCH exclusivo do término. Nenhum evento foi criado, movido, renomeado ou excluído."
+        ? "DRY RUN: nenhuma linha foi criada/alterada e nenhum evento do Calendar foi modificado. Eventos sem identificação segura são planejados como bloqueios."
+        : "Calendar -> Sheets: compromissos identificados são importados; demais eventos são registrados como bloqueados. Durações usam Serviços!F; somente o término de compromissos elegíveis pode ser ajustado."
     };
     Logger.log(JSON.stringify(result, null, 2));
     return result;

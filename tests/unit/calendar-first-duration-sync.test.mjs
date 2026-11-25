@@ -599,3 +599,91 @@ test('trigger audit detects legacy and duplicate synchronization triggers withou
   assert.equal(result.sheetEditTriggerCount, 1);
   assert.equal(source.includes('ScriptApp.deleteTrigger'), false);
 });
+
+
+test('calendar blocks are imported into Agendamentos as blocked rows, including all-day events', () => {
+  const timedBlock = apiEvent({
+    id: 'calendar-block-10',
+    summary: 'Bloqueio pessoal',
+    start: '2027-01-12T10:00:00-03:00',
+    end: '2027-01-12T12:00:00-03:00'
+  });
+  const allDayBlock = apiEvent({
+    id: 'calendar-vacation-12',
+    summary: 'Férias da Angélica',
+    allDay: true
+  });
+  const fixture = makeCalendarSyncFixture({ events: [timedBlock, allDayBlock], writeEnabled: false });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: true,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+
+  assert.equal(result.dryRun, true);
+  assert.equal(result.counts.blockedRowsImported, 2);
+  assert.equal(result.importedRows, 2);
+  assert.equal(result.importedRows[0][1], 'Bloqueio pessoal');
+  assert.equal(result.importedRows[0][8], 'bloqueado');
+  assert.equal(result.importedRows[0][4], 'Bloqueio do Google Agenda');
+  assert.equal(result.importedRows[1][1], 'Férias da Angélica');
+  assert.equal(result.importedRows[1][6], 'Dia inteiro');
+  assert.equal(result.importedRows[1][8], 'bloqueado');
+  assert.equal(fixture.appointments.getLastRow(), 1, 'dry-run must not write to Sheets');
+});
+
+test('unclassified Calendar events remain visible to admin as blocked rows, not fake clients', () => {
+  const unknown = apiEvent({
+    id: 'calendar-unknown-1',
+    summary: 'Compromisso externo',
+    start: '2027-01-12T14:00:00-03:00',
+    end: '2027-01-12T15:30:00-03:00'
+  });
+  const fixture = makeCalendarSyncFixture({ events: [unknown], writeEnabled: false });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: true,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+
+  assert.equal(result.counts.blockedRowsImported, 1);
+  assert.equal(result.importedRows[0][1], 'Compromisso externo');
+  assert.equal(result.importedRows[0][8], 'bloqueado');
+  assert.equal(result.importedRows[0][4], 'Bloqueio do Google Agenda');
+  assert.equal(result.needsAdminReview.length, 1);
+});
+
+test('an existing Sheet row linked to a Calendar block is changed to blocked without duplication', () => {
+  const headerFixture = makeCalendarSyncFixture({});
+  const row = Array(21).fill('');
+  row[1] = 'Compromisso antigo';
+  row[4] = 'Manicure Tradicional';
+  row[5] = '2027-01-12';
+  row[6] = '09:00';
+  row[8] = 'confirmado';
+  row[9] = 'apt-existing-block';
+  row[19] = 'calendar-block-existing';
+  const event = apiEvent({
+    id: 'calendar-block-existing',
+    summary: 'Bloqueio de agenda',
+    start: '2027-01-12T10:00:00-03:00',
+    end: '2027-01-12T11:00:00-03:00'
+  });
+  const fixture = makeCalendarSyncFixture({
+    appointmentRows: [headerFixture.headers, row],
+    events: [event],
+    writeEnabled: false
+  });
+  const result = context.syncCalendarBookingsAndDurations({
+    dryRun: true,
+    startDate: '2027-01-12',
+    endDate: '2027-01-13'
+  });
+
+  assert.equal(result.counts.blockedRowsUpdated, 1);
+  assert.equal(result.rowUpdates.length, 1);
+  assert.equal(result.rowUpdates[0].values.status, 'bloqueado');
+  assert.equal(result.rowUpdates[0].values.client, 'Bloqueio de agenda');
+  assert.equal(result.importedRows, 0);
+  assert.equal(fixture.appointments.getLastRow(), 2, 'existing row must not be duplicated');
+});

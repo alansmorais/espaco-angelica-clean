@@ -232,7 +232,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           <div className="flex flex-col font-jakarta">
             <span className="text-[10px] text-[#786C63] uppercase font-bold">Bloqueios</span>
             <span className="text-xs text-[#49382E] font-bold">
-              {timeSlots.filter(s => s.status === 'bloqueado').length} horários
+              {appointments.filter(a => a.status === 'bloqueado' && a.status !== 'cancelado').length} registros
             </span>
           </div>
         </div>
@@ -344,7 +344,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
             {timeSlots.filter(s => s.active).map(slot => {
               const dayBlockApt = appointments.find(
                 a => a.status === 'bloqueado' &&
-                     (a.time === 'Dia Inteiro' || a.serviceDuration === 'Dia Inteiro') &&
+                     (String(a.time || '').toLocaleLowerCase('pt-BR') === 'dia inteiro' || String(a.serviceDuration || '').toLocaleLowerCase('pt-BR') === 'dia inteiro') &&
                      areDatesEqual(a.date, selectedDayLabel)
               );
               const matchingApt = appointments.find(

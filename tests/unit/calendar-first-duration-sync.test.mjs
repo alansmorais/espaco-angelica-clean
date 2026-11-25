@@ -623,12 +623,12 @@ test('calendar blocks are imported into Agendamentos as blocked rows, including 
   assert.equal(result.dryRun, true);
   assert.equal(result.counts.blockedRowsImported, 2);
   assert.equal(result.importedRows, 2);
-  assert.equal(result.importedRows[0][1], 'Bloqueio pessoal');
-  assert.equal(result.importedRows[0][8], 'bloqueado');
-  assert.equal(result.importedRows[0][4], 'Bloqueio do Google Agenda');
-  assert.equal(result.importedRows[1][1], 'Férias da Angélica');
-  assert.equal(result.importedRows[1][6], 'Dia inteiro');
-  assert.equal(result.importedRows[1][8], 'bloqueado');
+  assert.equal(result.plannedRows[0][1], 'Bloqueio pessoal');
+  assert.equal(result.plannedRows[0][8], 'bloqueado');
+  assert.equal(result.plannedRows[0][4], 'Bloqueio do Google Agenda');
+  assert.equal(result.plannedRows[1][1], 'Férias da Angélica');
+  assert.equal(result.plannedRows[1][6], 'Dia inteiro');
+  assert.equal(result.plannedRows[1][8], 'bloqueado');
   assert.equal(fixture.appointments.getLastRow(), 1, 'dry-run must not write to Sheets');
 });
 
@@ -647,9 +647,9 @@ test('unclassified Calendar events remain visible to admin as blocked rows, not 
   });
 
   assert.equal(result.counts.blockedRowsImported, 1);
-  assert.equal(result.importedRows[0][1], 'Compromisso externo');
-  assert.equal(result.importedRows[0][8], 'bloqueado');
-  assert.equal(result.importedRows[0][4], 'Bloqueio do Google Agenda');
+  assert.equal(result.plannedRows[0][1], 'Compromisso externo');
+  assert.equal(result.plannedRows[0][8], 'bloqueado');
+  assert.equal(result.plannedRows[0][4], 'Bloqueio do Google Agenda');
   assert.equal(result.needsAdminReview.length, 1);
 });
 

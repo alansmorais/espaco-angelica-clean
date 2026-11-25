@@ -863,7 +863,7 @@ function syncCalendarBookingsAndDurations(options) {
       }
       var eventStart = cfsEventStart_(event);
       var eventEnd = cfsEventEnd_(event);
-      if (!eventStart || !eventEnd || eventStart.getTime() <= now.getTime()) continue;
+      if (!eventStart || !eventEnd || eventEnd.getTime() <= now.getTime()) continue;
 
       var eventDate = Utilities.formatDate(eventStart, CFS_TIME_ZONE, "yyyy-MM-dd");
       var eventTime = Utilities.formatDate(eventStart, CFS_TIME_ZONE, "HH:mm");

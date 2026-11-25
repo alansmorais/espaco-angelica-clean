@@ -1074,6 +1074,7 @@ function syncCalendarBookingsAndDurations(options) {
         requiringReview: needsReview.length + durationResults.filter(function(x) { return x.status.indexOf("REVIEW") >= 0 || x.status === "DURATION_REVIEW" || x.status === "CLIENT_IDENTITY_NOT_CONFIRMED"; }).length
       },
       importedRows: rowsToAppend.length,
+      plannedRows: dryRun ? rowsToAppend : [],
       rowUpdates: rowUpdates,
       protectedEvents: protectedEvents,
       needsAdminReview: needsReview,

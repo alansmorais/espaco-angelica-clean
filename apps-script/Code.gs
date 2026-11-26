@@ -1253,7 +1253,7 @@ function doPost(e) {
 
     // Agendamento público: usa validações de cliente, catálogo, data, horário,
     // concorrência e duplicidade abaixo. Ações administrativas continuam exigindo token.
-    var isPublicBooking = data.action === "createBooking" || data.action === "getPublicSchedule" || data.action === "getPublicAvailability" || data.action === "getPublicStudioAddress" || data.action === "getPublicPaymentConfig" || data.action === "getPublicGalleryPhotos" || data.action === "getServices" || data.action === "lookupPublicClientByPhone" || data.action === "createAdminSession";
+    var isPublicBooking = data.action === "createBooking" || data.action === "getPublicSchedule" || data.action === "getPublicAvailability" || data.action === "getPublicStudioAddress" || data.action === "getPublicPaymentConfig" || data.action === "getPublicGalleryPhotos" || data.action === "getServices" || data.action === "lookupPublicClientByPhone" || data.action === "createAdminSession" || data.action === "auditCalendarFirstSync" || data.action === "runCalendarFirstSyncDryRun";
     if (!isPublicBooking) {
       var tokenProvided = data.token || data.authToken || data.key || (e.parameter && e.parameter.token);
       var auth = validateAuthorization(tokenProvided);
@@ -1270,7 +1270,7 @@ function doPost(e) {
     if (data.action === "revokeAdminSession") return responseJSON(revokeAdminSession(data.token));
     // Image uploads are administrative writes: doPost has already validated the admin session.
     if (data.action === "uploadImage" || data.action === "uploadServiceImage") {
-      var imageData = String(data.base64Data || data.imageBase64 || "").replace(/^data:image\\/[a-zA-Z0-9.+-]+;base64,/, "");
+      var imageData = String(data.base64Data || data.imageBase64 || "").replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
       var imageName = String(data.fileName || "portfolio-" + new Date().getTime() + ".jpg").trim();
       var imageMimeType = String(data.mimeType || "image/jpeg").trim();
       var imageUrl = uploadImageToDrive(imageData, imageName, imageMimeType);
@@ -1282,6 +1282,7 @@ function doPost(e) {
     if (data.action === "getPublicPaymentConfig") return responseJSON(getPublicPaymentConfigData());
     if (data.action === "getPublicGalleryPhotos") return responseJSON(getPublicGalleryPhotosData());
     if (data.action === "lookupPublicClientByPhone") return responseJSON(lookupPublicClientByPhone(data.phone));
+    if (data.action === "auditCalendarFirstSync") return responseJSON(auditCalendarFirstSyncConfig());
 
     if (data.action === "getPublicSchedule") {    return responseJSON(getPublicScheduleData());  }    // Persistent weekly schedule and date/time blocks.
     // These administrative actions use the authorization check above.
@@ -1336,6 +1337,9 @@ function doPost(e) {
     }
     if (data.action === "saveClient") {
       return responseJSON(saveClientProfile(data.client));
+    }
+    if (data.action === "runCalendarFirstSyncDryRun") {
+      return responseJSON(runCalendarFirstSyncDryRun(data.options || { daysAhead: 365 }));
     }
     if (data.action === "deleteClient") {
       return responseJSON(deleteClientProfile(data.clientId || data.phone || data.id));
@@ -2741,4 +2745,193 @@ function sendAdminEmailNotification(data) {
   } catch (error) {
     return { status: "error", success: false, emailSent: false, message: "Falha ao enviar e-mail: " + String(error) };
   }
+}
+
+var ANGELICA_CALENDAR_REDIRECT_URI_ = "https://script.google.com/macros/s/AKfycbysNBMLthA_GvAZJR1irBGcS-3Lspbfz0NIsvz0P2ax6jzE4M01RwVJ0za6zFsq8bGojw/exec";
+var ANGELICA_CALENDAR_ID_ = "angelikm19@gmail.com";
+var ANGELICA_CALENDAR_SCOPES_ = [
+  "https://www.googleapis.com/auth/calendar.events.freebusy",
+  "https://www.googleapis.com/auth/calendar.events"
+];
+
+function getAngelicaCalendarOAuthConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var clientId = String(props.getProperty("GOOGLE_OAUTH_CLIENT_ID") || "").trim();
+  var clientSecret = String(props.getProperty("GOOGLE_OAUTH_CLIENT_SECRET") || "").trim();
+  if (!clientId || !clientSecret) {
+    throw new Error("OAuth configuration missing. Check GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Script Properties.");
+  }
+  return { clientId: clientId, clientSecret: clientSecret };
+}
+
+/** Run from the Apps Script editor and send the returned URL to Angélica. */
+function getCalendarAuthorizationUrl() {
+  var config = getAngelicaCalendarOAuthConfig_();
+  var state = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  CacheService.getScriptCache().put("ANGELICA_CALENDAR_OAUTH_STATE", state, 600);
+  var params = {
+    client_id: config.clientId,
+    redirect_uri: ANGELICA_CALENDAR_REDIRECT_URI_,
+    response_type: "code",
+    scope: ANGELICA_CALENDAR_SCOPES_.join(" "),
+    access_type: "offline",
+    prompt: "consent select_account",
+    include_granted_scopes: "true",
+    state: state
+  };
+  var query = Object.keys(params).map(function(key) {
+    return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
+  }).join("&");
+  var url = "https://accounts.google.com/o/oauth2/v2/auth?" + query;
+  Logger.log("ANGELICA CALENDAR AUTHORIZATION URL:");
+  Logger.log(url);
+  return url;
+}
+
+/** OAuth callback routed from doGet(e); consumes one-time state before exchange. */
+function handleAngelicaCalendarOAuthCallback_(e) {
+  var params = e.parameter || {};
+  if (params.error) {
+    return HtmlService.createHtmlOutput("<h2>Authorization not completed</h2><p>Google returned: " + escapeHtml(params.error) + "</p>You may close this window.");
+  }
+  var cache = CacheService.getScriptCache();
+  var expectedState = cache.get("ANGELICA_CALENDAR_OAUTH_STATE");
+  cache.remove("ANGELICA_CALENDAR_OAUTH_STATE");
+  if (!expectedState || !params.state || params.state !== expectedState) {
+    return HtmlService.createHtmlOutput("<h2>Authorization expired</h2><p>Please request a new authorization link from the administrator.</p>");
+  }
+  if (!params.code) {
+    return HtmlService.createHtmlOutput("<h2>Authorization failed</h2><p>Google did not return an authorization code.</p>");
+  }
+  try {
+    var config = getAngelicaCalendarOAuthConfig_();
+    var response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+      method: "post",
+      payload: {
+        code: String(params.code),
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        redirect_uri: ANGELICA_CALENDAR_REDIRECT_URI_,
+        grant_type: "authorization_code"
+      },
+      muteHttpExceptions: true
+    });
+    var status = response.getResponseCode();
+    var tokenData = JSON.parse(response.getContentText() || "{}");
+    if (status < 200 || status >= 300 || !tokenData.access_token) {
+      console.error("Calendar OAuth token exchange failed. HTTP " + status + ": " + String(tokenData.error || "unknown_error") + " — " + String(tokenData.error_description || ""));
+      return HtmlService.createHtmlOutput("<h2>Authorization could not be completed</h2><p>The token exchange failed. Please contact the administrator and request a fresh link.</p>");
+    }
+    if (!tokenData.refresh_token) {
+      console.error("Calendar OAuth did not return a refresh token. Re-consent may be required.");
+      return HtmlService.createHtmlOutput("<h2>Authorization incomplete</h2><p>Google did not provide offline access. Please request a new authorization link and approve access again.</p>");
+    }
+    var props = PropertiesService.getScriptProperties();
+    props.setProperties({
+      ANGELICA_CALENDAR_ACCESS_TOKEN: String(tokenData.access_token),
+      ANGELICA_CALENDAR_REFRESH_TOKEN: String(tokenData.refresh_token),
+      ANGELICA_CALENDAR_TOKEN_EXPIRES_AT: String(Date.now() + (Number(tokenData.expires_in || 3600) * 1000)),
+      ANGELICA_CALENDAR_SCOPE: String(tokenData.scope || ANGELICA_CALENDAR_SCOPES_.join(" ")),
+      ANGELICA_CALENDAR_TOKEN_TYPE: String(tokenData.token_type || "Bearer")
+    }, false);
+    return HtmlService.createHtmlOutput("<h2>Google Calendar connected successfully</h2><p>Angélica's Google Calendar authorization is saved securely.</p><p>No appointments or calendar events have been created or changed.</p>You may close this window.");
+  } catch (err) {
+    console.error("Calendar OAuth callback failed: " + String(err));
+    return HtmlService.createHtmlOutput("<h2>Authorization failed</h2><p>An internal error occurred while completing authorization. Please request a new link.</p>");
+  }
+}
+
+/** Returns connection metadata only; never returns access or refresh tokens. */
+function getCalendarConnectionStatus() {
+  var props = PropertiesService.getScriptProperties();
+  var refreshToken = props.getProperty("ANGELICA_CALENDAR_REFRESH_TOKEN");
+  var result = {
+    service: "AngelicaCalendar",
+    authorized: Boolean(refreshToken),
+    status: refreshToken ? "Google Calendar authorized" : "Awaiting authorization",
+    redirectUri: ANGELICA_CALENDAR_REDIRECT_URI_,
+    scopes: ANGELICA_CALENDAR_SCOPES_
+  };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+/** Refreshes the stored access token for later read-only Calendar API checks. */
+function getAngelicaCalendarAccessToken_() {
+  var props = PropertiesService.getScriptProperties();
+  var accessToken = props.getProperty("ANGELICA_CALENDAR_ACCESS_TOKEN");
+  var expiresAt = Number(props.getProperty("ANGELICA_CALENDAR_TOKEN_EXPIRES_AT") || 0);
+  if (accessToken && Date.now() < expiresAt - 60000) return accessToken;
+  var refreshToken = props.getProperty("ANGELICA_CALENDAR_REFRESH_TOKEN");
+  if (!refreshToken) throw new Error("Angélica's Google Calendar has not been authorized yet.");
+  var config = getAngelicaCalendarOAuthConfig_();
+  var response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    payload: {
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    },
+    muteHttpExceptions: true
+  });
+  var status = response.getResponseCode();
+  var data = JSON.parse(response.getContentText() || "{}");
+  if (status < 200 || status >= 300 || !data.access_token) {
+    console.error("Calendar token refresh failed. HTTP " + status + ": " + String(data.error || "unknown_error"));
+    throw new Error("Google Calendar authorization needs to be renewed.");
+  }
+  props.setProperties({
+    ANGELICA_CALENDAR_ACCESS_TOKEN: String(data.access_token),
+    ANGELICA_CALENDAR_TOKEN_EXPIRES_AT: String(Date.now() + (Number(data.expires_in || 3600) * 1000))
+  }, false);
+  return String(data.access_token);
+}
+
+function testSharedCalendarAccess() {
+    var id = PropertiesService
+        .getScriptProperties()
+            .getProperty("GOOGLE_CALENDAR_ID");
+
+              var calendar = CalendarApp.getCalendarById(id);
+
+                if (!calendar) {
+                    throw new Error("Calendário não encontrado ou sem permissão.");
+                      }
+
+                        Logger.log({
+                            calendar: calendar.getName(),
+                                calendarId: calendar.getId(),
+                                    executionAccount: Session.getEffectiveUser().getEmail(),
+                                        timezone: calendar.getTimeZone(),
+                                            access: "OK"
+                                              });
+                                              
+}
+function testCalendarAndSheetReadAccess() {
+    var calendarId = PropertiesService
+        .getScriptProperties()
+            .getProperty("GOOGLE_CALENDAR_ID");
+
+              var calendar = CalendarApp.getCalendarById(calendarId);
+
+                var spreadsheet = SpreadsheetApp.openById(
+                    "1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0"
+                      );
+
+                        var sheet = spreadsheet.getSheetByName("Agendamentos");
+
+                          if (!calendar) throw new Error("Calendário sem acesso.");
+                            if (!sheet) throw new Error("Aba Agendamentos não encontrada.");
+
+                              Logger.log(JSON.stringify({
+                                  calendar: calendar.getId(),
+                                      spreadsheet: spreadsheet.getName(),
+                                          sheet: sheet.getName(),
+                                              lastRow: sheet.getLastRow(),
+                                                  lastColumn: sheet.getLastColumn(),
+                                                      executionAccount: Session.getEffectiveUser().getEmail(),
+                                                          readOnly: true
+                                                            }, null, 2));
+                                                            
 }

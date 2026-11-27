@@ -137,6 +137,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   const dayAppointments = appointments
     .filter(a => a.status !== 'cancelado' && areDatesEqual(a.date, selectedDayLabel))
     .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+  const selectedDayBlocks = dayAppointments.filter(a => a.status === 'bloqueado');
 
   return (
     <div className="flex flex-col gap-6 text-[#49382E]">
@@ -232,7 +233,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           <div className="flex flex-col font-jakarta">
             <span className="text-[10px] text-[#786C63] uppercase font-bold">Bloqueios</span>
             <span className="text-xs text-[#49382E] font-bold">
-              {timeSlots.filter(s => s.status === 'bloqueado').length} horários
+              {appointments.filter(a => a.status === 'bloqueado').length} registros
             </span>
           </div>
         </div>
@@ -303,6 +304,32 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
             })}
           </div>
 
+          {selectedDayBlocks.length > 0 && activeView !== 'mes' && (
+            <section className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3.5" aria-label="Bloqueios do dia selecionado">
+              <div className="mb-2 flex items-center gap-2 text-red-900">
+                <span className="material-symbols-outlined text-[18px]">lock</span>
+                <strong className="font-syne text-sm">Bloqueios do Google Agenda neste dia</strong>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-800">{selectedDayBlocks.length}</span>
+              </div>
+              <div className="space-y-2">
+                {selectedDayBlocks.map(block => (
+                  <button
+                    key={block.id}
+                    type="button"
+                    onClick={() => setSelectedSlotKey(block.id)}
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border border-red-200 bg-white/80 p-2.5 text-left hover:bg-white"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-jakarta text-xs font-bold text-red-900">{block.clientName || 'Bloqueio de agenda'}</span>
+                      <span className="mt-0.5 block font-jakarta text-[11px] text-red-700">{block.time || 'Dia inteiro'} · {block.notes || block.blockReason || 'Indisponível'}</span>
+                    </span>
+                    <span className="shrink-0 font-jakarta text-[10px] font-bold text-red-800">Ver</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Active Block Banner if the selected day is blocked */}
           {(() => {
             const currentDayBlock = appointments.find(
@@ -344,7 +371,7 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
             {timeSlots.filter(s => s.active).map(slot => {
               const dayBlockApt = appointments.find(
                 a => a.status === 'bloqueado' &&
-                     (a.time === 'Dia Inteiro' || a.serviceDuration === 'Dia Inteiro') &&
+                     (String(a.time || '').toLocaleLowerCase('pt-BR') === 'dia inteiro' || String(a.serviceDuration || '').toLocaleLowerCase('pt-BR') === 'dia inteiro') &&
                      areDatesEqual(a.date, selectedDayLabel)
               );
               const matchingApt = appointments.find(

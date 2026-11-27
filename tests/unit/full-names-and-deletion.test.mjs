@@ -75,7 +75,7 @@ test('2. mergeClients deduplica clientes e elimina entradas incompletas sem sobr
     }
   ];
 
-  const merged = mergeClients(remoteClients, fallbackWithSingleNames);
+  const merged = mergeClients([...remoteClients, ...fallbackWithSingleNames]);
 
   // Deve haver exatamente 2 clientes
   assert.strictEqual(merged.length, 2, 'Deve conter apenas os 2 clientes completos');
@@ -98,7 +98,7 @@ test('2. mergeClients deduplica clientes e elimina entradas incompletas sem sobr
   assert.strictEqual(singleJosefina.length, 0, 'Não deve haver cliente com apenas Josefina');
 });
 
-test('3. mergeClients com cadastro incompleto vindo da planilha oficial promove para nome completo', () => {
+test('3. mergeClients promove cadastro oficial incompleto sem inventar outros clientes', () => {
   const remoteWithShortName = [
     {
       id: 'client-12997112233',
@@ -110,9 +110,11 @@ test('3. mergeClients com cadastro incompleto vindo da planilha oficial promove 
   ];
 
   const merged = mergeClients(remoteWithShortName);
-  assert.strictEqual(merged.length, 2); // Kristine Sorensen + Josefina Calderón (do default)
+  assert.strictEqual(merged.length, 1); // Apenas o cadastro oficial recebido.
   const k = merged.find(c => c.name.includes('Kristine'));
   assert.strictEqual(k.name, 'Kristine Sorensen');
+  assert.strictEqual(k.initials, 'KS');
+  assert.strictEqual(merged.some(c => c.name.includes('Josefina')), false);
 });
 
 test('4. mergeAndExpandAppointments unifica agendamentos com nome incompleto e nome completo', () => {
@@ -251,21 +253,23 @@ test('6. Botão de exclusão: cancela ocorrência de série recorrente sem re-ex
   assert.strictEqual(nov19, undefined, 'A sessão de 19/11 foi excluída e não deve reaparecer');
 });
 
-test('7. Autocomplete de clientes: busca por "K" ou "J" retorna nomes completos Kristine Sorensen e Josefina Calderón', () => {
-  const clients = mergeClients([]);
+test('7. Autocomplete usa perfis oficiais e resolve nomes completos sem criar clientes fictícios', () => {
+  assert.strictEqual(mergeClients([]).length, 0);
+
+  const clients = mergeClients([
+    { id: 'client-kristine', name: 'Kristine', phone: '12997112233', email: '', birthDate: '1992-04-15' },
+    { id: 'client-josefina', name: 'Josefina', phone: '12998223344', email: '', birthDate: '1988-08-20' }
+  ]);
   assert.strictEqual(clients.length, 2);
 
-  // Busca 'K'
   const matchesK = clients.filter(c => c.name.toLowerCase().includes('k'));
   assert.strictEqual(matchesK.length, 1);
   assert.strictEqual(matchesK[0].name, 'Kristine Sorensen');
 
-  // Busca 'J'
   const matchesJ = clients.filter(c => c.name.toLowerCase().includes('j'));
   assert.strictEqual(matchesJ.length, 1);
   assert.strictEqual(matchesJ[0].name, 'Josefina Calderón');
 
-  // Nenhuma sugestão deve ser apenas 'Kristine' ou 'Josefina'
   assert.strictEqual(matchesK[0].name === 'Kristine', false);
   assert.strictEqual(matchesJ[0].name === 'Josefina', false);
 });

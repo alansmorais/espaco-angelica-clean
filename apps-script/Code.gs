@@ -386,14 +386,322 @@ function getPublicScheduleData() {
   }
 }
 
+
+/**
+ * Google Calendar is the final source of truth for busy intervals.
+ * The calendar ID is configurable; the verified studio calendar is the fallback.
+ * Any read/permission failure is treated as unavailable (fail closed).
+ */
+function getBookingCalendarId_() {
+  var props = PropertiesService.getScriptProperties();
+  var calendarId = String(props.getProperty("GOOGLE_CALENDAR_ID") || "angelikm19@gmail.com").trim();
+  if (!calendarId) throw new Error("GOOGLE_CALENDAR_ID não configurado.");
+  return calendarId;
+}
+
+function getBookingCalendar_() {
+  var calendarId = getBookingCalendarId_();
+  var calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) throw new Error("Calendário oficial indisponível: " + calendarId);
+  return calendar;
+}
+
+function isCalendarEventBusy_(event) {
+  // Studio policy: every event on the official calendar blocks availability,
+  // including events marked transparent/free. Do not infer availability from
+  // the event's transparency setting; only absence of an event is available.
+  return true;
+}
+
+function hasAdvancedCalendarApi_() {
+  return typeof Calendar !== "undefined" && Calendar.Events && typeof Calendar.Events.list === "function";
+}
+
+function addDaysToIsoDateKey_(dateKey, days) {
+  var parts = String(dateKey || "").split("-").map(Number);
+  var d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+  return d.getUTCFullYear() + "-" +
+    ("0" + (d.getUTCMonth() + 1)).slice(-2) + "-" +
+    ("0" + d.getUTCDate()).slice(-2);
+}
+
+function listCalendarEventsMinimal_(calendarId, timeMinIso, timeMaxIso) {
+  var items = [];
+  var pageToken = null;
+  do {
+    var params = {
+      singleEvents: true,
+      orderBy: "startTime",
+      timeMin: timeMinIso,
+      timeMax: timeMaxIso,
+      maxResults: 2500,
+      fields: "nextPageToken,items(id,status,start,end)"
+    };
+    if (pageToken) params.pageToken = pageToken;
+    var response = Calendar.Events.list(calendarId, params);
+    if (response && Array.isArray(response.items)) {
+      items = items.concat(response.items);
+    }
+    pageToken = response && response.nextPageToken ? response.nextPageToken : null;
+  } while (pageToken);
+  return items;
+}
+
+function buildServiceDurationLookup_() {
+  var byId = {};
+  var byTitle = {};
+  try {
+    var sheets = getServicesSheets();
+    for (var sh = 0; sh < sheets.length; sh++) {
+      var rows = sheets[sh].getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        var rowId = String(rows[i][0] || "").trim();
+        var rowTitle = String(rows[i][1] || "").trim();
+        var mins = parseDurationMinutes(rows[i][5]);
+        if (!mins) continue;
+        if (rowId && !byId[rowId]) byId[rowId] = mins;
+        if (rowTitle && !byTitle[rowTitle.toLowerCase()]) byTitle[rowTitle.toLowerCase()] = mins;
+      }
+    }
+  } catch (e) {
+    console.error("Unable to build service duration lookup: " + e);
+  }
+  return {
+    resolve: function(serviceId, serviceTitle) {
+      var idKey = String(serviceId || "").trim();
+      var titleKey = String(serviceTitle || "").trim().toLowerCase();
+      if (idKey) {
+        if (byId[idKey]) return byId[idKey];
+        if (idKey.toLowerCase() === "blindagem" && byId["blindagem-homens-incolor"]) {
+          return byId["blindagem-homens-incolor"];
+        }
+      }
+      if (titleKey) {
+        if (byTitle[titleKey]) return byTitle[titleKey];
+        if (titleKey === "blindagem") {
+          if (byId["blindagem-homens-incolor"]) return byId["blindagem-homens-incolor"];
+          var keys = Object.keys(byTitle);
+          for (var k = 0; k < keys.length; k++) {
+            if (keys[k].indexOf("blindagem") >= 0) return byTitle[keys[k]];
+          }
+        }
+      }
+      return null;
+    }
+  };
+}
+
+function getCalendarBusySlotsForPublic_() {
+  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
+  var now = new Date();
+  var rangeStartKey = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+  var rangeEndKey = addDaysToIsoDateKey_(rangeStartKey, 366);
+  var rangeStart = new Date(rangeStartKey + "T00:00:00-03:00");
+  var rangeEnd = new Date(rangeEndKey + "T00:00:00-03:00");
+  var slots = [];
+  var blockedDates = [];
+
+  if (hasAdvancedCalendarApi_()) {
+    var calendarId = getBookingCalendarId_();
+    var items = listCalendarEventsMinimal_(calendarId, rangeStart.toISOString(), rangeEnd.toISOString());
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || item.status === "cancelled" || !isCalendarEventBusy_(item)) continue;
+      if (item.start && item.start.date) {
+        var allDayStart = String(item.start.date).slice(0, 10);
+        var allDayEnd = item.end && item.end.date ? String(item.end.date).slice(0, 10) : addDaysToIsoDateKey_(allDayStart, 1);
+        var cursorKey = allDayStart < rangeStartKey ? rangeStartKey : allDayStart;
+        var guard = 0;
+        while (cursorKey < allDayEnd && cursorKey < rangeEndKey && guard < 400) {
+          blockedDates.push(cursorKey);
+          cursorKey = addDaysToIsoDateKey_(cursorKey, 1);
+          guard++;
+        }
+        continue;
+      }
+      if (!item.start || !item.start.dateTime || !item.end || !item.end.dateTime) continue;
+      var eventStart = new Date(item.start.dateTime);
+      var eventEnd = new Date(item.end.dateTime);
+      if (isNaN(eventStart.getTime()) || isNaN(eventEnd.getTime()) || eventEnd <= eventStart) continue;
+      var clippedStart = new Date(Math.max(eventStart.getTime(), rangeStart.getTime()));
+      var clippedEnd = new Date(Math.min(eventEnd.getTime(), rangeEnd.getTime()));
+      if (clippedEnd <= clippedStart) continue;
+
+      var startDateKey = Utilities.formatDate(clippedStart, tz, "yyyy-MM-dd");
+      var endDateKey = Utilities.formatDate(new Date(clippedEnd.getTime() - 1), tz, "yyyy-MM-dd");
+      if (startDateKey === endDateKey) {
+        var sText = Utilities.formatDate(clippedStart, tz, "HH:mm");
+        var eText = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+        if (eText === "00:00") eText = "23:59";
+        if (sText === "00:00" && eText === "23:59") {
+          blockedDates.push(startDateKey);
+        } else if (sText !== eText) {
+          slots.push({
+            id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + startDateKey,
+            date: startDateKey,
+            time: sText + " às " + eText,
+            status: "bloqueado",
+            serviceDuration: "30 min"
+          });
+        }
+      } else {
+        var dayKey = startDateKey;
+        var dayGuard = 0;
+        while (dayKey <= endDateKey && dayKey < rangeEndKey && dayGuard < 400) {
+          if (dayKey === startDateKey) {
+            var firstStart = Utilities.formatDate(clippedStart, tz, "HH:mm");
+            if (firstStart === "00:00") {
+              blockedDates.push(dayKey);
+            } else {
+              slots.push({
+                id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + dayKey,
+                date: dayKey,
+                time: firstStart + " às 23:59",
+                status: "bloqueado",
+                serviceDuration: "30 min"
+              });
+            }
+          } else if (dayKey === endDateKey) {
+            var lastEnd = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+            if (lastEnd === "00:00") {
+              blockedDates.push(dayKey);
+            } else {
+              slots.push({
+                id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + dayKey,
+                date: dayKey,
+                time: "00:00 às " + lastEnd,
+                status: "bloqueado",
+                serviceDuration: "30 min"
+              });
+            }
+          } else {
+            blockedDates.push(dayKey);
+          }
+          dayKey = addDaysToIsoDateKey_(dayKey, 1);
+          dayGuard++;
+        }
+      }
+    }
+    return { slots: slots, blockedDates: blockedDates };
+  }
+
+  var calendar = getBookingCalendar_();
+  var events = calendar.getEvents(rangeStart, rangeEnd);
+  events.forEach(function(event) {
+    if (!isCalendarEventBusy_(event)) return;
+    var eventStart = event.getStartTime();
+    var eventEnd = event.getEndTime();
+    if (!eventStart || !eventEnd || eventEnd <= eventStart) return;
+
+    var dayCursor = new Date(Math.max(eventStart.getTime(), rangeStart.getTime()));
+    dayCursor.setHours(0, 0, 0, 0);
+    while (dayCursor < eventEnd && dayCursor < rangeEnd) {
+      var nextDay = new Date(dayCursor.getTime());
+      nextDay.setDate(nextDay.getDate() + 1);
+      var dateKey = Utilities.formatDate(dayCursor, tz, "yyyy-MM-dd");
+      if (event.isAllDayEvent && event.isAllDayEvent()) {
+        blockedDates.push(dateKey);
+      } else {
+        var clippedStart = new Date(Math.max(eventStart.getTime(), dayCursor.getTime()));
+        var clippedEnd = new Date(Math.min(eventEnd.getTime(), nextDay.getTime()));
+        var startText = Utilities.formatDate(clippedStart, tz, "HH:mm");
+        var endText = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+        if (startText !== endText) {
+          slots.push({
+            id: "gcal-busy-" + String(event.getId ? event.getId() : Utilities.getUuid()) + "-" + dateKey,
+            date: dateKey,
+            time: startText + " às " + endText,
+            status: "bloqueado",
+            serviceDuration: "30 min"
+          });
+        }
+      }
+      dayCursor = nextDay;
+    }
+  });
+
+  return { slots: slots, blockedDates: blockedDates };
+}
+
+function validateAgainstGoogleCalendar(dateKey, timeKey, durationMinutes) {
+  try {
+    var parts = String(dateKey || "").split("-");
+    if (parts.length !== 3) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
+    var normalizedDateKey = parts[0] + "-" + ("0" + Number(parts[1])).slice(-2) + "-" + ("0" + Number(parts[2])).slice(-2);
+    var dayStart = new Date(normalizedDateKey + "T00:00:00-03:00");
+    if (isNaN(dayStart.getTime())) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
+    var nextDateKey = addDaysToIsoDateKey_(normalizedDateKey, 1);
+    var dayEnd = new Date(nextDateKey + "T00:00:00-03:00");
+
+    var startMinutes = timeToMinutes(timeKey);
+    var duration = Number(durationMinutes);
+    if (startMinutes === null || !duration || duration <= 0) {
+      return { allowed: false, message: "Horário ou duração inválidos para validar a disponibilidade." };
+    }
+    var requestedStart = new Date(dayStart.getTime() + startMinutes * 60000);
+    var requestedEnd = new Date(requestedStart.getTime() + duration * 60000);
+
+    if (hasAdvancedCalendarApi_()) {
+      var calendarId = getBookingCalendarId_();
+      var items = listCalendarEventsMinimal_(calendarId, dayStart.toISOString(), dayEnd.toISOString());
+      for (var idx = 0; idx < items.length; idx++) {
+        var item = items[idx];
+        if (!item || item.status === "cancelled" || !isCalendarEventBusy_(item)) continue;
+        if (item.start && item.start.date) {
+          var startDate = String(item.start.date).slice(0, 10);
+          var endDate = item.end && item.end.date ? String(item.end.date).slice(0, 10) : addDaysToIsoDateKey_(startDate, 1);
+          if (startDate <= normalizedDateKey && normalizedDateKey < endDate) {
+            return { allowed: false, message: "Esta data está bloqueada no Google Agenda. Escolha outro dia." };
+          }
+          continue;
+        }
+        if (!item.start || !item.start.dateTime || !item.end || !item.end.dateTime) continue;
+        var itemStart = new Date(item.start.dateTime);
+        var itemEnd = new Date(item.end.dateTime);
+        if (isNaN(itemStart.getTime()) || isNaN(itemEnd.getTime())) continue;
+        if (intervalsOverlap(
+          requestedStart.getTime(), requestedEnd.getTime(),
+          itemStart.getTime(), itemEnd.getTime()
+        )) {
+          return { allowed: false, message: "Este horário conflita com um compromisso ou bloqueio no Google Agenda. Escolha outro horário." };
+        }
+      }
+      return { allowed: true };
+    }
+
+    var calendar = getBookingCalendar_();
+    var events = calendar.getEvents(dayStart, dayEnd);
+    for (var i = 0; i < events.length; i++) {
+      var event = events[i];
+      if (!isCalendarEventBusy_(event)) continue;
+      var eventStart = event.getStartTime();
+      var eventEnd = event.getEndTime();
+      if (!eventStart || !eventEnd) continue;
+      if (event.isAllDayEvent && event.isAllDayEvent()) {
+        return { allowed: false, message: "Esta data está bloqueada no Google Agenda. Escolha outro dia." };
+      }
+      if (intervalsOverlap(
+        requestedStart.getTime(), requestedEnd.getTime(),
+        eventStart.getTime(), eventEnd.getTime()
+      )) {
+        return { allowed: false, message: "Este horário conflita com um compromisso ou bloqueio no Google Agenda. Escolha outro horário." };
+      }
+    }
+    return { allowed: true };
+  } catch (error) {
+    console.error("Google Calendar availability validation failed: " + error);
+    return { allowed: false, message: "Não foi possível confirmar a disponibilidade no Google Agenda. Tente novamente ou entre em contato com o atelier." };
+  }
+}
+
 function getPublicAvailabilityData() {
   var sheet = getOfficialSheet();
   if (!sheet) return { status: "error", success: false, message: "Aba 'Agendamentos' não encontrada na planilha oficial." };
 
   var values = sheet.getDataRange().getValues();
+  var durationLookup = buildServiceDurationLookup_();
   var slots = [];
   var blockedDates = [];
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
     if (!row[5]) continue;
@@ -408,13 +716,19 @@ function getPublicAvailabilityData() {
     }
     if (!row[9] && !row[1]) continue;
 
-    var mainDuration = getServiceDurationMinutes(String(row[15] || ""), String(row[4] || ""));
-    var totalDuration = mainDuration;
+    // Calendar-imported blocked rows already have their exact interval published
+    // from Google Calendar below; avoid duplicating partial entries or emitting null durations.
+    if (status.toLowerCase() === "bloqueado" && String(row[19] || "").trim()) {
+      continue;
+    }
+
+    var mainDuration = durationLookup.resolve(String(row[15] || ""), String(row[4] || ""));
+    var totalDuration = mainDuration || 0;
     try {
       var additionalIds = row[13] ? JSON.parse(String(row[13])) : [];
       if (Array.isArray(additionalIds)) {
         for (var aIdx = 0; aIdx < additionalIds.length; aIdx++) {
-          var addDur = getServiceDurationMinutes(String(additionalIds[aIdx] || ""), "");
+          var addDur = durationLookup.resolve(String(additionalIds[aIdx] || ""), "");
           if (addDur) totalDuration += addDur;
         }
       }
@@ -425,8 +739,19 @@ function getPublicAvailabilityData() {
       date: dateKey,
       time: timeKey,
       status: status,
-      serviceDuration: totalDuration + " min"
+      serviceDuration: totalDuration > 0 ? (totalDuration + " min") : "30 min"
     });
+  }
+
+  // Merge Google Calendar busy events into the same public availability feed.
+  // Do not expose event titles/details; only publish occupied intervals.
+  try {
+    var calendarBusy = getCalendarBusySlotsForPublic_();
+    slots = slots.concat(calendarBusy.slots || []);
+    blockedDates = blockedDates.concat(calendarBusy.blockedDates || []);
+  } catch (calendarError) {
+    console.error("Unable to read Google Calendar for public availability: " + calendarError);
+    return { status: "error", success: false, message: "Não foi possível confirmar a disponibilidade no Google Agenda. Tente novamente mais tarde." };
   }
 
   var schedule = getPublicScheduleData();
@@ -1148,7 +1473,7 @@ function doPost(e) {
     if (data.action === "revokeAdminSession") return responseJSON(revokeAdminSession(data.token));
     // Image uploads are administrative writes: doPost has already validated the admin session.
     if (data.action === "uploadImage" || data.action === "uploadServiceImage") {
-      var imageData = String(data.base64Data || data.imageBase64 || "").replace(/^data:image\\/[a-zA-Z0-9.+-]+;base64,/, "");
+      var imageData = String(data.base64Data || data.imageBase64 || "").replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, "");
       var imageName = String(data.fileName || "portfolio-" + new Date().getTime() + ".jpg").trim();
       var imageMimeType = String(data.mimeType || "image/jpeg").trim();
       var imageUrl = uploadImageToDrive(imageData, imageName, imageMimeType);
@@ -1214,6 +1539,12 @@ function doPost(e) {
     }
     if (data.action === "saveClient") {
       return responseJSON(saveClientProfile(data.client));
+    }
+    if (data.action === "auditCalendarFirstSync") {
+      return responseJSON(auditCalendarFirstSyncConfig());
+    }
+    if (data.action === "runCalendarFirstSyncDryRun") {
+      return responseJSON(runCalendarFirstSyncDryRun(data.options || { daysAhead: 365 }));
     }
     if (data.action === "deleteClient") {
       return responseJSON(deleteClientProfile(data.clientId || data.phone || data.id));
@@ -1910,6 +2241,23 @@ function doPost(e) {
           message: savedScheduleValidation.message
         });
       }
+
+      // Final server-side check against the real Google Calendar immediately
+      // before persistence. This prevents a booking even if the UI is stale.
+      var googleCalendarValidation = validateAgainstGoogleCalendar(
+        requestedDateKey, requestedTimeKey, requestedServiceDuration
+      );
+      if (!googleCalendarValidation.allowed) {
+        return responseJSON({
+          status: "error",
+          success: false,
+          persisted: false,
+          conflict: true,
+          code: "SLOT_UNAVAILABLE",
+          message: googleCalendarValidation.message
+        });
+      }
+
       var location = data.appointmentLocation === undefined ? "salon" : String(data.appointmentLocation).trim();
       if (location !== "salon" && location !== "home") {
         return responseJSON({ status: "error", message: "Local de atendimento inválido." });
@@ -2602,4 +2950,193 @@ function sendAdminEmailNotification(data) {
   } catch (error) {
     return { status: "error", success: false, emailSent: false, message: "Falha ao enviar e-mail: " + String(error) };
   }
+}
+
+var ANGELICA_CALENDAR_REDIRECT_URI_ = "https://script.google.com/macros/s/AKfycbysNBMLthA_GvAZJR1irBGcS-3Lspbfz0NIsvz0P2ax6jzE4M01RwVJ0za6zFsq8bGojw/exec";
+var ANGELICA_CALENDAR_ID_ = "angelikm19@gmail.com";
+var ANGELICA_CALENDAR_SCOPES_ = [
+  "https://www.googleapis.com/auth/calendar.events.freebusy",
+  "https://www.googleapis.com/auth/calendar.events"
+];
+
+function getAngelicaCalendarOAuthConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var clientId = String(props.getProperty("GOOGLE_OAUTH_CLIENT_ID") || "").trim();
+  var clientSecret = String(props.getProperty("GOOGLE_OAUTH_CLIENT_SECRET") || "").trim();
+  if (!clientId || !clientSecret) {
+    throw new Error("OAuth configuration missing. Check GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Script Properties.");
+  }
+  return { clientId: clientId, clientSecret: clientSecret };
+}
+
+/** Run from the Apps Script editor and send the returned URL to Angélica. */
+function getCalendarAuthorizationUrl() {
+  var config = getAngelicaCalendarOAuthConfig_();
+  var state = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  CacheService.getScriptCache().put("ANGELICA_CALENDAR_OAUTH_STATE", state, 600);
+  var params = {
+    client_id: config.clientId,
+    redirect_uri: ANGELICA_CALENDAR_REDIRECT_URI_,
+    response_type: "code",
+    scope: ANGELICA_CALENDAR_SCOPES_.join(" "),
+    access_type: "offline",
+    prompt: "consent select_account",
+    include_granted_scopes: "true",
+    state: state
+  };
+  var query = Object.keys(params).map(function(key) {
+    return encodeURIComponent(key) + "=" + encodeURIComponent(params[key]);
+  }).join("&");
+  var url = "https://accounts.google.com/o/oauth2/v2/auth?" + query;
+  Logger.log("ANGELICA CALENDAR AUTHORIZATION URL:");
+  Logger.log(url);
+  return url;
+}
+
+/** OAuth callback routed from doGet(e); consumes one-time state before exchange. */
+function handleAngelicaCalendarOAuthCallback_(e) {
+  var params = e.parameter || {};
+  if (params.error) {
+    return HtmlService.createHtmlOutput("<h2>Authorization not completed</h2><p>Google returned: " + escapeHtml(params.error) + "</p>You may close this window.");
+  }
+  var cache = CacheService.getScriptCache();
+  var expectedState = cache.get("ANGELICA_CALENDAR_OAUTH_STATE");
+  cache.remove("ANGELICA_CALENDAR_OAUTH_STATE");
+  if (!expectedState || !params.state || params.state !== expectedState) {
+    return HtmlService.createHtmlOutput("<h2>Authorization expired</h2><p>Please request a new authorization link from the administrator.</p>");
+  }
+  if (!params.code) {
+    return HtmlService.createHtmlOutput("<h2>Authorization failed</h2><p>Google did not return an authorization code.</p>");
+  }
+  try {
+    var config = getAngelicaCalendarOAuthConfig_();
+    var response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+      method: "post",
+      payload: {
+        code: String(params.code),
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        redirect_uri: ANGELICA_CALENDAR_REDIRECT_URI_,
+        grant_type: "authorization_code"
+      },
+      muteHttpExceptions: true
+    });
+    var status = response.getResponseCode();
+    var tokenData = JSON.parse(response.getContentText() || "{}");
+    if (status < 200 || status >= 300 || !tokenData.access_token) {
+      console.error("Calendar OAuth token exchange failed. HTTP " + status + ": " + String(tokenData.error || "unknown_error") + " — " + String(tokenData.error_description || ""));
+      return HtmlService.createHtmlOutput("<h2>Authorization could not be completed</h2><p>The token exchange failed. Please contact the administrator and request a fresh link.</p>");
+    }
+    if (!tokenData.refresh_token) {
+      console.error("Calendar OAuth did not return a refresh token. Re-consent may be required.");
+      return HtmlService.createHtmlOutput("<h2>Authorization incomplete</h2><p>Google did not provide offline access. Please request a new authorization link and approve access again.</p>");
+    }
+    var props = PropertiesService.getScriptProperties();
+    props.setProperties({
+      ANGELICA_CALENDAR_ACCESS_TOKEN: String(tokenData.access_token),
+      ANGELICA_CALENDAR_REFRESH_TOKEN: String(tokenData.refresh_token),
+      ANGELICA_CALENDAR_TOKEN_EXPIRES_AT: String(Date.now() + (Number(tokenData.expires_in || 3600) * 1000)),
+      ANGELICA_CALENDAR_SCOPE: String(tokenData.scope || ANGELICA_CALENDAR_SCOPES_.join(" ")),
+      ANGELICA_CALENDAR_TOKEN_TYPE: String(tokenData.token_type || "Bearer")
+    }, false);
+    return HtmlService.createHtmlOutput("<h2>Google Calendar connected successfully</h2><p>Angélica's Google Calendar authorization is saved securely.</p><p>No appointments or calendar events have been created or changed.</p>You may close this window.");
+  } catch (err) {
+    console.error("Calendar OAuth callback failed: " + String(err));
+    return HtmlService.createHtmlOutput("<h2>Authorization failed</h2><p>An internal error occurred while completing authorization. Please request a new link.</p>");
+  }
+}
+
+/** Returns connection metadata only; never returns access or refresh tokens. */
+function getCalendarConnectionStatus() {
+  var props = PropertiesService.getScriptProperties();
+  var refreshToken = props.getProperty("ANGELICA_CALENDAR_REFRESH_TOKEN");
+  var result = {
+    service: "AngelicaCalendar",
+    authorized: Boolean(refreshToken),
+    status: refreshToken ? "Google Calendar authorized" : "Awaiting authorization",
+    redirectUri: ANGELICA_CALENDAR_REDIRECT_URI_,
+    scopes: ANGELICA_CALENDAR_SCOPES_
+  };
+  Logger.log(JSON.stringify(result, null, 2));
+  return result;
+}
+
+/** Refreshes the stored access token for later read-only Calendar API checks. */
+function getAngelicaCalendarAccessToken_() {
+  var props = PropertiesService.getScriptProperties();
+  var accessToken = props.getProperty("ANGELICA_CALENDAR_ACCESS_TOKEN");
+  var expiresAt = Number(props.getProperty("ANGELICA_CALENDAR_TOKEN_EXPIRES_AT") || 0);
+  if (accessToken && Date.now() < expiresAt - 60000) return accessToken;
+  var refreshToken = props.getProperty("ANGELICA_CALENDAR_REFRESH_TOKEN");
+  if (!refreshToken) throw new Error("Angélica's Google Calendar has not been authorized yet.");
+  var config = getAngelicaCalendarOAuthConfig_();
+  var response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", {
+    method: "post",
+    payload: {
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    },
+    muteHttpExceptions: true
+  });
+  var status = response.getResponseCode();
+  var data = JSON.parse(response.getContentText() || "{}");
+  if (status < 200 || status >= 300 || !data.access_token) {
+    console.error("Calendar token refresh failed. HTTP " + status + ": " + String(data.error || "unknown_error"));
+    throw new Error("Google Calendar authorization needs to be renewed.");
+  }
+  props.setProperties({
+    ANGELICA_CALENDAR_ACCESS_TOKEN: String(data.access_token),
+    ANGELICA_CALENDAR_TOKEN_EXPIRES_AT: String(Date.now() + (Number(data.expires_in || 3600) * 1000))
+  }, false);
+  return String(data.access_token);
+}
+
+function testSharedCalendarAccess() {
+    var id = PropertiesService
+        .getScriptProperties()
+            .getProperty("GOOGLE_CALENDAR_ID");
+
+              var calendar = CalendarApp.getCalendarById(id);
+
+                if (!calendar) {
+                    throw new Error("Calendário não encontrado ou sem permissão.");
+                      }
+
+                        Logger.log({
+                            calendar: calendar.getName(),
+                                calendarId: calendar.getId(),
+                                    executionAccount: Session.getEffectiveUser().getEmail(),
+                                        timezone: calendar.getTimeZone(),
+                                            access: "OK"
+                                              });
+                                              
+}
+function testCalendarAndSheetReadAccess() {
+    var calendarId = PropertiesService
+        .getScriptProperties()
+            .getProperty("GOOGLE_CALENDAR_ID");
+
+              var calendar = CalendarApp.getCalendarById(calendarId);
+
+                var spreadsheet = SpreadsheetApp.openById(
+                    "1dB23gq_EiQtCT-TQcdEK1yHV0lk5X0TkkIZKbnqTRs0"
+                      );
+
+                        var sheet = spreadsheet.getSheetByName("Agendamentos");
+
+                          if (!calendar) throw new Error("Calendário sem acesso.");
+                            if (!sheet) throw new Error("Aba Agendamentos não encontrada.");
+
+                              Logger.log(JSON.stringify({
+                                  calendar: calendar.getId(),
+                                      spreadsheet: spreadsheet.getName(),
+                                          sheet: sheet.getName(),
+                                              lastRow: sheet.getLastRow(),
+                                                  lastColumn: sheet.getLastColumn(),
+                                                      executionAccount: Session.getEffectiveUser().getEmail(),
+                                                          readOnly: true
+                                                            }, null, 2));
+                                                            
 }

@@ -37,7 +37,7 @@ export const OverviewCalendar: React.FC<OverviewCalendarProps> = ({ appointments
   const month = displayedMonth.getMonth();
 
   const datedAppointments = useMemo(() => appointments
-    .filter(a => a.status !== 'cancelado' && a.status !== 'bloqueado')
+    .filter(a => a.status !== 'cancelado')
     .map(a => ({ appointment: a, date: parseAppointmentDate(a.date, year) }))
     .filter((item): item is { appointment: Appointment; date: Date } => Boolean(item.date)), [appointments, year]);
 
@@ -54,6 +54,8 @@ export const OverviewCalendar: React.FC<OverviewCalendarProps> = ({ appointments
   const cells: Array<number | null> = [...Array(firstWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
   const selectedAppointments = selectedDate ? (byDay.get(Number(selectedDate.split('-')[2])) || []) : [];
+  const selectedBlocks = selectedAppointments.filter(apt => apt.status === 'bloqueado');
+  const selectedBookings = selectedAppointments.filter(apt => apt.status !== 'bloqueado');
 
   return (
     <section className="rounded-2xl bg-white border border-[#E8D9B5] p-4 sm:p-6 shadow-xs">
@@ -75,18 +77,24 @@ export const OverviewCalendar: React.FC<OverviewCalendarProps> = ({ appointments
         {WEEKDAYS.map(day => <div key={day} className="py-2 text-center text-[10px] sm:text-xs font-bold text-[#786C63]">{day}</div>)}
         {cells.map((day, index) => {
           const key = day ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : `empty-${index}`;
-          const count = day ? (byDay.get(day)?.length || 0) : 0;
+          const dayItems = day ? (byDay.get(day) || []) : [];
+          const count = dayItems.length;
+          const hasBlocks = dayItems.some(apt => apt.status === 'bloqueado');
           const selected = selectedDate === key;
           return <button key={key} type="button" disabled={!day} onClick={() => day && setSelectedDate(key)} className={`min-h-12 sm:min-h-14 rounded-lg border text-sm flex flex-col items-center justify-center gap-1 ${!day ? 'border-transparent' : selected ? 'border-[#D4AF37] bg-[#FBF2D5]' : 'border-[#F0E6D7] hover:bg-[#FBF7F2]'} ${count ? 'font-bold text-[#49382E]' : 'text-[#786C63]'}`}>
             {day || ''}
-            {count > 0 && <span className="rounded-full bg-[#D4AF37] text-[#3C2F00] min-w-4 px-1 text-[9px] leading-4">{count}</span>}
+            {count > 0 && <span className={`rounded-full min-w-4 px-1 text-[9px] leading-4 ${hasBlocks ? 'bg-red-100 text-red-800' : 'bg-[#D4AF37] text-[#3C2F00]'}`}>{count}{hasBlocks ? ' 🔒' : ''}</span>}
           </button>;
         })}
       </div>
       <div className="mt-4 border-t border-[#F0E6D7] pt-3">
         <h4 className="font-jakarta text-sm font-bold text-[#49382E] mb-2">{selectedDate ? `Agendamentos de ${selectedDate.split('-').reverse().join('/')}` : 'Selecione um dia para ver os agendamentos'}</h4>
-        {selectedDate && selectedAppointments.length === 0 && <p className="text-xs text-[#786C63]">Nenhum agendamento registrado nesta data.</p>}
-        {selectedAppointments.map(apt => <button key={apt.id} type="button" onClick={onOpenAgenda} className="w-full flex items-center justify-between gap-3 text-left rounded-xl p-3 mb-2 bg-[#FBF7F2] border border-[#E8D9B5] hover:bg-[#FBF2D5]">
+        {selectedDate && selectedAppointments.length === 0 && <p className="text-xs text-[#786C63]">Nenhum agendamento ou bloqueio registrado nesta data.</p>}
+        {selectedBlocks.map(apt => <button key={apt.id} type="button" onClick={onOpenAgenda} className="w-full flex items-center justify-between gap-3 text-left rounded-xl p-3 mb-2 bg-red-50 border border-red-200 hover:bg-red-100">
+          <span className="min-w-0"><span className="block font-jakarta text-xs font-bold text-red-900 truncate">🔒 {apt.clientName || 'Bloqueio do Google Agenda'} · {apt.serviceTitle}</span><span className="block font-jakarta text-[11px] text-red-700">{apt.time || 'Dia inteiro'} · Bloqueado</span></span>
+          <span className="text-xs font-bold text-red-800">Ver bloqueio →</span>
+        </button>)}
+        {selectedBookings.map(apt => <button key={apt.id} type="button" onClick={onOpenAgenda} className="w-full flex items-center justify-between gap-3 text-left rounded-xl p-3 mb-2 bg-[#FBF7F2] border border-[#E8D9B5] hover:bg-[#FBF2D5]">
           <span className="min-w-0"><span className="block font-jakarta text-xs font-bold text-[#49382E] truncate">{apt.clientName} · {apt.serviceTitle}</span><span className="block font-jakarta text-[11px] text-[#786C63]">{apt.time} · {apt.status}</span></span>
           <span className="text-xs font-bold text-[#9A7410]">Ver agenda →</span>
         </button>)}

@@ -392,10 +392,15 @@ function getPublicScheduleData() {
  * The calendar ID is configurable; the verified studio calendar is the fallback.
  * Any read/permission failure is treated as unavailable (fail closed).
  */
-function getBookingCalendar_() {
+function getBookingCalendarId_() {
   var props = PropertiesService.getScriptProperties();
   var calendarId = String(props.getProperty("GOOGLE_CALENDAR_ID") || "angelikm19@gmail.com").trim();
   if (!calendarId) throw new Error("GOOGLE_CALENDAR_ID não configurado.");
+  return calendarId;
+}
+
+function getBookingCalendar_() {
+  var calendarId = getBookingCalendarId_();
   var calendar = CalendarApp.getCalendarById(calendarId);
   if (!calendar) throw new Error("Calendário oficial indisponível: " + calendarId);
   return calendar;
@@ -408,17 +413,180 @@ function isCalendarEventBusy_(event) {
   return true;
 }
 
+function hasAdvancedCalendarApi_() {
+  return typeof Calendar !== "undefined" && Calendar.Events && typeof Calendar.Events.list === "function";
+}
+
+function addDaysToIsoDateKey_(dateKey, days) {
+  var parts = String(dateKey || "").split("-").map(Number);
+  var d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + days));
+  return d.getUTCFullYear() + "-" +
+    ("0" + (d.getUTCMonth() + 1)).slice(-2) + "-" +
+    ("0" + d.getUTCDate()).slice(-2);
+}
+
+function listCalendarEventsMinimal_(calendarId, timeMinIso, timeMaxIso) {
+  var items = [];
+  var pageToken = null;
+  do {
+    var params = {
+      singleEvents: true,
+      orderBy: "startTime",
+      timeMin: timeMinIso,
+      timeMax: timeMaxIso,
+      maxResults: 2500,
+      fields: "nextPageToken,items(id,status,start,end)"
+    };
+    if (pageToken) params.pageToken = pageToken;
+    var response = Calendar.Events.list(calendarId, params);
+    if (response && Array.isArray(response.items)) {
+      items = items.concat(response.items);
+    }
+    pageToken = response && response.nextPageToken ? response.nextPageToken : null;
+  } while (pageToken);
+  return items;
+}
+
+function buildServiceDurationLookup_() {
+  var byId = {};
+  var byTitle = {};
+  try {
+    var sheets = getServicesSheets();
+    for (var sh = 0; sh < sheets.length; sh++) {
+      var rows = sheets[sh].getDataRange().getValues();
+      for (var i = 1; i < rows.length; i++) {
+        var rowId = String(rows[i][0] || "").trim();
+        var rowTitle = String(rows[i][1] || "").trim();
+        var mins = parseDurationMinutes(rows[i][5]);
+        if (!mins) continue;
+        if (rowId && !byId[rowId]) byId[rowId] = mins;
+        if (rowTitle && !byTitle[rowTitle.toLowerCase()]) byTitle[rowTitle.toLowerCase()] = mins;
+      }
+    }
+  } catch (e) {
+    console.error("Unable to build service duration lookup: " + e);
+  }
+  return {
+    resolve: function(serviceId, serviceTitle) {
+      var idKey = String(serviceId || "").trim();
+      var titleKey = String(serviceTitle || "").trim().toLowerCase();
+      if (idKey) {
+        if (byId[idKey]) return byId[idKey];
+        if (idKey.toLowerCase() === "blindagem" && byId["blindagem-homens-incolor"]) {
+          return byId["blindagem-homens-incolor"];
+        }
+      }
+      if (titleKey) {
+        if (byTitle[titleKey]) return byTitle[titleKey];
+        if (titleKey === "blindagem") {
+          if (byId["blindagem-homens-incolor"]) return byId["blindagem-homens-incolor"];
+          var keys = Object.keys(byTitle);
+          for (var k = 0; k < keys.length; k++) {
+            if (keys[k].indexOf("blindagem") >= 0) return byTitle[keys[k]];
+          }
+        }
+      }
+      return null;
+    }
+  };
+}
+
 function getCalendarBusySlotsForPublic_() {
-  var calendar = getBookingCalendar_();
   var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
-  var rangeStart = new Date();
-  rangeStart.setHours(0, 0, 0, 0);
-  var rangeEnd = new Date(rangeStart.getTime());
-  rangeEnd.setDate(rangeEnd.getDate() + 366);
-  var events = calendar.getEvents(rangeStart, rangeEnd);
+  var now = new Date();
+  var rangeStartKey = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+  var rangeEndKey = addDaysToIsoDateKey_(rangeStartKey, 366);
+  var rangeStart = new Date(rangeStartKey + "T00:00:00-03:00");
+  var rangeEnd = new Date(rangeEndKey + "T00:00:00-03:00");
   var slots = [];
   var blockedDates = [];
 
+  if (hasAdvancedCalendarApi_()) {
+    var calendarId = getBookingCalendarId_();
+    var items = listCalendarEventsMinimal_(calendarId, rangeStart.toISOString(), rangeEnd.toISOString());
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || item.status === "cancelled" || !isCalendarEventBusy_(item)) continue;
+      if (item.start && item.start.date) {
+        var allDayStart = String(item.start.date).slice(0, 10);
+        var allDayEnd = item.end && item.end.date ? String(item.end.date).slice(0, 10) : addDaysToIsoDateKey_(allDayStart, 1);
+        var cursorKey = allDayStart < rangeStartKey ? rangeStartKey : allDayStart;
+        var guard = 0;
+        while (cursorKey < allDayEnd && cursorKey < rangeEndKey && guard < 400) {
+          blockedDates.push(cursorKey);
+          cursorKey = addDaysToIsoDateKey_(cursorKey, 1);
+          guard++;
+        }
+        continue;
+      }
+      if (!item.start || !item.start.dateTime || !item.end || !item.end.dateTime) continue;
+      var eventStart = new Date(item.start.dateTime);
+      var eventEnd = new Date(item.end.dateTime);
+      if (isNaN(eventStart.getTime()) || isNaN(eventEnd.getTime()) || eventEnd <= eventStart) continue;
+      var clippedStart = new Date(Math.max(eventStart.getTime(), rangeStart.getTime()));
+      var clippedEnd = new Date(Math.min(eventEnd.getTime(), rangeEnd.getTime()));
+      if (clippedEnd <= clippedStart) continue;
+
+      var startDateKey = Utilities.formatDate(clippedStart, tz, "yyyy-MM-dd");
+      var endDateKey = Utilities.formatDate(new Date(clippedEnd.getTime() - 1), tz, "yyyy-MM-dd");
+      if (startDateKey === endDateKey) {
+        var sText = Utilities.formatDate(clippedStart, tz, "HH:mm");
+        var eText = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+        if (eText === "00:00") eText = "23:59";
+        if (sText === "00:00" && eText === "23:59") {
+          blockedDates.push(startDateKey);
+        } else if (sText !== eText) {
+          slots.push({
+            id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + startDateKey,
+            date: startDateKey,
+            time: sText + " às " + eText,
+            status: "bloqueado",
+            serviceDuration: "30 min"
+          });
+        }
+      } else {
+        var dayKey = startDateKey;
+        var dayGuard = 0;
+        while (dayKey <= endDateKey && dayKey < rangeEndKey && dayGuard < 400) {
+          if (dayKey === startDateKey) {
+            var firstStart = Utilities.formatDate(clippedStart, tz, "HH:mm");
+            if (firstStart === "00:00") {
+              blockedDates.push(dayKey);
+            } else {
+              slots.push({
+                id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + dayKey,
+                date: dayKey,
+                time: firstStart + " às 23:59",
+                status: "bloqueado",
+                serviceDuration: "30 min"
+              });
+            }
+          } else if (dayKey === endDateKey) {
+            var lastEnd = Utilities.formatDate(clippedEnd, tz, "HH:mm");
+            if (lastEnd === "00:00") {
+              blockedDates.push(dayKey);
+            } else {
+              slots.push({
+                id: "gcal-busy-" + String(item.id || Utilities.getUuid()) + "-" + dayKey,
+                date: dayKey,
+                time: "00:00 às " + lastEnd,
+                status: "bloqueado",
+                serviceDuration: "30 min"
+              });
+            }
+          } else {
+            blockedDates.push(dayKey);
+          }
+          dayKey = addDaysToIsoDateKey_(dayKey, 1);
+          dayGuard++;
+        }
+      }
+    }
+    return { slots: slots, blockedDates: blockedDates };
+  }
+
+  var calendar = getBookingCalendar_();
+  var events = calendar.getEvents(rangeStart, rangeEnd);
   events.forEach(function(event) {
     if (!isCalendarEventBusy_(event)) return;
     var eventStart = event.getStartTime();
@@ -457,13 +625,13 @@ function getCalendarBusySlotsForPublic_() {
 
 function validateAgainstGoogleCalendar(dateKey, timeKey, durationMinutes) {
   try {
-    var calendar = getBookingCalendar_();
     var parts = String(dateKey || "").split("-");
     if (parts.length !== 3) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
-    var dayStart = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
+    var normalizedDateKey = parts[0] + "-" + ("0" + Number(parts[1])).slice(-2) + "-" + ("0" + Number(parts[2])).slice(-2);
+    var dayStart = new Date(normalizedDateKey + "T00:00:00-03:00");
     if (isNaN(dayStart.getTime())) return { allowed: false, message: "Data inválida para consultar o Google Agenda." };
-    var dayEnd = new Date(dayStart.getTime());
-    dayEnd.setDate(dayEnd.getDate() + 1);
+    var nextDateKey = addDaysToIsoDateKey_(normalizedDateKey, 1);
+    var dayEnd = new Date(nextDateKey + "T00:00:00-03:00");
 
     var startMinutes = timeToMinutes(timeKey);
     var duration = Number(durationMinutes);
@@ -472,8 +640,37 @@ function validateAgainstGoogleCalendar(dateKey, timeKey, durationMinutes) {
     }
     var requestedStart = new Date(dayStart.getTime() + startMinutes * 60000);
     var requestedEnd = new Date(requestedStart.getTime() + duration * 60000);
-    var events = calendar.getEvents(dayStart, dayEnd);
 
+    if (hasAdvancedCalendarApi_()) {
+      var calendarId = getBookingCalendarId_();
+      var items = listCalendarEventsMinimal_(calendarId, dayStart.toISOString(), dayEnd.toISOString());
+      for (var idx = 0; idx < items.length; idx++) {
+        var item = items[idx];
+        if (!item || item.status === "cancelled" || !isCalendarEventBusy_(item)) continue;
+        if (item.start && item.start.date) {
+          var startDate = String(item.start.date).slice(0, 10);
+          var endDate = item.end && item.end.date ? String(item.end.date).slice(0, 10) : addDaysToIsoDateKey_(startDate, 1);
+          if (startDate <= normalizedDateKey && normalizedDateKey < endDate) {
+            return { allowed: false, message: "Esta data está bloqueada no Google Agenda. Escolha outro dia." };
+          }
+          continue;
+        }
+        if (!item.start || !item.start.dateTime || !item.end || !item.end.dateTime) continue;
+        var itemStart = new Date(item.start.dateTime);
+        var itemEnd = new Date(item.end.dateTime);
+        if (isNaN(itemStart.getTime()) || isNaN(itemEnd.getTime())) continue;
+        if (intervalsOverlap(
+          requestedStart.getTime(), requestedEnd.getTime(),
+          itemStart.getTime(), itemEnd.getTime()
+        )) {
+          return { allowed: false, message: "Este horário conflita com um compromisso ou bloqueio no Google Agenda. Escolha outro horário." };
+        }
+      }
+      return { allowed: true };
+    }
+
+    var calendar = getBookingCalendar_();
+    var events = calendar.getEvents(dayStart, dayEnd);
     for (var i = 0; i < events.length; i++) {
       var event = events[i];
       if (!isCalendarEventBusy_(event)) continue;
@@ -502,9 +699,9 @@ function getPublicAvailabilityData() {
   if (!sheet) return { status: "error", success: false, message: "Aba 'Agendamentos' não encontrada na planilha oficial." };
 
   var values = sheet.getDataRange().getValues();
+  var durationLookup = buildServiceDurationLookup_();
   var slots = [];
   var blockedDates = [];
-  var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
     if (!row[5]) continue;
@@ -519,13 +716,19 @@ function getPublicAvailabilityData() {
     }
     if (!row[9] && !row[1]) continue;
 
-    var mainDuration = getServiceDurationMinutes(String(row[15] || ""), String(row[4] || ""));
-    var totalDuration = mainDuration;
+    // Calendar-imported blocked rows already have their exact interval published
+    // from Google Calendar below; avoid duplicating partial entries or emitting null durations.
+    if (status.toLowerCase() === "bloqueado" && String(row[19] || "").trim()) {
+      continue;
+    }
+
+    var mainDuration = durationLookup.resolve(String(row[15] || ""), String(row[4] || ""));
+    var totalDuration = mainDuration || 0;
     try {
       var additionalIds = row[13] ? JSON.parse(String(row[13])) : [];
       if (Array.isArray(additionalIds)) {
         for (var aIdx = 0; aIdx < additionalIds.length; aIdx++) {
-          var addDur = getServiceDurationMinutes(String(additionalIds[aIdx] || ""), "");
+          var addDur = durationLookup.resolve(String(additionalIds[aIdx] || ""), "");
           if (addDur) totalDuration += addDur;
         }
       }
@@ -536,7 +739,7 @@ function getPublicAvailabilityData() {
       date: dateKey,
       time: timeKey,
       status: status,
-      serviceDuration: totalDuration + " min"
+      serviceDuration: totalDuration > 0 ? (totalDuration + " min") : "30 min"
     });
   }
 
@@ -1253,7 +1456,7 @@ function doPost(e) {
 
     // Agendamento público: usa validações de cliente, catálogo, data, horário,
     // concorrência e duplicidade abaixo. Ações administrativas continuam exigindo token.
-    var isPublicBooking = data.action === "createBooking" || data.action === "getPublicSchedule" || data.action === "getPublicAvailability" || data.action === "getPublicStudioAddress" || data.action === "getPublicPaymentConfig" || data.action === "getPublicGalleryPhotos" || data.action === "getServices" || data.action === "lookupPublicClientByPhone" || data.action === "createAdminSession" || data.action === "auditCalendarFirstSync" || data.action === "runCalendarFirstSyncDryRun";
+    var isPublicBooking = data.action === "createBooking" || data.action === "getPublicSchedule" || data.action === "getPublicAvailability" || data.action === "getPublicStudioAddress" || data.action === "getPublicPaymentConfig" || data.action === "getPublicGalleryPhotos" || data.action === "getServices" || data.action === "lookupPublicClientByPhone" || data.action === "createAdminSession";
     if (!isPublicBooking) {
       var tokenProvided = data.token || data.authToken || data.key || (e.parameter && e.parameter.token);
       var auth = validateAuthorization(tokenProvided);
@@ -1282,7 +1485,6 @@ function doPost(e) {
     if (data.action === "getPublicPaymentConfig") return responseJSON(getPublicPaymentConfigData());
     if (data.action === "getPublicGalleryPhotos") return responseJSON(getPublicGalleryPhotosData());
     if (data.action === "lookupPublicClientByPhone") return responseJSON(lookupPublicClientByPhone(data.phone));
-    if (data.action === "auditCalendarFirstSync") return responseJSON(auditCalendarFirstSyncConfig());
 
     if (data.action === "getPublicSchedule") {    return responseJSON(getPublicScheduleData());  }    // Persistent weekly schedule and date/time blocks.
     // These administrative actions use the authorization check above.
@@ -1337,6 +1539,9 @@ function doPost(e) {
     }
     if (data.action === "saveClient") {
       return responseJSON(saveClientProfile(data.client));
+    }
+    if (data.action === "auditCalendarFirstSync") {
+      return responseJSON(auditCalendarFirstSyncConfig());
     }
     if (data.action === "runCalendarFirstSyncDryRun") {
       return responseJSON(runCalendarFirstSyncDryRun(data.options || { daysAhead: 365 }));

@@ -151,20 +151,25 @@ export default function App() {
     }
   };
 
-  const refreshRemoteAppointments = async () => {
+  const refreshRemoteAppointments = async (syncCalendar = true) => {
     const token = adminSessionToken || (typeof window !== 'undefined' ? sessionStorage.getItem('angelica_admin_session') || '' : '');
     if (!token) return;
     setIsLoadingRemoteAppointments(true);
     setRemoteAppointmentsError(null);
     try {
-      const result = await fetchRemoteAppointmentsDetailed(token);
+      const result = await fetchRemoteAppointmentsDetailed(token, { syncCalendar });
       if (result.success) {
         setAppointments(mergeAndExpandAppointments(result.appointments));
+        if (result.calendarSync?.error) {
+          setRemoteAppointmentsError(result.calendarSync.error);
+        } else if (result.lastBackgroundSync?.status === 'error' && result.lastBackgroundSync.error) {
+          setRemoteAppointmentsError(`Última sincronização automática do Google Agenda falhou: ${result.lastBackgroundSync.error}`);
+        }
       } else {
         setRemoteAppointmentsError(result.error || 'Erro ao sincronizar com o servidor.');
       }
     } catch (err: any) {
-      setRemoteAppointmentsError('Falha de rede ao sincronizar com a planilha do Google Sheets.');
+      setRemoteAppointmentsError('Falha de rede ao sincronizar com o Google Agenda e a planilha.');
     } finally {
       setIsLoadingRemoteAppointments(false);
     }
@@ -1202,10 +1207,10 @@ export default function App() {
                 <div className="flex items-center gap-2 self-end sm:self-center">
                   <button
                     type="button"
-                    onClick={refreshRemoteAppointments}
+                    onClick={() => void refreshRemoteAppointments(true)}
                     disabled={isLoadingRemoteAppointments}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F7EFEA] hover:bg-[#E8D9B5] text-[#49382E] font-jakarta text-xs font-semibold border border-[#E8D9B5] transition-all cursor-pointer disabled:opacity-50"
-                    title="Atualizar dados do Google Sheets"
+                    title="Sincronizar Google Agenda e atualizar planilha"
                   >
                     <span className={`material-symbols-outlined text-[16px] ${isLoadingRemoteAppointments ? 'animate-spin' : ''}`}>
                       refresh
@@ -1254,6 +1259,8 @@ export default function App() {
                   services={services}
                   onUpdateAppointment={handleUpdateAppointment}
                   onDeleteAppointment={handleDeleteAppointment}
+                  onSyncCalendar={() => void refreshRemoteAppointments(true)}
+                  isSyncingCalendar={isLoadingRemoteAppointments}
                 />
               )}
 

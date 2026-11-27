@@ -27,6 +27,7 @@ var CFS_ORIGINAL_START_HEADER = "Google Calendar Original Start";
 var CFS_LOOP_GUARD_KEY = "CFS_INTERNAL_SYNC_LOCK";
 var CFS_LOOP_GUARD_SECONDS = 20;
 var CFS_APPOINTMENT_TAG_PREFIX = "[ESPACO_ANGELICA_APT_ID:";
+var CFS_LAST_SYNC_STATUS_KEY = "CFS_LAST_SYNC_STATUS";
 
 var CFS_DURATION_EXCEPTION_IDS = {
   "apt-1793902283321": true, // Validated special 150-minute appointment.
@@ -234,23 +235,108 @@ function cfsProtectedReason_(event) {
   return "";
 }
 
+function cfsNormalizePhoneKey_(value) {
+  var digits = String(value || "").replace(/\D/g, "");
+  if (digits.indexOf("55") === 0 && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.substring(2);
+  }
+  if (digits.indexOf("0") === 0 && (digits.length === 11 || digits.length === 12)) {
+    digits = digits.substring(1);
+  }
+  return digits.length >= 8 && digits.length <= 15 ? digits : "";
+}
+
+function cfsPhonesMatch_(phoneA, phoneB) {
+  var a = cfsNormalizePhoneKey_(phoneA);
+  var b = cfsNormalizePhoneKey_(phoneB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= 10 && b.length >= 10 && a.substring(0, 2) === b.substring(0, 2) && a.slice(-8) === b.slice(-8)) {
+    return true;
+  }
+  if ((a.length === 8 || a.length === 9) && (b.length === 10 || b.length === 11) && b.slice(-8) === a.slice(-8)) {
+    return true;
+  }
+  if ((b.length === 8 || b.length === 9) && (a.length === 10 || a.length === 11) && a.slice(-8) === b.slice(-8)) {
+    return true;
+  }
+  return false;
+}
+
+function cfsCanonicalClientName_(rawName) {
+  var clean = String(rawName || "").replace(/\s+/g, " ").trim();
+  var norm = cfsNormalize_(clean);
+  if (norm === "kristine") return "Kristine Sorensen";
+  if (norm === "josefina") return "Josefina Calderón";
+  return clean;
+}
+
+function cfsIsGenericClientPhrase_(value) {
+  var norm = cfsNormalize_(value);
+  if (!norm || norm.length < 3) return true;
+  if (/^(agendamento|agendamento de unhas|agendamento unhas|agendamentos|atendimento|atendimento de unhas|horario|reserva|unhas|cliente|clientes|lika nails designer|espaco angelica|espaco angelica do carmo|horario bloqueado|bloqueio do google agenda|evento do google agenda|local|location|booking notes|business name|business phone|customer name|customer phone)$/.test(norm)) {
+    return true;
+  }
+  if (/\b(bloqueio|bloqueado|bloqueada|folga|ferias|feriado|almoco|reuniao|reunioes|teste|administrativo|curso|treinamento|capacitacao|workshop|dentista|medico|consulta|evento|pessoal|indisponivel|viagem)\b/.test(norm)) {
+    return true;
+  }
+  if (/^(?:data preferida|horario preferido|location|local|chat with|business|http|https|www\.)/.test(norm)) {
+    return true;
+  }
+  if (/^\d{1,4}[\/-]\d{1,2}(?:[\/-]\d{2,4})?(?:\s+\d{1,2}[:h]\d{0,2}(?:\s*brt)?)?$/.test(norm)) {
+    return true;
+  }
+  if (/^\d+$/.test(norm.replace(/[\s()+-]/g, ""))) {
+    return true;
+  }
+  return false;
+}
+
 function cfsReadKnownClients_(spreadsheet, appointmentRows) {
-  var names = {};
-  function addName(value) {
-    var raw = String(value || "").trim();
-    var normalized = cfsNormalize_(raw);
-    if (normalized.length < 3 || /\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\b/.test(normalized)) return;
-    names[normalized] = raw;
+  var byNormalized = {};
+  function addClient(nameVal, phoneVal, emailVal) {
+    var canonical = cfsCanonicalClientName_(nameVal);
+    if (cfsIsGenericClientPhrase_(canonical)) return;
+    var normalized = cfsNormalize_(canonical);
+    if (!byNormalized[normalized]) {
+      byNormalized[normalized] = { normalized: normalized, name: canonical, phones: [], emails: [] };
+    }
+    var entry = byNormalized[normalized];
+    if (canonical.length > entry.name.length) entry.name = canonical;
+    var phoneKey = cfsNormalizePhoneKey_(phoneVal);
+    if (phoneKey && entry.phones.indexOf(phoneKey) === -1) entry.phones.push(phoneKey);
+    var email = String(emailVal || "").trim().toLowerCase();
+    if (email && email.indexOf("@") > 0 && entry.emails.indexOf(email) === -1) entry.emails.push(email);
   }
   (appointmentRows || []).forEach(function(row) {
-    if (!cfsRowGuard_(row)) addName(row.client);
+    if (!cfsRowGuard_(row)) {
+      addClient(row.client, row.values ? row.values[2] : "", row.values ? row.values[3] : "");
+    }
   });
+  var profileSheet = spreadsheet.getSheetByName("Perfis de Clientes");
+  if (profileSheet && profileSheet.getLastRow() >= 2) {
+    var profileCols = Math.min(Math.max(profileSheet.getLastColumn(), 3), 4);
+    var profileValues = profileSheet.getRange(2, 1, profileSheet.getLastRow() - 1, profileCols).getValues();
+    profileValues.forEach(function(row) {
+      var colPhone = String(row[1] || "").trim();
+      var rawJson = String(row[2] || "").trim();
+      if (rawJson) {
+        try {
+          var prof = JSON.parse(rawJson);
+          if (prof && typeof prof === "object" && prof.name) {
+            addClient(prof.name, prof.phone || colPhone, prof.email || "");
+            return;
+          }
+        } catch (e) {}
+      }
+    });
+  }
   var clientsSheet = spreadsheet.getSheetByName("Clientes");
   if (clientsSheet && clientsSheet.getLastRow() >= 2) {
-    var clientValues = clientsSheet.getRange(2, 1, clientsSheet.getLastRow() - 1, 3).getValues();
-    clientValues.forEach(function(row) { addName(row[1] || row[0]); });
+    var clientValues = clientsSheet.getRange(2, 1, clientsSheet.getLastRow() - 1, Math.min(Math.max(clientsSheet.getLastColumn(), 3), 4)).getValues();
+    clientValues.forEach(function(row) { addClient(row[1] || row[0], row[2] || "", ""); });
   }
-  return Object.keys(names).map(function(key) { return { normalized: key, name: names[key] }; });
+  return Object.keys(byNormalized).map(function(key) { return byNormalized[key]; });
 }
 
 function cfsResolveCatalogAlias_(rawService, catalog) {
@@ -263,13 +349,32 @@ function cfsResolveCatalogAlias_(rawService, catalog) {
     "mao": { main: "manicure-tradicional", additional: [] },
     "manicure": { main: "manicure-tradicional", additional: [] },
     "manicure tradicional": { main: "manicure-tradicional", additional: [] },
+    "manicure convencional": { main: "manicure-tradicional", additional: [] },
     "pe": { main: "pedicure-tradicional", additional: [] },
     "pedicure": { main: "pedicure-tradicional", additional: [] },
     "pedicure tradicional": { main: "pedicure-tradicional", additional: [] },
+    "pedicure convencional": { main: "pedicure-tradicional", additional: [] },
     "pe e mao": { main: "manicure-pedicure-tradicional", additional: [] },
+    "pe e mao tradicional": { main: "manicure-pedicure-tradicional", additional: [] },
+    "pe e mao convencional": { main: "manicure-pedicure-tradicional", additional: [] },
+    "pe e mao completo": { main: "manicure-pedicure-tradicional", additional: [] },
     "mao e pe": { main: "manicure-pedicure-tradicional", additional: [] },
+    "mao e pe tradicional": { main: "manicure-pedicure-tradicional", additional: [] },
+    "mao e pe convencional": { main: "manicure-pedicure-tradicional", additional: [] },
     "manicure e pedicure": { main: "manicure-pedicure-tradicional", additional: [] },
+    "manicure e pedicure convencional": { main: "manicure-pedicure-tradicional", additional: [] },
     "pedicure e manicure": { main: "manicure-pedicure-tradicional", additional: [] },
+    "pe e mao domicilio": { main: "domicilio-pe-e-mao", additional: [] },
+    "pe e mao a domicilio": { main: "domicilio-pe-e-mao", additional: [] },
+    "pe e mao em domicilio": { main: "domicilio-pe-e-mao", additional: [] },
+    "mao e pe domicilio": { main: "domicilio-pe-e-mao", additional: [] },
+    "manicure e pedicure domicilio": { main: "domicilio-pe-e-mao", additional: [] },
+    "mao domicilio": { main: "domicilio-mao", additional: [] },
+    "mao a domicilio": { main: "domicilio-mao", additional: [] },
+    "manicure domicilio": { main: "domicilio-mao", additional: [] },
+    "pe domicilio": { main: "domicilio-pe", additional: [] },
+    "pe a domicilio": { main: "domicilio-pe", additional: [] },
+    "pedicure domicilio": { main: "domicilio-pe", additional: [] },
     "manutencao e pe": { main: "manutencao-fibra-vidro", additional: ["pedicure-tradicional"] },
     "manutencao de crescimento e pe": { main: "manutencao-fibra-vidro", additional: ["pedicure-tradicional"] },
     "manutencao": { main: "manutencao-fibra-vidro", additional: [] },
@@ -301,8 +406,178 @@ function cfsResolveCatalogAlias_(rawService, catalog) {
   return { ok: true, main: main, additional: additional, matchedBy: "APPROVED_LEGACY_ALIAS" };
 }
 
+function cfsResolveServiceList_(rawText, catalog) {
+  var pieces = String(rawText || "").split(/\s*(?:\+|&)\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
+  if (!pieces.length) return { ok: false, reason: "EMPTY_SERVICE_TEXT" };
+  var resolved = [];
+  for (var q = 0; q < pieces.length; q++) {
+    var match = cfsResolveCatalogAlias_(pieces[q], catalog);
+    if (!match.ok) return { ok: false, reason: match.reason };
+    resolved.push(match);
+  }
+  var items = [], seen = {};
+  resolved.forEach(function(m) {
+    if (m.main && m.main.id && !seen[m.main.id]) { seen[m.main.id] = true; items.push(m.main); }
+    (m.additional || []).forEach(function(add) {
+      if (add && add.id && !seen[add.id]) { seen[add.id] = true; items.push(add); }
+    });
+  });
+  if (!items.length) return { ok: false, reason: "SERVICE_ID_MISSING_OR_DUPLICATE" };
+  return { ok: true, service: items[0], additionalServices: items.slice(1) };
+}
+
+function cfsStripHtmlToLines_(html) {
+  var text = String(html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+  return text.split("\n").map(function(line) { return line.replace(/\s+/g, " ").trim(); }).filter(Boolean);
+}
+
+function cfsExtractEventMetadata_(event) {
+  var summary = String((event && event.summary) || "").trim();
+  var lines = cfsStripHtmlToLines_((event && event.description) || "");
+  var customerName = "";
+  var customerPhone = "";
+  var customerEmail = "";
+  var serviceField = "";
+  var bookingNotesLines = [];
+  var inBookingNotes = false;
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (/^(?:booking\s*notes|notas\s*do\s*agendamento|observa[cç][õo]es|notas)\s*:/i.test(line)) {
+      inBookingNotes = true;
+      var inlineNotes = line.replace(/^(?:booking\s*notes|notas\s*do\s*agendamento|observa[cç][õo]es|notas)\s*:/i, "").trim();
+      if (inlineNotes) bookingNotesLines.push(inlineNotes);
+      continue;
+    }
+    if (inBookingNotes) {
+      if (/^(?:business\s*name|business\s*phone|chat\s*with\s*business|customer\s*name|customer\s*phone|customer\s*email)\s*:/i.test(line)) {
+        inBookingNotes = false;
+      } else {
+        bookingNotesLines.push(line);
+        continue;
+      }
+    }
+    var mName = /^(?:customer\s*name|nome\s*d[ao]\s*cliente|cliente)\s*:\s*(.+)$/i.exec(line);
+    if (mName && !customerName && !cfsIsGenericClientPhrase_(mName[1])) {
+      customerName = cfsCanonicalClientName_(mName[1]);
+      continue;
+    }
+    var mPhone = /^(?:customer\s*phone|telefone\s*d[ao]\s*cliente|telefone|whatsapp)\s*:\s*(.+)$/i.exec(line);
+    if (mPhone && !customerPhone) {
+      var pVal = String(mPhone[1] || "").trim();
+      if (cfsNormalizePhoneKey_(pVal)) customerPhone = pVal;
+      continue;
+    }
+    var mChatCustomer = /^chat\s*with\s*customer\s*:\s*.*wa\.me\/(\d{8,15})/i.exec(line);
+    if (mChatCustomer && !customerPhone) {
+      customerPhone = "+" + mChatCustomer[1];
+      continue;
+    }
+    var mEmail = /^(?:customer\s*email|e-?mail(?:\s*d[ao]\s*cliente)?)\s*:\s*([^\s@]+@[^\s@]+\.[^\s@]+)$/i.exec(line);
+    if (mEmail && !customerEmail) {
+      customerEmail = mEmail[1].trim().toLowerCase();
+      continue;
+    }
+    var mService = /^(?:service|servi[cç]o|procedimento)\s*:\s*(.+)$/i.exec(line);
+    if (mService && !serviceField) {
+      serviceField = mService[1].trim();
+      continue;
+    }
+  }
+
+  var studioEmails = { "angelikm19@gmail.com": true, "alanpkmorais@gmail.com": true };
+  var attendees = ((event && event.attendees) || []).filter(function(a) {
+    if (!a || a.self || a.resource) return false;
+    var em = String(a.email || "").trim().toLowerCase();
+    return !studioEmails[em];
+  }).map(function(a) {
+    return {
+      displayName: String(a.displayName || "").trim(),
+      email: String(a.email || "").trim().toLowerCase()
+    };
+  });
+
+  return {
+    summary: summary,
+    descriptionLines: lines,
+    customerName: customerName,
+    customerPhone: customerPhone,
+    customerEmail: customerEmail,
+    serviceField: serviceField,
+    bookingNotes: bookingNotesLines.join(" - ").trim(),
+    attendees: attendees
+  };
+}
+
+function cfsResolveClientDeterministically_(candidateNames, phone, email, attendees, knownClients) {
+  var list = knownClients || [];
+  // 1. Strongest deterministic key: unique phone match against known official clients
+  var phoneKey = cfsNormalizePhoneKey_(phone);
+  if (phoneKey) {
+    var phoneMatches = list.filter(function(c) {
+      return (c.phones || []).some(function(p) { return cfsPhonesMatch_(p, phoneKey); });
+    });
+    if (phoneMatches.length === 1) {
+      return { ok: true, clientName: phoneMatches[0].name, method: "KNOWN_CLIENT_BY_PHONE" };
+    }
+  }
+
+  // 2. Deterministic email match (from description or attendee)
+  var emailsToTry = [];
+  if (email) emailsToTry.push(String(email).trim().toLowerCase());
+  (attendees || []).forEach(function(a) { if (a.email) emailsToTry.push(a.email); });
+  for (var eIdx = 0; eIdx < emailsToTry.length; eIdx++) {
+    var em = emailsToTry[eIdx];
+    var emailMatches = list.filter(function(c) { return (c.emails || []).indexOf(em) >= 0; });
+    if (emailMatches.length === 1) {
+      return { ok: true, clientName: emailMatches[0].name, method: "KNOWN_CLIENT_BY_EMAIL" };
+    }
+  }
+
+  // 3. Evaluate explicit candidate names against known clients first, then explicit valid names
+  var cleanedCandidates = [];
+  (candidateNames || []).forEach(function(raw) {
+    var c = cfsCanonicalClientName_(raw);
+    if (!cfsIsGenericClientPhrase_(c) && cleanedCandidates.indexOf(c) === -1) cleanedCandidates.push(c);
+  });
+  (attendees || []).forEach(function(a) {
+    var c = cfsCanonicalClientName_(a.displayName);
+    if (!cfsIsGenericClientPhrase_(c) && cleanedCandidates.indexOf(c) === -1) cleanedCandidates.push(c);
+  });
+
+  for (var i = 0; i < cleanedCandidates.length; i++) {
+    var cand = cleanedCandidates[i];
+    var norm = cfsNormalize_(cand);
+    var exact = list.filter(function(c) { return c.normalized === norm; });
+    if (exact.length === 1) return { ok: true, clientName: exact[0].name, method: "KNOWN_CLIENT_EXACT_NAME" };
+    var firstHits = list.filter(function(c) {
+      var first = c.normalized.split(" ")[0];
+      return first && first === norm;
+    });
+    var fullFirstHits = firstHits.filter(function(c) { return c.normalized.split(" ").length > 1; });
+    if (fullFirstHits.length === 1) return { ok: true, clientName: fullFirstHits[0].name, method: "KNOWN_CLIENT_UNIQUE_FIRST_NAME" };
+    if (fullFirstHits.length > 1) return { ok: false, reason: "AMBIGUOUS_CLIENT_FIRST_NAME" };
+    if (firstHits.length === 1) return { ok: true, clientName: firstHits[0].name, method: "KNOWN_CLIENT_FIRST_NAME" };
+  }
+
+  if (cleanedCandidates.length >= 1) {
+    return { ok: true, clientName: cleanedCandidates[0], method: "EXPLICIT_STRUCTURED_OR_SEPARATED_CLIENT" };
+  }
+  return { ok: false, reason: "CLIENT_NAME_NOT_CONFIRMED" };
+}
+
 function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
   var rawTitle = String(title || "").trim();
+  if (cfsIsGenericClientPhrase_(rawTitle)) {
+    return { ok: false, reason: "TITLE_MUST_CONTAIN_KNOWN_CLIENT_AND_APPROVED_SERVICE" };
+  }
   var rawParts = rawTitle.split(/\s*[-–—:|]\s*/).map(function(s) { return s.trim(); }).filter(Boolean);
   var candidatePairs = [];
 
@@ -321,7 +596,8 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
     if (!valid) continue;
     var clientParts = rawParts.filter(function(_, index) { return index !== p; });
     if (!clientParts.length) continue;
-    var clientText = clientParts.join(" - ").trim();
+    var clientText = cfsCanonicalClientName_(clientParts.join(" - ").trim());
+    if (cfsIsGenericClientPhrase_(clientText)) continue;
     var clientNorm = cfsNormalize_(clientText);
     var knownExact = (knownClients || []).filter(function(c) { return c.normalized === clientNorm; });
     var knownFirst = (knownClients || []).filter(function(c) {
@@ -394,8 +670,7 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
     if (item.id && !seen[item.id]) { seen[item.id] = true; uniqueServices.push(item); }
   });
   if (!uniqueServices.length) return { ok: false, reason: "SERVICE_ID_MISSING_OR_DUPLICATE" };
-  var clientNorm = cfsNormalize_(selected.clientName);
-  if (clientNorm.length < 3 || /\b(bloqueio|bloqueado|folga|ferias|feriado|almoco|reuniao|teste|administrativo|curso)\b/.test(clientNorm)) {
+  if (cfsIsGenericClientPhrase_(selected.clientName)) {
     return { ok: false, reason: "CLIENT_NAME_NOT_CONFIRMED" };
   }
   return {
@@ -404,6 +679,110 @@ function cfsMatchTitleToCatalog_(title, catalog, knownClients) {
     service: uniqueServices[0],
     additionalServices: uniqueServices.slice(1),
     matchedBy: selected.method
+  };
+}
+
+function cfsClassifyCalendarEvent_(event, catalog, knownClients) {
+  var meta = cfsExtractEventMetadata_(event);
+
+  // Clean Booking Notes segments (stripping trailing date/time/location/generic fragments)
+  var rawNoteSegments = meta.bookingNotes
+    ? meta.bookingNotes.split(/\s*[-–—:|]\s*/).map(function(s) { return s.trim(); }).filter(Boolean)
+    : [];
+  var noteServiceMatches = [];
+  var noteClientCandidates = [];
+  for (var n = 0; n < rawNoteSegments.length; n++) {
+    var seg = rawNoteSegments[n];
+    var svcRes = cfsResolveServiceList_(seg, catalog);
+    if (svcRes.ok) {
+      noteServiceMatches.push(svcRes);
+      continue;
+    }
+    if (!cfsIsGenericClientPhrase_(seg)) {
+      noteClientCandidates.push(seg);
+    }
+  }
+
+  // Priority 1: Direct title match, enriched with deterministic metadata (phone / cleaner full name from description)
+  var titleMatch = cfsMatchTitleToCatalog_(meta.summary, catalog, knownClients);
+  if (titleMatch.ok) {
+    var enrichedCandidates = [];
+    if (meta.customerName) enrichedCandidates.push(meta.customerName);
+    noteClientCandidates.forEach(function(c) {
+      if (cfsNormalize_(c).split(" ").length >= 2) enrichedCandidates.push(c);
+    });
+    enrichedCandidates.push(titleMatch.clientName);
+    var resolvedClient = cfsResolveClientDeterministically_(
+      enrichedCandidates, meta.customerPhone, meta.customerEmail, meta.attendees, knownClients
+    );
+    var finalName = resolvedClient.ok ? resolvedClient.clientName : titleMatch.clientName;
+    return {
+      ok: true,
+      clientName: finalName,
+      clientPhone: meta.customerPhone || "",
+      service: titleMatch.service,
+      additionalServices: titleMatch.additionalServices,
+      matchedBy: titleMatch.matchedBy + (resolvedClient.ok && finalName !== titleMatch.clientName ? "+" + resolvedClient.method : "")
+    };
+  }
+
+  // Priority 2: Structured description / Booking notes + summary segments + attendees + phone/email lookup
+  var resolvedService = null;
+  if (meta.serviceField) {
+    var fieldSvc = cfsResolveServiceList_(meta.serviceField, catalog);
+    if (fieldSvc.ok) resolvedService = fieldSvc;
+  }
+  if (!resolvedService && noteServiceMatches.length === 1) {
+    resolvedService = noteServiceMatches[0];
+  }
+  var summaryParts = meta.summary ? meta.summary.split(/\s*[-–—:|]\s*/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+  var summaryClientCandidates = [];
+  for (var sp = 0; sp < summaryParts.length; sp++) {
+    var sPart = summaryParts[sp];
+    var sPartSvc = cfsResolveServiceList_(sPart, catalog);
+    if (sPartSvc.ok) {
+      if (!resolvedService) resolvedService = sPartSvc;
+    } else if (!cfsIsGenericClientPhrase_(sPart)) {
+      summaryClientCandidates.push(sPart);
+    }
+  }
+  // If summary had no separator (e.g. "Elaide Pé e mão") and Booking notes already confirmed service,
+  // strip the service phrase from summary to verify consistency without guessing.
+  if (!resolvedService && meta.descriptionLines.length) {
+    for (var dl = 0; dl < meta.descriptionLines.length; dl++) {
+      var dLine = meta.descriptionLines[dl];
+      if (/^(?:business|chat with|customer|http|https)/i.test(dLine)) continue;
+      var lineSvc = cfsResolveServiceList_(dLine, catalog);
+      if (lineSvc.ok) { resolvedService = lineSvc; break; }
+    }
+  }
+
+  if (!resolvedService) {
+    return { ok: false, reason: titleMatch.reason || "TITLE_MUST_CONTAIN_KNOWN_CLIENT_AND_APPROVED_SERVICE" };
+  }
+
+  var candidateNames = [];
+  if (meta.customerName) candidateNames.push(meta.customerName);
+  noteClientCandidates.forEach(function(c) { candidateNames.push(c); });
+  // Only include summary parts as client candidates if we didn't get an explicit name from structured notes
+  if (!candidateNames.length) {
+    summaryClientCandidates.forEach(function(c) { candidateNames.push(c); });
+  }
+
+  var clientRes = cfsResolveClientDeterministically_(
+    candidateNames, meta.customerPhone, meta.customerEmail, meta.attendees, knownClients
+  );
+  if (!clientRes.ok) {
+    return { ok: false, reason: clientRes.reason || "TITLE_MUST_CONTAIN_KNOWN_CLIENT_AND_APPROVED_SERVICE" };
+  }
+
+  return {
+    ok: true,
+    clientName: clientRes.clientName,
+    clientPhone: meta.customerPhone || "",
+    service: resolvedService.service,
+    additionalServices: resolvedService.additionalServices,
+    matchedBy: "DESCRIPTION_OR_METADATA:" + clientRes.method
   };
 }
 
@@ -419,11 +798,13 @@ function cfsReadRows_(sheet) {
       row: i + 1,
       values: r,
       client: String(r[1] || "").trim(),
+      phone: String(r[2] || "").trim(),
       procedure: String(r[4] || "").trim(),
       dateKey: cfsDateKey_(r[5] || d[5]),
       timeKey: cfsTimeKey_(r[6] || d[6]),
       status: cfsNormalize_(r[8]),
       appointmentId: String(r[9] || "").trim(),
+      notes: String(r[10] || "").trim(),
       additionalIds: cfsParseAdditionalIds_(r[13]),
       serviceId: String(r[15] || "").trim(),
       eventId: String(r[19] || "").trim(),
@@ -443,15 +824,17 @@ function cfsRowGuard_(row) {
 }
 
 function cfsEventIdentityConfirmed_(event, row) {
-  var description = String(event.description || "");
+  var description = String((event && event.description) || "");
   if (row.appointmentId && description.indexOf(CFS_APPOINTMENT_TAG_PREFIX + row.appointmentId + "]") >= 0) return true;
-  var title = cfsNormalize_(event.summary || "");
+  var meta = cfsExtractEventMetadata_(event);
+  if (meta.customerPhone && row.phone && cfsPhonesMatch_(meta.customerPhone, row.phone)) return true;
+  var searchText = cfsNormalize_(meta.summary + " " + meta.customerName + " " + meta.bookingNotes + " " + meta.descriptionLines.join(" "));
   var client = cfsNormalize_(row.client);
   if (!client) return false;
-  if (title.indexOf(client) >= 0) return true;
+  if (searchText.indexOf(client) >= 0) return true;
   var tokens = client.split(" ").filter(function(token) { return token.length >= 3; });
-  if (tokens.length >= 2) return tokens.filter(function(token) { return title.indexOf(token) >= 0; }).length >= 2;
-  return tokens.length === 1 && tokens[0].length >= 5 && title.indexOf(tokens[0]) >= 0;
+  if (tokens.length >= 2) return tokens.filter(function(token) { return searchText.indexOf(token) >= 0; }).length >= 2;
+  return tokens.length === 1 && tokens[0].length >= 4 && searchText.indexOf(tokens[0]) >= 0;
 }
 
 function cfsFindRowForEvent_(event, eventDate, eventTime, rows) {
@@ -621,7 +1004,8 @@ function cfsGetTriggerAudit_() {
     activeHandlers: [],
     legacyHandlers: [],
     calendarTriggerCount: 0,
-    sheetEditTriggerCount: 0
+    sheetEditTriggerCount: 0,
+    periodicTriggerCount: 0
   };
   if (typeof ScriptApp === "undefined" || !ScriptApp.getProjectTriggers) return result;
   try {
@@ -639,6 +1023,7 @@ function cfsGetTriggerAudit_() {
       if (legacy[handler] === true) result.legacyHandlers.push(handler);
       if (handler === "handleCalendarFirstSyncCalendarEventUpdated") result.calendarTriggerCount++;
       if (handler === "handleCalendarFirstSyncServiceDurationEdit") result.sheetEditTriggerCount++;
+      if (handler === "handleCalendarFirstSyncPeriodicSweep") result.periodicTriggerCount++;
     });
   } catch (error) {
     result.error = String(error.message || error);
@@ -666,6 +1051,7 @@ function auditCalendarFirstSyncConfig() {
     legacySyncTriggers: [],
     newCalendarTriggerCount: 0,
     newSheetEditTriggerCount: 0,
+    newPeriodicTriggerCount: 0,
     legacyWriteSyncEnabled: String(props.getProperty("CALENDAR_DURATION_SYNC_ENABLED") || "").trim().toLowerCase() === "true",
     blockers: []
   };
@@ -717,6 +1103,7 @@ function auditCalendarFirstSyncConfig() {
   report.legacySyncTriggers = triggerAudit.legacyHandlers;
   report.newCalendarTriggerCount = triggerAudit.calendarTriggerCount;
   report.newSheetEditTriggerCount = triggerAudit.sheetEditTriggerCount;
+  report.newPeriodicTriggerCount = triggerAudit.periodicTriggerCount || 0;
   if (!triggerAudit.available) report.blockers.push("Não foi possível auditar os gatilhos ativos do projeto Apps Script.");
   if (triggerAudit.error) report.blockers.push("Erro ao auditar gatilhos: " + triggerAudit.error);
   if (triggerAudit.legacyHandlers.length) report.blockers.push("Há gatilhos antigos de sincronização ativos: " + triggerAudit.legacyHandlers.join(", ") + ". Desative-os manualmente somente após revisão.");
@@ -762,6 +1149,17 @@ function syncCalendarBookingsAndDurations(options) {
     var durationResults = [], calendarUpdates = [], imported = 0, linked = 0, dateTimeUpdates = 0, cancelledRows = 0;
     var blockedRowsImported = 0, blockedRowsUpdated = 0;
 
+    function cfsFormatBlockNote_(reason) {
+      var rawReason = String(reason || "");
+      if (rawReason.indexOf("ALL_DAY_OR_MISSING_START") >= 0) {
+        return "Bloqueio de dia inteiro importado do Google Agenda.";
+      }
+      if (rawReason.indexOf("PROTECTED_OR_TEST_EVENT") >= 0 || rawReason.indexOf("NON_STANDARD_EVENT_TYPE") >= 0) {
+        return "Evento pessoal ou bloqueio protegido importado do Google Agenda.";
+      }
+      return "Evento não classificado do Google Agenda — revisão recomendada (informe cliente e procedimento oficial no evento).";
+    }
+
     function queueCalendarBlock_(blockedEvent, reason) {
       var blockStart = cfsEventStart_(blockedEvent);
       var blockEnd = cfsEventEnd_(blockedEvent);
@@ -774,6 +1172,7 @@ function syncCalendarBookingsAndDurations(options) {
       var blockTime = allDay ? "Dia inteiro" : Utilities.formatDate(blockStart, CFS_TIME_ZONE, "HH:mm");
       var blockTitle = String(blockedEvent.summary || "Evento do Google Agenda").trim();
       var blockOriginalStart = cfsOriginalStartRaw_(blockedEvent);
+      var blockNote = cfsFormatBlockNote_(reason);
       var blockMatch = cfsFindRowForEvent_(blockedEvent, blockDate, allDay ? "00:00" : blockTime, rowData.rows);
       if (blockMatch.error) {
         needsReview.push({ eventId: blockedEvent.id || "", title: blockTitle, date: blockDate, time: blockTime, reason: blockMatch.error });
@@ -786,19 +1185,35 @@ function syncCalendarBookingsAndDurations(options) {
           return;
         }
         claimedRows[blockRow.row] = true;
-        rowUpdates.push({ row: blockRow.row, values: {
-          date: blockDate, time: blockTime, status: "bloqueado",
-          client: blockTitle, procedure: "Bloqueio do Google Agenda",
-          eventId: String(blockedEvent.id || ""), originalStart: blockOriginalStart
-        }});
-        blockRow.dateKey = blockDate;
-        blockRow.timeKey = allDay ? "" : blockTime;
-        blockRow.status = "bloqueado";
-        blockRow.client = blockTitle;
-        blockRow.procedure = "Bloqueio do Google Agenda";
-        blockRow.eventId = String(blockedEvent.id || "");
-        blockRow.originalStartKey = blockOriginalStart;
-        blockedRowsUpdated++;
+        var expectedTimeKey = allDay ? "" : blockTime;
+        var currentTimeDisplay = allDay ? String((blockRow.values && blockRow.values[6]) || "").trim() : blockRow.timeKey;
+        var blockChanged = (
+          blockRow.dateKey !== blockDate ||
+          (allDay ? cfsNormalize_(currentTimeDisplay) !== "dia inteiro" : blockRow.timeKey !== expectedTimeKey) ||
+          blockRow.status !== "bloqueado" ||
+          blockRow.client !== blockTitle ||
+          blockRow.procedure !== "Bloqueio do Google Agenda" ||
+          !cfsEventIdEqual_(blockRow.eventId, String(blockedEvent.id || "")) ||
+          (blockOriginalStart && blockRow.originalStartKey !== blockOriginalStart) ||
+          blockRow.notes !== blockNote
+        );
+        if (blockChanged) {
+          rowUpdates.push({ row: blockRow.row, values: {
+            date: blockDate, time: blockTime, status: "bloqueado",
+            client: blockTitle, procedure: "Bloqueio do Google Agenda",
+            notes: blockNote,
+            eventId: String(blockedEvent.id || ""), originalStart: blockOriginalStart
+          }});
+          blockRow.dateKey = blockDate;
+          blockRow.timeKey = expectedTimeKey;
+          blockRow.status = "bloqueado";
+          blockRow.client = blockTitle;
+          blockRow.procedure = "Bloqueio do Google Agenda";
+          blockRow.notes = blockNote;
+          blockRow.eventId = String(blockedEvent.id || "");
+          blockRow.originalStartKey = blockOriginalStart;
+          blockedRowsUpdated++;
+        }
         return;
       }
 
@@ -820,14 +1235,14 @@ function syncCalendarBookingsAndDurations(options) {
       blockValues[6] = blockTime;
       blockValues[8] = "bloqueado";
       blockValues[9] = blockAptId;
-      blockValues[10] = "Importado do Google Calendar — " + reason;
+      blockValues[10] = blockNote;
       blockValues[19] = String(blockedEvent.id || "");
       blockValues[20] = blockOriginalStart;
       var newBlockRow = {
         row: rowData.lastRow + rowsToAppend.length + 1, values: blockValues,
-        client: blockTitle, procedure: "Bloqueio do Google Agenda",
+        client: blockTitle, phone: "", procedure: "Bloqueio do Google Agenda",
         dateKey: blockDate, timeKey: allDay ? "" : blockTime,
-        status: "bloqueado", appointmentId: blockAptId, additionalIds: [],
+        status: "bloqueado", appointmentId: blockAptId, notes: blockNote, additionalIds: [],
         serviceId: "", eventId: String(blockedEvent.id || ""), originalStartKey: blockOriginalStart
       };
       rowsToAppend.push(blockValues);
@@ -849,6 +1264,7 @@ function syncCalendarBookingsAndDurations(options) {
           if (!claimedRows[cancelledRow.row]) {
             claimedRows[cancelledRow.row] = true;
             rowUpdates.push({ row: cancelledRow.row, values: { status: "cancelado" } });
+            cancelledRow.status = "cancelado";
             cancelledRows++;
           }
         }
@@ -882,33 +1298,74 @@ function syncCalendarBookingsAndDurations(options) {
           needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: "SHEET_ROW_ALREADY_MATCHED_TO_ANOTHER_CALENDAR_EVENT", row: row.row });
           continue;
         }
-        var rowGuard = cfsRowGuard_(row);
-        if (rowGuard) {
-          if (rowGuard === "CANCELLED_ROW") needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: "CALENDAR_EVENT_LINKED_TO_CANCELLED_SHEET_ROW", row: row.row });
-          continue;
-        }
-        if (row.eventId && !cfsEventIdEqual_(row.eventId, eventId) && !cfsEventIdEqual_(row.eventId, event.recurringEventId || "")) {
-          needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: "SHEET_ROW_ALREADY_LINKED_TO_DIFFERENT_EVENT", row: row.row });
-          continue;
-        }
-        claimedRows[row.row] = true;
-        linked++;
-
-        var changed = {};
-        if (row.dateKey !== eventDate) changed.date = eventDate;
-        if (row.timeKey !== eventTime) changed.time = eventTime;
-        if (!row.eventId || !cfsEventIdEqual_(row.eventId, eventId)) changed.eventId = eventId;
-        if (originalStart && row.originalStartKey !== originalStart) changed.originalStart = originalStart;
-        if (Object.keys(changed).length) {
-          rowUpdates.push({ row: row.row, values: changed });
+        var isCalendarImportedBlock = row.status === "bloqueado" && row.eventId && cfsEventIdEqual_(row.eventId, eventId);
+        if (isCalendarImportedBlock) {
+          var promotedClassification = cfsClassifyCalendarEvent_(event, ctx.catalog, knownClients);
+          if (!promotedClassification.ok) {
+            needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: promotedClassification.reason });
+            queueCalendarBlock_(event, "UNCLASSIFIED_CALENDAR_EVENT:" + promotedClassification.reason);
+            continue;
+          }
+          claimedRows[row.row] = true;
+          linked++;
+          var addIdsArr = promotedClassification.additionalServices.map(function(s) { return s.id; });
+          var promoteValues = {
+            client: promotedClassification.clientName,
+            procedure: promotedClassification.service.title,
+            date: eventDate,
+            time: eventTime,
+            status: "confirmado",
+            notes: "Importado do Google Calendar",
+            additionalIds: JSON.stringify(addIdsArr),
+            serviceId: promotedClassification.service.id,
+            eventId: eventId
+          };
+          if (promotedClassification.clientPhone && !row.phone) {
+            promoteValues.phone = promotedClassification.clientPhone;
+            row.phone = promotedClassification.clientPhone;
+          }
+          if (originalStart) promoteValues.originalStart = originalStart;
+          rowUpdates.push({ row: row.row, values: promoteValues });
           dateTimeUpdates++;
+          row.client = promotedClassification.clientName;
+          row.procedure = promotedClassification.service.title;
           row.dateKey = eventDate;
           row.timeKey = eventTime;
+          row.status = "confirmado";
+          row.notes = "Importado do Google Calendar";
+          row.additionalIds = addIdsArr;
+          row.serviceId = promotedClassification.service.id;
           row.eventId = eventId;
           row.originalStartKey = originalStart;
+        } else {
+          var rowGuard = cfsRowGuard_(row);
+          if (rowGuard) {
+            if (rowGuard === "CANCELLED_ROW") needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: "CALENDAR_EVENT_LINKED_TO_CANCELLED_SHEET_ROW", row: row.row });
+            continue;
+          }
+          if (row.eventId && !cfsEventIdEqual_(row.eventId, eventId) && !cfsEventIdEqual_(row.eventId, event.recurringEventId || "")) {
+            needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: "SHEET_ROW_ALREADY_LINKED_TO_DIFFERENT_EVENT", row: row.row });
+            continue;
+          }
+          claimedRows[row.row] = true;
+          linked++;
+
+          var changed = {};
+          if (row.dateKey !== eventDate) changed.date = eventDate;
+          if (row.timeKey !== eventTime) changed.time = eventTime;
+          if (!row.eventId || !cfsEventIdEqual_(row.eventId, eventId)) changed.eventId = eventId;
+          if (originalStart && row.originalStartKey !== originalStart) changed.originalStart = originalStart;
+          if (Object.keys(changed).length) {
+            rowUpdates.push({ row: row.row, values: changed });
+            dateTimeUpdates++;
+            row.dateKey = eventDate;
+            row.timeKey = eventTime;
+            row.eventId = eventId;
+            row.originalStartKey = originalStart;
+          }
         }
       } else {
-        var classification = cfsMatchTitleToCatalog_(event.summary || "", ctx.catalog, knownClients);
+        var classification = cfsClassifyCalendarEvent_(event, ctx.catalog, knownClients);
         if (!classification.ok) {
           // Unknown Calendar items remain visible in admin as blocked, never as fictitious clients.
           needsReview.push({ eventId: eventId, title: event.summary || "", date: eventDate, time: eventTime, reason: classification.reason });
@@ -926,6 +1383,7 @@ function syncCalendarBookingsAndDurations(options) {
         for (var c = 0; c < width; c++) newValuesArr[c] = "";
         newValuesArr[0] = new Date();
         newValuesArr[1] = classification.clientName;
+        newValuesArr[2] = classification.clientPhone || "";
         newValuesArr[4] = classification.service.title;
         newValuesArr[5] = eventDate;
         newValuesArr[6] = eventTime;
@@ -941,11 +1399,13 @@ function syncCalendarBookingsAndDurations(options) {
           row: rowData.lastRow + rowsToAppend.length + 1,
           values: newValuesArr,
           client: classification.clientName,
+          phone: classification.clientPhone || "",
           procedure: classification.service.title,
           dateKey: eventDate,
           timeKey: eventTime,
           status: "confirmado",
           appointmentId: aptId,
+          notes: "Importado do Google Calendar",
           additionalIds: classification.additionalServices.map(function(s) { return s.id; }),
           serviceId: classification.service.id,
           eventId: eventId,
@@ -1011,6 +1471,34 @@ function syncCalendarBookingsAndDurations(options) {
       }
     }
 
+    // Verify any future Calendar-linked row that disappeared from the Calendar list
+    // (e.g. permanently deleted without a tombstone in range) via Calendar.Events.get.
+    if (typeof Calendar !== "undefined" && Calendar.Events && typeof Calendar.Events.get === "function") {
+      for (var mr = 0; mr < rowData.rows.length; mr++) {
+        var missingRow = rowData.rows[mr];
+        if (!missingRow || !missingRow.eventId || claimedRows[missingRow.row]) continue;
+        if (missingRow.status === "cancelado" || missingRow.status === "cancelada" || missingRow.status === "cancelled" || missingRow.status === "excluido") continue;
+        if (!missingRow.dateKey || missingRow.dateKey <= startKey || missingRow.dateKey > endKey) continue;
+        try {
+          var fetchedEv = Calendar.Events.get(ctx.calendarId, missingRow.eventId);
+          if (fetchedEv && fetchedEv.status === "cancelled") {
+            claimedRows[missingRow.row] = true;
+            rowUpdates.push({ row: missingRow.row, values: { status: "cancelado" } });
+            missingRow.status = "cancelado";
+            cancelledRows++;
+          }
+        } catch (getErr) {
+          var errMsg = String(getErr && (getErr.message || getErr) || "");
+          if (/404|410|not found|resource has been deleted/i.test(errMsg)) {
+            claimedRows[missingRow.row] = true;
+            rowUpdates.push({ row: missingRow.row, values: { status: "cancelado" } });
+            missingRow.status = "cancelado";
+            cancelledRows++;
+          }
+        }
+      }
+    }
+
     if (!dryRun) {
       var eventHeader = String(sheet.getRange(1, CFS_EVENT_ID_COLUMN).getDisplayValue() || "").trim();
       var originalHeader = String(sheet.getRange(1, CFS_ORIGINAL_START_COLUMN).getDisplayValue() || "").trim();
@@ -1028,7 +1516,11 @@ function syncCalendarBookingsAndDurations(options) {
         if (update.values.time) sheet.getRange(update.row, 7).setValue(update.values.time);
         if (update.values.status) sheet.getRange(update.row, 9).setValue(update.values.status);
         if (update.values.client !== undefined) sheet.getRange(update.row, 2).setValue(update.values.client);
+        if (update.values.phone !== undefined) sheet.getRange(update.row, 3).setValue(update.values.phone);
         if (update.values.procedure !== undefined) sheet.getRange(update.row, 5).setValue(update.values.procedure);
+        if (update.values.notes !== undefined) sheet.getRange(update.row, 11).setValue(update.values.notes);
+        if (update.values.additionalIds !== undefined) sheet.getRange(update.row, 14).setValue(update.values.additionalIds);
+        if (update.values.serviceId !== undefined) sheet.getRange(update.row, 16).setValue(update.values.serviceId);
         if (update.values.eventId) sheet.getRange(update.row, CFS_EVENT_ID_COLUMN).setValue(update.values.eventId);
         if (update.values.originalStart) sheet.getRange(update.row, CFS_ORIGINAL_START_COLUMN).setValue(update.values.originalStart);
       });
@@ -1083,14 +1575,45 @@ function syncCalendarBookingsAndDurations(options) {
         ? "DRY RUN: nenhuma linha foi criada/alterada e nenhum evento do Calendar foi modificado. Eventos sem identificação segura são planejados como bloqueios."
         : "Calendar -> Sheets: compromissos identificados são importados; demais eventos são registrados como bloqueados. Durações usam Serviços!F; somente o término de compromissos elegíveis pode ser ajustado."
     };
+    if (!dryRun) {
+      try {
+        var statusProps = PropertiesService.getScriptProperties();
+        if (statusProps && typeof statusProps.setProperty === "function") {
+          statusProps.setProperty(CFS_LAST_SYNC_STATUS_KEY, JSON.stringify({
+            status: "success",
+            syncedAt: new Date().toISOString(),
+            counts: result.counts
+          }));
+        }
+      } catch (statusErr) {}
+    }
     Logger.log(JSON.stringify(result, null, 2));
     return result;
+  } catch (syncErr) {
+    try {
+      var errProps = PropertiesService.getScriptProperties();
+      if (errProps && typeof errProps.setProperty === "function") {
+        errProps.setProperty(CFS_LAST_SYNC_STATUS_KEY, JSON.stringify({
+          status: "error",
+          syncedAt: new Date().toISOString(),
+          error: String(syncErr && (syncErr.message || syncErr) || "Erro desconhecido na sincronização")
+        }));
+      }
+    } catch (ignoredErr) {}
+    throw syncErr;
   } finally {
     lock.releaseLock();
   }
 }
 
 function handleCalendarFirstSyncCalendarEventUpdated(e) {
+  if (!cfsGetWriteEnabled_()) return { status: "skipped_disabled" };
+  if (CacheService.getScriptCache().get(CFS_LOOP_GUARD_KEY)) return { status: "ignored_loop_guard" };
+  return syncCalendarBookingsAndDurations({ dryRun: false });
+}
+
+function handleCalendarFirstSyncPeriodicSweep() {
+  if (!cfsGetWriteEnabled_()) return { status: "skipped_disabled" };
   if (CacheService.getScriptCache().get(CFS_LOOP_GUARD_KEY)) return { status: "ignored_loop_guard" };
   return syncCalendarBookingsAndDurations({ dryRun: false });
 }
@@ -1123,15 +1646,16 @@ function installCalendarFirstSyncTriggers() {
     "syncCalendarChangesToSheet": true,
     "handleSpreadsheetEditForCalendarSync": true
   };
-  var calendarCount = 0, sheetCount = 0, legacyFound = [];
+  var calendarCount = 0, sheetCount = 0, periodicCount = 0, legacyFound = [];
   triggers.forEach(function(trigger) {
     var handler = String(trigger.getHandlerFunction() || "");
     if (legacy[handler]) legacyFound.push(handler);
     if (handler === "handleCalendarFirstSyncCalendarEventUpdated") calendarCount++;
     if (handler === "handleCalendarFirstSyncServiceDurationEdit") sheetCount++;
+    if (handler === "handleCalendarFirstSyncPeriodicSweep") periodicCount++;
   });
   if (legacyFound.length) throw new Error("Gatilhos antigos ativos; instalação cancelada sem remover nada: " + legacyFound.join(", "));
-  if (calendarCount > 1 || sheetCount > 1) throw new Error("Gatilhos duplicados; instalação cancelada sem remover nada.");
+  if (calendarCount > 1 || sheetCount > 1 || periodicCount > 1) throw new Error("Gatilhos duplicados; instalação cancelada sem remover nada.");
 
   var installed = [];
   if (calendarCount === 0) {
@@ -1143,6 +1667,11 @@ function installCalendarFirstSyncTriggers() {
     ScriptApp.newTrigger("handleCalendarFirstSyncServiceDurationEdit")
       .forSpreadsheet(ctx.spreadsheet).onEdit().create();
     installed.push("handleCalendarFirstSyncServiceDurationEdit");
+  }
+  if (periodicCount === 0) {
+    ScriptApp.newTrigger("handleCalendarFirstSyncPeriodicSweep")
+      .timeBased().everyMinutes(10).create();
+    installed.push("handleCalendarFirstSyncPeriodicSweep");
   }
   return { status: "success", installed: installed, safety: "Nenhum gatilho antigo ou duplicado foi removido." };
 }

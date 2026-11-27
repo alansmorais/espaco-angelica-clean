@@ -1546,13 +1546,56 @@ function doPost(e) {
     if (data.action === "runCalendarFirstSyncDryRun") {
       return responseJSON(runCalendarFirstSyncDryRun(data.options || { daysAhead: 365 }));
     }
+    if (data.action === "syncCalendarNow") {
+      try {
+        var syncResult = syncCalendarBookingsAndDurations({ dryRun: false, daysAhead: 365 });
+        return responseJSON({
+          status: syncResult && syncResult.status === "success" ? "success" : "error",
+          synced: Boolean(syncResult && syncResult.status === "success"),
+          dryRun: Boolean(syncResult && syncResult.dryRun),
+          writeEnabled: Boolean(syncResult && syncResult.writeEnabled),
+          counts: syncResult ? syncResult.counts : null,
+          syncedAt: new Date().toISOString(),
+          message: syncResult && syncResult.status !== "success" ? ("Sincronização retornou: " + String(syncResult.status || syncResult.errorCode || "erro")) : "Sincronização com o Google Agenda concluída."
+        });
+      } catch (syncError) {
+        console.error("syncCalendarNow failed: " + syncError);
+        return responseJSON({
+          status: "error",
+          synced: false,
+          syncedAt: new Date().toISOString(),
+          message: "Falha ao sincronizar com o Google Agenda: " + String(syncError && (syncError.message || syncError) || "erro desconhecido")
+        });
+      }
+    }
     if (data.action === "deleteClient") {
       return responseJSON(deleteClientProfile(data.clientId || data.phone || data.id));
     }
 
     // 2. Leitura administrativa segura via POST (token no corpo)
     if (data.action === "getAppointments") {
-      return fetchAppointmentsFromSheet();
+      var calendarSyncMeta = null;
+      if (data.syncCalendar === true && typeof syncCalendarBookingsAndDurations === "function") {
+        try {
+          var liveSync = syncCalendarBookingsAndDurations({ dryRun: false, daysAhead: 365 });
+          calendarSyncMeta = {
+            status: liveSync && liveSync.status === "success" ? "success" : "error",
+            synced: Boolean(liveSync && liveSync.status === "success"),
+            counts: liveSync ? liveSync.counts : null,
+            syncedAt: new Date().toISOString(),
+            error: liveSync && liveSync.status !== "success" ? ("Sincronização retornou: " + String(liveSync.status || liveSync.errorCode || "erro")) : undefined
+          };
+        } catch (liveSyncErr) {
+          console.error("getAppointments live sync failed: " + liveSyncErr);
+          calendarSyncMeta = {
+            status: "error",
+            synced: false,
+            syncedAt: new Date().toISOString(),
+            error: "Falha ao sincronizar Google Agenda: " + String(liveSyncErr && (liveSyncErr.message || liveSyncErr) || "erro desconhecido")
+          };
+        }
+      }
+      return fetchAppointmentsFromSheet(calendarSyncMeta);
     }
 
     if (data.action === "deleteAppointment") {
@@ -2570,13 +2613,14 @@ function normalizeBookingTime(value) {
   return match ? ("0" + match[1]).slice(-2) + ":" + match[2] : text;
 }
 
-function fetchAppointmentsFromSheet() {
+function fetchAppointmentsFromSheet(calendarSyncMeta) {
   var sheet = getOfficialSheet();
   if (!sheet) {
     return responseJSON({ status: "error", message: "Aba 'Agendamentos' não encontrada na planilha oficial." });
   }
 
   var values = sheet.getDataRange().getValues();
+  var durationLookup = buildServiceDurationLookup_();
   var appointments = [];
   var tz = Session.getScriptTimeZone() || "America/Sao_Paulo";
 
@@ -2587,12 +2631,12 @@ function fetchAppointmentsFromSheet() {
     var dateStr = row[5] instanceof Date ? Utilities.formatDate(row[5], tz, "dd/MM/yyyy") : String(row[5] || "");
     var timeStr = row[6] instanceof Date ? Utilities.formatDate(row[6], tz, "HH:mm") : String(row[6] || "");
 
-    var mainDur = getServiceDurationMinutes(String(row[15] || ''), String(row[4] || ''));
-    var totalDur = mainDur;
+    var mainDur = durationLookup.resolve(String(row[15] || ''), String(row[4] || ''));
+    var totalDur = mainDur || 0;
     var addServiceIds = (function() { try { var parsed = JSON.parse(String(row[13] || '[]')); return Array.isArray(parsed) ? parsed : []; } catch (e) { return []; } })();
-    if (totalDur && Array.isArray(addServiceIds)) {
+    if (Array.isArray(addServiceIds)) {
       for (var a = 0; a < addServiceIds.length; a++) {
-        var aDur = getServiceDurationMinutes(String(addServiceIds[a] || ''), '');
+        var aDur = durationLookup.resolve(String(addServiceIds[a] || ''), '');
         if (aDur) totalDur += aDur;
       }
     }
@@ -2600,7 +2644,8 @@ function fetchAppointmentsFromSheet() {
     var resolvedClientName = rawClientName;
     if (rawClientName.toLowerCase() === 'kristine') resolvedClientName = 'Kristine Sorensen';
     if (rawClientName.toLowerCase() === 'josefina') resolvedClientName = 'Josefina Calderón';
-    var durationFormatted = (totalDur && totalDur > 0 ? totalDur + ' min' : (row[19] ? String(row[19]) : ''));
+    var durationFormatted = totalDur > 0 ? (totalDur + ' min') : '';
+    var calendarEventId = String(row[19] || '').trim();
 
     appointments.push({
       id: String(row[9] || ('apt-sheet-' + i)),
@@ -2621,6 +2666,7 @@ function fetchAppointmentsFromSheet() {
       serviceId: String(row[15] || '') || undefined,
       clientBirthDate: String(row[16] || '') || undefined,
       paymentMethod: String(row[17] || '') || undefined,
+      calendarEventId: calendarEventId || undefined,
       recurrence: (function() {
         try {
           var recRaw = String(row[18] || '');
@@ -2633,7 +2679,19 @@ function fetchAppointmentsFromSheet() {
       })()
     });
   }
-  return responseJSON({ status: "success", appointments: appointments, total: appointments.length });
+  var lastBackgroundSync = null;
+  try {
+    var rawStatus = PropertiesService.getScriptProperties().getProperty("CFS_LAST_SYNC_STATUS");
+    if (rawStatus) lastBackgroundSync = JSON.parse(rawStatus);
+  } catch (e) {}
+  var payload = {
+    status: "success",
+    appointments: appointments,
+    total: appointments.length,
+    lastBackgroundSync: lastBackgroundSync
+  };
+  if (calendarSyncMeta) payload.calendarSync = calendarSyncMeta;
+  return responseJSON(payload);
 }
 
 function doGet(e) {

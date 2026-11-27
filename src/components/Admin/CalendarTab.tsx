@@ -2,6 +2,13 @@ import React, { useState } from 'react';
 import { Appointment, TimeSlotConfig, Service } from '../../types';
 import { sendAppointmentWhatsAppConfirmation } from '../../services/whatsappService';
 import { formatBRL, areDatesEqual } from '../../services/notificationTemplates';
+import {
+  isAllDayCalendarBlock,
+  isPartialCalendarBlock,
+  isUnclassifiedCalendarBlock,
+  formatCalendarBlockBadge,
+  formatCalendarBlockExplanation
+} from '../../services/calendarBlockFormatting';
 import { EditAppointmentModal } from '../Modals/EditAppointmentModal';
 
 interface CalendarTabProps {
@@ -13,6 +20,8 @@ interface CalendarTabProps {
   services?: Service[];
   onUpdateAppointment?: (apt: Appointment) => Promise<void> | void;
   onDeleteAppointment?: (apt: Appointment) => Promise<void>;
+  onSyncCalendar?: () => Promise<void> | void;
+  isSyncingCalendar?: boolean;
 }
 
 export const CalendarTab: React.FC<CalendarTabProps> = ({
@@ -23,7 +32,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
   timeSlots = [],
   services = [],
   onUpdateAppointment,
-  onDeleteAppointment
+  onDeleteAppointment,
+  onSyncCalendar,
+  isSyncingCalendar = false
 }) => {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(null);
@@ -173,6 +184,17 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
 
         {/* Quick Espaço Actions */}
         <div className="flex flex-wrap items-center gap-2.5 z-10">
+          {onSyncCalendar && (
+            <button
+              type="button"
+              disabled={isSyncingCalendar}
+              onClick={() => void onSyncCalendar()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#FBF2D5] text-[#3C2F00] hover:bg-[#F3E2AE] disabled:opacity-60 transition-all font-jakarta text-xs font-bold border border-[#D4AF37]/60 shadow-xs cursor-pointer"
+            >
+              <span className={`material-symbols-outlined text-[17px] text-[#9A7410] ${isSyncingCalendar ? 'animate-spin' : ''}`}>sync</span>
+              <span>{isSyncingCalendar ? 'Sincronizando...' : 'Sincronizar Google Agenda'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onOpenBlockModal(selectedDayLabel)}
@@ -256,9 +278,10 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                   const date = day ? formatDate(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day)) : '';
                   const isPastDay = Boolean(date && date < todayKey);
                   const items = day ? appointments.filter(a => a.status !== 'cancelado' && areDatesEqual(a.date, date)) : [];
-                  const blocked = items.some(a => a.status === 'bloqueado');
+                  const allDayBlocked = items.some(a => isAllDayCalendarBlock(a));
+                  const partialBlocked = !allDayBlocked && items.some(a => isPartialCalendarBlock(a));
                   return <button key={i} type="button" disabled={!day || isPastDay} onClick={() => { if (day && !isPastDay) { setSelectedDayLabel(date); setSelectedSlotKey(null); } }} className={`min-h-14 rounded-lg border flex flex-col items-center justify-center gap-1 ${!day ? 'border-transparent' : isPastDay ? 'bg-gray-100 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed' : date === todayKey ? 'bg-emerald-50 border-emerald-400 font-bold' : date === selectedDayLabel ? 'bg-[#FBF2D5] border-[#D4AF37]' : 'border-[#E8D9B5] hover:bg-[#F7EFEA]'}`}>
-                    {day || ''}{items.length > 0 && <span className={`text-[10px] rounded-full px-1.5 ${blocked ? 'bg-red-100 text-red-800' : 'bg-[#D4AF37] text-[#3C2F00]'}`}>{items.length}{blocked ? ' 🔒' : ''}</span>}
+                    {day || ''}{items.length > 0 && <span className={`text-[10px] rounded-full px-1.5 ${allDayBlocked ? 'bg-red-100 text-red-800' : partialBlocked ? 'bg-amber-100 text-amber-900' : 'bg-[#D4AF37] text-[#3C2F00]'}`}>{items.length}{allDayBlocked ? ' 🔒' : ''}</span>}
                   </button>;
                 })}
               </div>
@@ -267,15 +290,55 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                   <strong>Agendamentos de {selectedDate.toLocaleDateString('pt-BR')}</strong>
                   <button type="button" onClick={() => onOpenBlockModal(selectedDayLabel)} className="px-3 py-2 rounded-lg bg-[#D4AF37] text-xs font-bold">Bloquear esta data / horário</button>
                 </div>
-                {dayAppointments.length === 0 ? <p className="text-xs text-[#786C63]">Nenhum agendamento nesta data.</p> : dayAppointments.map(a => <button key={a.id} type="button" onClick={() => setSelectedSlotKey(a.id)} className="w-full text-left p-3 mb-1 rounded-lg border border-[#E8D9B5] hover:bg-[#FBF2D5] text-xs"><strong>{a.time} · {a.clientName}</strong> — {a.serviceTitle} ({a.status})</button>)}
+                {dayAppointments.length === 0 ? <p className="text-xs text-[#786C63]">Nenhum agendamento nesta data.</p> : dayAppointments.map(a => {
+                  const isBlock = a.status === 'bloqueado';
+                  const unclassified = isUnclassifiedCalendarBlock(a);
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setSelectedSlotKey(a.id)}
+                      className={`w-full text-left p-3 mb-1.5 rounded-lg border text-xs transition-colors ${
+                        isBlock
+                          ? unclassified
+                            ? 'border-amber-300 bg-amber-50/70 hover:bg-amber-50'
+                            : 'border-red-200 bg-red-50/60 hover:bg-red-50'
+                          : 'border-[#E8D9B5] hover:bg-[#FBF2D5]'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          <strong>{a.time || 'Dia inteiro'} · {a.clientName}</strong> — {a.serviceTitle}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          isBlock
+                            ? unclassified
+                              ? 'bg-amber-100 text-amber-900'
+                              : 'bg-red-100 text-red-800'
+                            : 'bg-[#F7EFEA] text-[#49382E]'
+                        }`}>
+                          {isBlock ? formatCalendarBlockBadge(a) : a.status}
+                        </span>
+                      </div>
+                      {isBlock && (
+                        <p className="mt-1 text-[11px] text-[#786C63]">
+                          {formatCalendarBlockExplanation(a)}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
           {/* Day Selector Buttons */}
           <div className="grid grid-cols-5 gap-2 pb-4 border-b border-[#E8D9B5] mb-4">
             {daysHeader.map(d => {
-              const dayBlocked = appointments.some(
-                a => a.status === 'bloqueado' && areDatesEqual(a.date, d.full)
+              const dayAllDayBlocked = appointments.some(
+                a => isAllDayCalendarBlock(a) && areDatesEqual(a.date, d.full)
+              );
+              const dayPartialBlocked = !dayAllDayBlocked && appointments.some(
+                a => isPartialCalendarBlock(a) && areDatesEqual(a.date, d.full)
               );
               return (
                 <button
@@ -284,17 +347,24 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                   onClick={() => setSelectedDayLabel(d.full)}
                   className={`flex flex-col items-center p-2.5 rounded-xl transition-all cursor-pointer border relative ${
                     selectedDayLabel === d.full
-                      ? dayBlocked
+                      ? dayAllDayBlocked
                         ? 'bg-red-50 border-red-400 text-red-900 shadow-xs'
                         : 'bg-[#FBF2D5] border-[#D4AF37] text-[#3C2F00] shadow-xs'
-                      : dayBlocked
+                      : dayAllDayBlocked
                       ? 'bg-red-50/60 text-red-700 border-red-200 hover:bg-red-50'
+                      : dayPartialBlocked
+                      ? 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-50'
                       : 'bg-[#FDFBF9] text-[#786C63] border-[#E8D9B5] hover:bg-[#F7EFEA] hover:text-[#49382E]'
                   }`}
                 >
-                  {dayBlocked && (
-                    <span className="absolute top-1 right-1 material-symbols-outlined text-[13px] text-red-500" title="Dia Bloqueado">
+                  {dayAllDayBlocked && (
+                    <span className="absolute top-1 right-1 material-symbols-outlined text-[13px] text-red-500" title="Dia inteiro bloqueado">
                       lock
+                    </span>
+                  )}
+                  {dayPartialBlocked && (
+                    <span className="absolute top-1 right-1 material-symbols-outlined text-[13px] text-amber-600" title="Bloqueio parcial ou evento em revisão">
+                      schedule
                     </span>
                   )}
                   <span className="font-jakarta text-[10px] uppercase font-bold">{d.label}</span>
@@ -305,11 +375,11 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           </div>
 
           {selectedDayBlocks.length > 0 && activeView !== 'mes' && (
-            <section className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3.5" aria-label="Bloqueios do dia selecionado">
-              <div className="mb-2 flex items-center gap-2 text-red-900">
-                <span className="material-symbols-outlined text-[18px]">lock</span>
-                <strong className="font-syne text-sm">Bloqueios do Google Agenda neste dia</strong>
-                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-800">{selectedDayBlocks.length}</span>
+            <section className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5" aria-label="Bloqueios do dia selecionado">
+              <div className="mb-2 flex items-center gap-2 text-amber-950">
+                <span className="material-symbols-outlined text-[18px]">event_busy</span>
+                <strong className="font-syne text-sm">Bloqueios e eventos do Google Agenda neste dia</strong>
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">{selectedDayBlocks.length}</span>
               </div>
               <div className="space-y-2">
                 {selectedDayBlocks.map(block => (
@@ -317,23 +387,27 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                     key={block.id}
                     type="button"
                     onClick={() => setSelectedSlotKey(block.id)}
-                    className="flex w-full items-start justify-between gap-3 rounded-lg border border-red-200 bg-white/80 p-2.5 text-left hover:bg-white"
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border border-amber-200 bg-white/90 p-2.5 text-left hover:bg-white"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-jakarta text-xs font-bold text-red-900">{block.clientName || 'Bloqueio de agenda'}</span>
-                      <span className="mt-0.5 block font-jakarta text-[11px] text-red-700">{block.time || 'Dia inteiro'} · {block.notes || block.blockReason || 'Indisponível'}</span>
+                      <span className="block truncate font-jakarta text-xs font-bold text-[#49382E]">
+                        {block.clientName || 'Bloqueio de agenda'} · <span className="text-amber-800">{formatCalendarBlockBadge(block)}</span>
+                      </span>
+                      <span className="mt-0.5 block font-jakarta text-[11px] text-[#786C63]">
+                        {block.time || 'Dia inteiro'} · {formatCalendarBlockExplanation(block)}
+                      </span>
                     </span>
-                    <span className="shrink-0 font-jakarta text-[10px] font-bold text-red-800">Ver</span>
+                    <span className="shrink-0 font-jakarta text-[10px] font-bold text-amber-900">Ver</span>
                   </button>
                 ))}
               </div>
             </section>
           )}
 
-          {/* Active Block Banner if the selected day is blocked */}
+          {/* Active Full-Day Block Banner — ONLY for actual all-day blocks, never partial timed blocks */}
           {(() => {
             const currentDayBlock = appointments.find(
-              a => a.status === 'bloqueado' && areDatesEqual(a.date, selectedDayLabel)
+              a => isAllDayCalendarBlock(a) && areDatesEqual(a.date, selectedDayLabel)
             );
             if (!currentDayBlock) return null;
             return (
@@ -341,9 +415,9 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-red-600 text-[20px] shrink-0">lock</span>
                   <div>
-                    <span className="font-syne text-xs font-bold block">Esta data está BLOQUEADA para agendamentos</span>
+                    <span className="font-syne text-xs font-bold block">Esta data está BLOQUEADA para agendamentos (Dia Inteiro)</span>
                     <span className="font-jakarta text-[11px] text-red-700">
-                      {currentDayBlock.notes || currentDayBlock.blockReason || 'Dia inteiro bloqueado pela administração'}
+                      {formatCalendarBlockExplanation(currentDayBlock)}
                     </span>
                   </div>
                 </div>
@@ -562,29 +636,22 @@ export const CalendarTab: React.FC<CalendarTabProps> = ({
           {selectedAppointment ? (
             selectedAppointment.status === 'bloqueado' ? (
               <div className="space-y-4 font-jakarta text-xs">
-                <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 space-y-1">
-                  <span className="text-[10px] text-red-600 uppercase tracking-wider font-bold">
-                    Bloqueio Administrativo
+                <div className={`p-3.5 rounded-xl border space-y-1 ${isUnclassifiedCalendarBlock(selectedAppointment) ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                  <span className={`text-[10px] uppercase tracking-wider font-bold ${isUnclassifiedCalendarBlock(selectedAppointment) ? 'text-amber-800' : 'text-red-600'}`}>
+                    {formatCalendarBlockBadge(selectedAppointment)}
                   </span>
-                  <div className="font-syne text-base text-red-900 font-bold">
+                  <div className={`font-syne text-base font-bold ${isUnclassifiedCalendarBlock(selectedAppointment) ? 'text-amber-950' : 'text-red-900'}`}>
                     {selectedAppointment.clientName || 'Bloqueio de Agenda'}
                   </div>
-                  <div className="text-red-700">
-                    Data: <strong>{selectedAppointment.date}</strong> • Horário: <strong>{selectedAppointment.time}</strong>
+                  <div className={isUnclassifiedCalendarBlock(selectedAppointment) ? 'text-amber-900' : 'text-red-700'}>
+                    Data: <strong>{selectedAppointment.date}</strong> • Horário: <strong>{selectedAppointment.time || 'Dia inteiro'}</strong>
                   </div>
-                  {selectedAppointment.blockReason && (
-                    <div className="text-red-800 font-semibold mt-1">
-                      Motivo: {selectedAppointment.blockReason}
-                    </div>
-                  )}
                 </div>
 
-                {selectedAppointment.notes && (
-                  <div className="p-3 rounded-lg bg-[#FDFBF9] border border-[#E8D9B5] text-[#786C63]">
-                    <strong className="text-[#49382E] block mb-0.5">Observações:</strong>
-                    {selectedAppointment.notes}
-                  </div>
-                )}
+                <div className="p-3 rounded-lg bg-[#FDFBF9] border border-[#E8D9B5] text-[#786C63]">
+                  <strong className="text-[#49382E] block mb-0.5">Detalhes:</strong>
+                  {formatCalendarBlockExplanation(selectedAppointment)}
+                </div>
 
                 <div className="pt-3 border-t border-[#E8D9B5] flex flex-col gap-2">
                   {onDeleteAppointment && (

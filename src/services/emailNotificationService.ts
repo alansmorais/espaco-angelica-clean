@@ -562,6 +562,14 @@ export async function fetchPublicAvailability(): Promise<PublicAvailabilityResul
   }
 }
 
+export interface CalendarSyncMetadata {
+  status: string;
+  synced?: boolean;
+  counts?: Record<string, number> | null;
+  syncedAt?: string;
+  error?: string;
+}
+
 export interface FetchAppointmentsDetailedResult {
   success: boolean;
   appointments: Appointment[];
@@ -569,22 +577,36 @@ export interface FetchAppointmentsDetailedResult {
   total?: number;
   error?: string;
   statusCode?: number;
+  calendarSync?: CalendarSyncMetadata | null;
+  lastBackgroundSync?: CalendarSyncMetadata | null;
 }
 
 /**
  * Consulta agendamentos com resultado detalhado (para exibir status de carregamento,
  * erros de credencial e lista vazia no painel administrativo).
  */
-export async function fetchRemoteAppointmentsDetailed(authToken?: string): Promise<FetchAppointmentsDetailedResult> {
+export async function fetchRemoteAppointmentsDetailed(
+  authToken?: string,
+  options?: { syncCalendar?: boolean }
+): Promise<FetchAppointmentsDetailedResult> {
   try {
     const endpoint = getNotificationWebhookUrl();
     if (!endpoint) return { success: false, appointments: [], error: 'URL do Google Apps Script não configurada.' };
     const token = getAdminSessionToken(authToken);
     if (!token) return { success: false, appointments: [], error: 'Sessão administrativa ausente. Entre novamente no painel.', statusCode: 401 };
-    const data = await postAppsScriptAction(endpoint, 'getAppointments', { token });
+    const payload: Record<string, any> = { token };
+    if (options?.syncCalendar === true) payload.syncCalendar = true;
+    const data = await postAppsScriptAction(endpoint, 'getAppointments', payload);
     if (Array.isArray(data.appointments)) {
       const expanded = expandRecurringAppointments(data.appointments as Appointment[]);
-      return { success: true, appointments: expanded, source: 'google_sheets', total: data.total ?? expanded.length };
+      return {
+        success: true,
+        appointments: expanded,
+        source: 'google_sheets',
+        total: data.total ?? expanded.length,
+        calendarSync: data.calendarSync || null,
+        lastBackgroundSync: data.lastBackgroundSync || null
+      };
     }
     return { success: false, appointments: [], error: 'Resposta do Apps Script sem lista de agendamentos.', statusCode: 502 };
   } catch (err: any) {

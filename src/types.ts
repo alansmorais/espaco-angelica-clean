@@ -70,6 +70,7 @@ export interface Appointment {
   whatsappLastMessage?: string;
   gmailStatus?: 'enviado' | 'pendente' | 'falha' | 'simulado';
   gmailSentAt?: string;
+  calendarEventId?: string;
 }
 
 export interface PaymentConfig {
